@@ -41,6 +41,22 @@ const schema = `
     listeningCount INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS JournalEntries (
+    id TEXT PRIMARY KEY NOT NULL,
+    trackId TEXT NOT NULL,
+    note TEXT NOT NULL,
+    mood TEXT NOT NULL,
+    createdAt DATETIME NOT NULL,
+    FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS ListeningHistory (
+    id TEXT PRIMARY KEY NOT NULL,
+    trackId TEXT NOT NULL,
+    listenedAt DATETIME NOT NULL,
+    FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE
+  );
 `;
 
 export async function initializeDatabase(): Promise<SQLiteDatabase | null> {

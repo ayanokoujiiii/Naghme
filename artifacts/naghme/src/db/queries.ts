@@ -34,6 +34,20 @@ export interface PersonalRelationshipRecord {
   listeningCount: number;
 }
 
+export interface JournalEntryRecord {
+  id: string;
+  trackId: string;
+  note: string;
+  mood: string;
+  createdAt: string;
+}
+
+export interface ListeningHistoryRecord {
+  id: string;
+  trackId: string;
+  listenedAt: string;
+}
+
 export interface LibraryStats {
   tracks: number;
   albums: number;
@@ -59,6 +73,8 @@ export type NewTrack = Omit<TrackRecord, 'id'>;
 export type UpdateArtist = Partial<NewArtist>;
 export type UpdateAlbum = Partial<NewAlbum>;
 export type UpdateTrack = Partial<NewTrack>;
+
+export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
 
 export type PersonalRelationshipInput = Omit<
   PersonalRelationshipRecord,
@@ -410,4 +426,63 @@ export async function upsertPersonalRelationship(
   const saved = await getPersonalRelationship(input.trackId);
   if (!saved) throw new Error('رابطه‌ی شخصی ذخیره نشد.');
   return saved;
+}
+
+export async function addJournalEntry(input: NewJournalEntry): Promise<JournalEntryRecord> {
+  const note = input.note.trim();
+  const mood = input.mood.trim();
+  if (!mood) throw new Error('انتخاب حال الزامی است.');
+  if (!note) throw new Error('یادداشت حال خود را بنویس.');
+
+  const entry: JournalEntryRecord = {
+    id: createId('journal'),
+    trackId: input.trackId,
+    note,
+    mood,
+    createdAt: new Date().toISOString(),
+  };
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO JournalEntries (id, trackId, note, mood, createdAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [entry.id, entry.trackId, entry.note, entry.mood, entry.createdAt],
+  );
+  return entry;
+}
+
+export async function getJournalEntries(trackId: string): Promise<JournalEntryRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<JournalEntryRecord>(
+    `SELECT id, trackId, note, mood, createdAt
+     FROM JournalEntries
+     WHERE trackId = ?
+     ORDER BY datetime(createdAt) DESC`,
+    [trackId],
+  );
+}
+
+export async function logListen(trackId: string): Promise<ListeningHistoryRecord> {
+  const historyEntry: ListeningHistoryRecord = {
+    id: createId('listen'),
+    trackId,
+    listenedAt: new Date().toISOString(),
+  };
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO ListeningHistory (id, trackId, listenedAt)
+     VALUES (?, ?, ?)`,
+    [historyEntry.id, historyEntry.trackId, historyEntry.listenedAt],
+  );
+  return historyEntry;
+}
+
+export async function getListeningHistory(trackId: string): Promise<ListeningHistoryRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ListeningHistoryRecord>(
+    `SELECT id, trackId, listenedAt
+     FROM ListeningHistory
+     WHERE trackId = ?
+     ORDER BY datetime(listenedAt) DESC`,
+    [trackId],
+  );
 }

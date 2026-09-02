@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -12,12 +13,19 @@ import {
   View,
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import {
+  addJournalEntry,
   getAlbumById,
+  getJournalEntries,
+  getListeningHistory,
   deleteTrack,
   getPersonalRelationship,
   getTrackById,
+  JournalEntryRecord,
+  ListeningHistoryRecord,
+  logListen,
   PersonalRelationshipRecord,
   TrackRecord,
   upsertPersonalRelationship,
@@ -32,6 +40,13 @@ const emptyRelationship: PersonalRelationshipRecord = {
   listeningCount: 0,
 };
 
+const moodOptions = [
+  { value: 'آرام', icon: 'moon' as const },
+  { value: 'غمگین', icon: 'cloud-rain' as const },
+  { value: 'متفکر', icon: 'book-open' as const },
+  { value: 'پرانرژی', icon: 'sun' as const },
+];
+
 export default function TrackDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -41,7 +56,14 @@ export default function TrackDetailScreen() {
   const [albumTitle, setAlbumTitle] = useState<string>('بدون آلبوم');
   const [relationship, setRelationship] =
     useState<PersonalRelationshipRecord>(emptyRelationship);
-  const [note, setNote] = useState<string>('');
+  const [legacyNote, setLegacyNote] = useState<string>('');
+  const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
+  const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
+  const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
+  const [selectedMood, setSelectedMood] = useState<string>('');
+  const [journalNote, setJournalNote] = useState<string>('');
+  const [savingJournal, setSavingJournal] = useState<boolean>(false);
+  const [journalMessage, setJournalMessage] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [savingRelationship, setSavingRelationship] = useState<boolean>(false);
   const [relationshipMessage, setRelationshipMessage] = useState<string>('');
@@ -71,13 +93,20 @@ export default function TrackDetailScreen() {
         setAlbumTitle('بدون آلبوم');
       }
 
-      const savedRelationship = await getPersonalRelationship(foundTrack.id);
+      const [savedRelationship, savedJournalEntries, savedListeningHistory] =
+        await Promise.all([
+          getPersonalRelationship(foundTrack.id),
+          getJournalEntries(foundTrack.id),
+          getListeningHistory(foundTrack.id),
+        ]);
       const nextRelationship = savedRelationship ?? {
         ...emptyRelationship,
         trackId: foundTrack.id,
       };
       setRelationship(nextRelationship);
-      setNote(nextRelationship.personalNote ?? '');
+      setLegacyNote(nextRelationship.personalNote ?? '');
+      setJournalEntries(savedJournalEntries);
+      setListeningHistory(savedListeningHistory);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن قطعه انجام نشد.');
     } finally {
@@ -105,7 +134,7 @@ export default function TrackDetailScreen() {
     try {
       const saved = await upsertPersonalRelationship(nextRelationship);
       setRelationship(saved);
-      setNote(saved.personalNote ?? '');
+      setLegacyNote(saved.personalNote ?? '');
       setRelationshipMessage(successMessage);
     } catch (saveError: unknown) {
       setRelationshipMessage(
@@ -114,6 +143,61 @@ export default function TrackDetailScreen() {
     } finally {
       setSavingRelationship(false);
     }
+  };
+
+  const openJournalModal = () => {
+    setSelectedMood('');
+    setJournalNote('');
+    setJournalMessage('');
+    setJournalModalVisible(true);
+  };
+
+  const closeJournalModal = () => {
+    if (savingJournal) return;
+    setJournalModalVisible(false);
+  };
+
+  const submitJournalEntry = async () => {
+    if (!track || savingJournal) return;
+    if (!selectedMood) {
+      setJournalMessage('اول حال خودت را انتخاب کن.');
+      return;
+    }
+    if (!journalNote.trim()) {
+      setJournalMessage('چند کلمه از حال امروزت بنویس.');
+      return;
+    }
+
+    setSavingJournal(true);
+    setJournalMessage('');
+    try {
+      const entry = await addJournalEntry({
+        trackId: track.id,
+        mood: selectedMood,
+        note: journalNote,
+      });
+      setJournalEntries((currentEntries) => [entry, ...currentEntries]);
+      setJournalModalVisible(false);
+      setSelectedMood('');
+      setJournalNote('');
+    } catch (saveError: unknown) {
+      setJournalMessage(
+        saveError instanceof Error ? saveError.message : 'ثبت حال انجام نشد.',
+      );
+    } finally {
+      setSavingJournal(false);
+    }
+  };
+
+  const handlePlayStarted = () => {
+    if (!track) return;
+    void logListen(track.id)
+      .then((entry) => {
+        setListeningHistory((currentHistory) => [entry, ...currentHistory]);
+      })
+      .catch(() => {
+        // Playback should remain uninterrupted if a background history write fails.
+      });
   };
 
   const confirmDelete = () => {
@@ -189,8 +273,16 @@ export default function TrackDetailScreen() {
       </DetailCard>
 
       {track.audioUri ? (
-        <AudioPlayer uri={track.audioUri} colors={colors} styles={styles} />
+        <AudioPlayer
+          uri={track.audioUri}
+          colors={colors}
+          styles={styles}
+          onPlayStarted={handlePlayStarted}
+        />
       ) : null}
+      <Text style={styles.listenCount}>
+        تعداد دفعات شنیده‌شده: {listeningHistory.length}
+      </Text>
 
       <SectionHeading title="رابطه من با این قطعه" caption="چیزی که فقط برای تو معنا دارد" />
       <DetailCard>
@@ -242,45 +334,91 @@ export default function TrackDetailScreen() {
           </View>
         </View>
 
-        <View style={styles.noteBlock}>
-          <Text style={styles.preferenceLabel}>یادداشت شخصی</Text>
-          <TextInput
-            testID="track-personal-note"
-            multiline
-            value={note}
-            onChangeText={setNote}
-            placeholder="این قطعه چه خاطره یا حسی برایت دارد؟"
-            placeholderTextColor={colors.mutedForeground}
-            selectionColor={colors.primary}
-            style={styles.noteInput}
-            textAlign="right"
-            textAlignVertical="top"
-          />
+        <View style={styles.diaryBlock}>
+          <View style={styles.diaryHeader}>
+            <View style={styles.diaryHeaderCopy}>
+              <Text style={styles.preferenceLabel}>دفترچه‌ی حال من</Text>
+              <Text style={styles.diaryCaption}>ردپای احساس تو در گذر زمان</Text>
+            </View>
+            <View style={styles.diaryIcon}>
+              <Feather name="book-open" size={18} color={colors.primary} />
+            </View>
+          </View>
+
+          {journalEntries.length ? (
+            <View style={styles.timeline}>
+              {journalEntries.map((entry, index) => (
+                <JournalTimelineEntry
+                  key={entry.id}
+                  entry={entry}
+                  isLast={index === journalEntries.length - 1}
+                  colors={colors}
+                  styles={styles}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyDiary}>
+              <Feather name="edit-3" size={20} color={colors.mutedForeground} />
+              <Text style={styles.emptyDiaryTitle}>هنوز چیزی در این دفترچه نیست</Text>
+              <Text style={styles.emptyDiaryText}>
+                اولین حال و خاطره‌ات را برای این قطعه ثبت کن.
+              </Text>
+            </View>
+          )}
+
           <Pressable
-            testID="track-save-note"
+            testID="track-log-mood"
             accessibilityRole="button"
-            disabled={savingRelationship}
-            onPress={() =>
-              void saveRelationship(
-                { personalNote: note.trim() || null },
-                'یادداشت شخصی ذخیره شد.',
-              )
-            }
-            style={({ pressed }) => [
-              styles.noteButton,
-              (pressed || savingRelationship) && styles.pressed,
-            ]}
+            onPress={openJournalModal}
+            style={({ pressed }) => [styles.noteButton, pressed && styles.pressed]}
           >
-            {savingRelationship ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <>
-                <Feather name="save" size={17} color={colors.primaryForeground} />
-                <Text style={styles.noteButtonText}>ذخیره‌ی یادداشت</Text>
-              </>
-            )}
+            <Feather name="plus" size={18} color={colors.primaryForeground} />
+            <Text style={styles.noteButtonText}>ثبت حالِ الان</Text>
           </Pressable>
         </View>
+
+        {relationship.personalNote ? (
+          <View style={styles.legacyNoteBlock}>
+            <Text style={styles.legacyNoteLabel}>یادداشت شخصی قبلی</Text>
+            <TextInput
+              testID="track-personal-note"
+              multiline
+              value={legacyNote}
+              onChangeText={setLegacyNote}
+              placeholder="یادداشت قبلی را ویرایش کن"
+              placeholderTextColor={colors.mutedForeground}
+              selectionColor={colors.primary}
+              style={styles.legacyNoteInput}
+              textAlign="right"
+              textAlignVertical="top"
+            />
+            <Pressable
+              testID="track-save-note"
+              accessibilityRole="button"
+              disabled={savingRelationship}
+              onPress={() =>
+                void saveRelationship(
+                  { personalNote: legacyNote.trim() || null },
+                  'یادداشت شخصی ذخیره شد.',
+                )
+              }
+              style={({ pressed }) => [
+                styles.noteButton,
+                (pressed || savingRelationship) && styles.pressed,
+              ]}
+            >
+              {savingRelationship ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather name="save" size={17} color={colors.primaryForeground} />
+                  <Text style={styles.noteButtonText}>ذخیره‌ی یادداشت قبلی</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
 
         {relationshipMessage ? (
           <Text
@@ -293,6 +431,20 @@ export default function TrackDetailScreen() {
           </Text>
         ) : null}
       </DetailCard>
+
+      <JournalEntryModal
+        visible={journalModalVisible}
+        selectedMood={selectedMood}
+        note={journalNote}
+        message={journalMessage}
+        saving={savingJournal}
+        colors={colors}
+        styles={styles}
+        onClose={closeJournalModal}
+        onMoodChange={setSelectedMood}
+        onNoteChange={setJournalNote}
+        onSubmit={() => void submitJournalEntry()}
+      />
     </DetailShell>
   );
 }
@@ -301,10 +453,12 @@ function AudioPlayer({
   uri,
   colors,
   styles,
+  onPlayStarted,
 }: {
   uri: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
+  onPlayStarted?: () => void;
 }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const mountedRef = useRef<boolean>(true);
@@ -363,6 +517,7 @@ function AudioPlayer({
         await sound.pauseAsync();
       } else {
         await sound.playAsync();
+          onPlayStarted?.();
       }
     } catch {
       if (mountedRef.current) setError('پخش فایل صوتی انجام نشد.');
@@ -408,10 +563,190 @@ function AudioPlayer({
   );
 }
 
+function JournalTimelineEntry({
+  entry,
+  isLast,
+  colors,
+  styles,
+}: {
+  entry: JournalEntryRecord;
+  isLast: boolean;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.timelineEntry}>
+      <View style={styles.timelineRail}>
+        <View style={styles.timelineDot} />
+        {!isLast ? <View style={styles.timelineLine} /> : null}
+      </View>
+      <View style={styles.timelineContent}>
+        <View style={styles.timelineMeta}>
+          <Text style={styles.timelineDate}>{formatDiaryDate(entry.createdAt)}</Text>
+          <View style={styles.moodBadge}>
+            <Text style={styles.moodBadgeText}>{entry.mood}</Text>
+          </View>
+        </View>
+        <Text style={styles.timelineNote}>{entry.note}</Text>
+      </View>
+    </View>
+  );
+}
+
+function JournalEntryModal({
+  visible,
+  selectedMood,
+  note,
+  message,
+  saving,
+  colors,
+  styles,
+  onClose,
+  onMoodChange,
+  onNoteChange,
+  onSubmit,
+}: {
+  visible: boolean;
+  selectedMood: string;
+  note: string;
+  message: string;
+  saving: boolean;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+  onClose: () => void;
+  onMoodChange: (mood: string) => void;
+  onNoteChange: (note: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalBackdrop}>
+        <KeyboardAwareScrollViewCompat
+          contentContainerStyle={styles.modalContentContainer}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={20}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalTopRow}>
+              <Pressable
+                testID="track-mood-close"
+                accessibilityRole="button"
+                accessibilityLabel="بستن"
+                onPress={onClose}
+                style={({ pressed }) => [styles.modalClose, pressed && styles.pressed]}
+              >
+                <Feather name="x" size={20} color={colors.foreground} />
+              </Pressable>
+              <View style={styles.modalTitleCopy}>
+                <Text style={styles.modalEyebrow}>دفترچه‌ی شخصی</Text>
+                <Text style={styles.modalTitle}>الان چه حالی داری؟</Text>
+              </View>
+              <View style={styles.modalIcon}>
+                <Feather name="feather" size={19} color={colors.primary} />
+              </View>
+            </View>
+
+            <Text style={styles.modalLabel}>حال امروز</Text>
+            <View style={styles.moodGrid}>
+              {moodOptions.map((mood) => {
+                const isSelected = mood.value === selectedMood;
+                return (
+                  <Pressable
+                    key={mood.value}
+                    testID={`track-mood-${mood.value}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => onMoodChange(mood.value)}
+                    style={({ pressed }) => [
+                      styles.moodOption,
+                      isSelected && styles.moodOptionSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Feather
+                      name={mood.icon}
+                      size={16}
+                      color={isSelected ? colors.primaryForeground : colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.moodOptionText,
+                        isSelected && styles.moodOptionTextSelected,
+                      ]}
+                    >
+                      {mood.value}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.modalLabel}>یادداشت کوتاه</Text>
+            <TextInput
+              testID="track-mood-note"
+              multiline
+              value={note}
+              onChangeText={onNoteChange}
+              placeholder="این قطعه امروز تو را به کجا می‌برد؟"
+              placeholderTextColor={colors.mutedForeground}
+              selectionColor={colors.primary}
+              style={styles.modalNoteInput}
+              textAlign="right"
+              textAlignVertical="top"
+              maxLength={500}
+            />
+
+            {message ? <Text style={styles.modalMessage}>{message}</Text> : null}
+
+            <Pressable
+              testID="track-mood-submit"
+              accessibilityRole="button"
+              disabled={saving}
+              onPress={onSubmit}
+              style={({ pressed }) => [
+                styles.modalSubmit,
+                (pressed || saving) && styles.pressed,
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather name="check" size={18} color={colors.primaryForeground} />
+                  <Text style={styles.modalSubmitText}>ثبت در دفترچه</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </KeyboardAwareScrollViewCompat>
+      </View>
+    </Modal>
+  );
+}
+
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function formatDiaryDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'زمان ثبت نامشخص';
+  try {
+    return `${date.toLocaleDateString('fa-IR')}، ${date.toLocaleTimeString('fa-IR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  } catch {
+    return date.toLocaleDateString();
+  }
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {
@@ -475,19 +810,136 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginTop: 8,
     },
     starButton: { padding: 3 },
-    noteBlock: { paddingTop: 16 },
-    noteInput: {
-      minHeight: 116,
-      marginTop: 9,
+    diaryBlock: { paddingTop: 16 },
+    legacyNoteBlock: {
+      marginTop: 4,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    legacyNoteLabel: {
+      color: colors.mutedForeground,
+      fontSize: 12,
+      fontWeight: '700',
+      textAlign: 'right',
+      marginBottom: 9,
+    },
+    legacyNoteInput: {
+      minHeight: 92,
       borderWidth: 1,
       borderColor: colors.input,
       backgroundColor: colors.secondary,
       borderRadius: 15,
       color: colors.foreground,
-      fontSize: 14,
-      lineHeight: 22,
+      fontSize: 13,
+      lineHeight: 21,
       paddingHorizontal: 14,
-      paddingTop: 13,
+      paddingTop: 12,
+    },
+    diaryHeader: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    diaryHeaderCopy: { flex: 1, alignItems: 'flex-end' },
+    diaryCaption: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      textAlign: 'right',
+      marginTop: 4,
+    },
+    diaryIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 13,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 10,
+    },
+    timeline: { paddingTop: 3 },
+    timelineEntry: {
+      flexDirection: 'row-reverse',
+      alignItems: 'stretch',
+      minHeight: 92,
+    },
+    timelineRail: {
+      width: 22,
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+    timelineDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.primary,
+      marginTop: 6,
+      zIndex: 1,
+    },
+    timelineLine: {
+      position: 'absolute',
+      top: 14,
+      bottom: 0,
+      width: 1,
+      backgroundColor: colors.border,
+    },
+    timelineContent: {
+      flex: 1,
+      paddingBottom: 17,
+    },
+    timelineMeta: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    timelineDate: {
+      flex: 1,
+      color: colors.mutedForeground,
+      fontSize: 10,
+      textAlign: 'left',
+    },
+    moodBadge: {
+      backgroundColor: colors.accent,
+      borderRadius: 10,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+    },
+    moodBadgeText: {
+      color: colors.accentForeground,
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
+    timelineNote: {
+      color: colors.foreground,
+      fontSize: 13,
+      lineHeight: 21,
+      textAlign: 'right',
+      marginTop: 8,
+    },
+    emptyDiary: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 12,
+      backgroundColor: colors.secondary,
+      borderRadius: 15,
+      marginBottom: 12,
+    },
+    emptyDiaryTitle: {
+      color: colors.foreground,
+      fontSize: 13,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 9,
+    },
+    emptyDiaryText: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      textAlign: 'center',
+      marginTop: 5,
     },
     noteButton: {
       minHeight: 48,
@@ -542,6 +994,140 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.primary,
     },
     audioPlayerButtonDisabled: { opacity: 0.55 },
+    listenCount: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      textAlign: 'right',
+      marginTop: -14,
+      marginBottom: 23,
+      paddingHorizontal: 3,
+    },
+    modalBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.64)',
+    },
+    modalContentContainer: {
+      flexGrow: 1,
+      justifyContent: 'flex-end',
+      paddingTop: 40,
+    },
+    modalCard: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 20,
+      paddingTop: 18,
+      paddingBottom: 28,
+    },
+    modalTopRow: {
+      flexDirection: 'row-reverse',
+      alignItems: 'flex-start',
+      marginBottom: 22,
+    },
+    modalClose: {
+      width: 38,
+      height: 38,
+      borderRadius: 13,
+      backgroundColor: colors.secondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 10,
+    },
+    modalTitleCopy: { flex: 1, alignItems: 'flex-end' },
+    modalEyebrow: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      textAlign: 'right',
+      marginBottom: 5,
+    },
+    modalTitle: {
+      color: colors.foreground,
+      fontSize: 21,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
+    modalIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 16,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 10,
+    },
+    modalLabel: {
+      color: colors.foreground,
+      fontSize: 13,
+      fontWeight: '700',
+      textAlign: 'right',
+      marginBottom: 9,
+    },
+    moodGrid: {
+      flexDirection: 'row-reverse',
+      flexWrap: 'wrap',
+      gap: 9,
+      marginBottom: 20,
+    },
+    moodOption: {
+      flexGrow: 1,
+      flexBasis: '45%',
+      minHeight: 44,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.secondary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 10,
+    },
+    moodOptionSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    moodOptionText: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    moodOptionTextSelected: { color: colors.primaryForeground },
+    modalNoteInput: {
+      minHeight: 112,
+      borderWidth: 1,
+      borderColor: colors.input,
+      backgroundColor: colors.secondary,
+      borderRadius: 15,
+      color: colors.foreground,
+      fontSize: 14,
+      lineHeight: 22,
+      paddingHorizontal: 14,
+      paddingTop: 13,
+      marginBottom: 10,
+    },
+    modalMessage: {
+      color: colors.destructive,
+      fontSize: 12,
+      textAlign: 'right',
+      marginBottom: 10,
+    },
+    modalSubmit: {
+      minHeight: 50,
+      borderRadius: 15,
+      backgroundColor: colors.primary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    modalSubmitText: {
+      color: colors.primaryForeground,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     pressed: { opacity: 0.72 },
   });
 }

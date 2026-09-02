@@ -1,0 +1,27 @@
+MASTER PROMPT: NAGHME - PHASE 7 (DYNAMIC DIARY & LISTENING HISTORY)
+
+You are the Expert React Native Engineer. Phase 6 was a massive success. We are now elevating the app from a simple database to a "Dynamic Diary and Museum". Do NOT break existing functionality, routing, or the native SQLite adapter.
+
+CRITICAL RULES:
+1. Native Android priority.
+2. Maintain strict RTL, Persian UI, and Dark Theme.
+3. Database Migrations: Use `CREATE TABLE IF NOT EXISTS` so you don't destroy existing user data.
+
+PHASE 7 OBJECTIVES:
+1. Database Schema Upgrade (`src/db/database.ts` & `src/db/queries.ts`):
+- Create `JournalEntries` table: `id`, `trackId`, `note` (TEXT), `mood` (TEXT), `createdAt` (DATETIME).
+- Create `ListeningHistory` table: `id`, `trackId`, `listenedAt` (DATETIME).
+- Write DAL functions: `addJournalEntry`, `getJournalEntries(trackId)`, `logListen(trackId)`, `getListeningHistory(trackId)`.
+
+2. The Dynamic Diary UI (`app/track/[id].tsx`):
+- Redesign the "رابطه من با این قطعه" (My relationship) section.
+- Instead of a single static text area, display a beautiful vertical timeline (or list) of past `JournalEntries` (showing the date, mood, and the note).
+- Add an elegant button: "ثبت حالِ الان" (Log current mood).
+- When clicked, open a Modal or Bottom Sheet. The form should ask for a Mood (e.g., tags like آرام, غمگین, متفکر, پرانرژی) and a text note. Save it to `JournalEntries`.
+
+3. Automated Listening History:
+- Hook into the Audio Playback logic (from Phase 6).
+- When the user presses "Play" on a track, automatically call `logListen(trackId)` in the background to record that they listened to it at this exact timestamp.
+- Add a small text indicator on the Track Detail screen showing "تعداد دفعات شنیده‌شده: X" (Total listens: X) by counting the history records.
+
+ACTION: Execute Phase 7 step-by-step. Safely update the SQLite schema without dropping tables. Build the Diary timeline UI on the Track Detail screen. Create the entry modal. Wire up the play button to log listening history. Test carefully to ensure the DB operations work natively. Stop and wait for my instruction when Phase 7 is fully functional.
