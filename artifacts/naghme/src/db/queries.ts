@@ -25,9 +25,30 @@ export interface TrackRecord {
   coverImage: string | null;
 }
 
+export interface PersonalRelationshipRecord {
+  trackId: string;
+  rating: number | null;
+  favorite: boolean;
+  emotionalTags: string | null;
+  personalNote: string | null;
+  listeningCount: number;
+}
+
 export type NewArtist = Omit<ArtistRecord, 'id'>;
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
 export type NewTrack = Omit<TrackRecord, 'id'>;
+export type UpdateArtist = Partial<NewArtist>;
+export type UpdateAlbum = Partial<NewAlbum>;
+export type UpdateTrack = Partial<NewTrack>;
+
+export type PersonalRelationshipInput = Omit<
+  PersonalRelationshipRecord,
+  'emotionalTags' | 'personalNote' | 'listeningCount'
+> & {
+  emotionalTags?: string | null;
+  personalNote?: string | null;
+  listeningCount?: number;
+};
 
 function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
@@ -74,6 +95,43 @@ export async function getArtists(): Promise<ArtistRecord[]> {
   );
 }
 
+export async function getArtistById(id: string): Promise<ArtistRecord | null> {
+  const database = await requireDatabase();
+  return database.getFirstAsync<ArtistRecord>(
+    'SELECT id, name, type, biography, genres, image FROM Artists WHERE id = ?',
+    [id],
+  );
+}
+
+export async function updateArtist(
+  id: string,
+  input: UpdateArtist,
+): Promise<ArtistRecord> {
+  const current = await getArtistById(id);
+  if (!current) throw new Error('هنرمند پیدا نشد.');
+
+  const artist = {
+    ...current,
+    ...input,
+    name: input.name?.trim() || current.name,
+  };
+  if (!artist.name.trim()) throw new Error('نام هنرمند الزامی است.');
+
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE Artists
+     SET name = ?, type = ?, biography = ?, genres = ?, image = ?
+     WHERE id = ?`,
+    [artist.name, artist.type, artist.biography, artist.genres, artist.image, id],
+  );
+  return artist;
+}
+
+export async function deleteArtist(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Artists WHERE id = ?', [id]);
+}
+
 export async function addAlbum(input: NewAlbum): Promise<AlbumRecord> {
   const title = input.title.trim();
   if (!title) {
@@ -96,6 +154,41 @@ export async function getAlbums(): Promise<AlbumRecord[]> {
     'SELECT id, title, releaseYear, coverImage FROM Albums ORDER BY title COLLATE NOCASE ASC',
     [],
   );
+}
+
+export async function getAlbumById(id: string): Promise<AlbumRecord | null> {
+  const database = await requireDatabase();
+  return database.getFirstAsync<AlbumRecord>(
+    'SELECT id, title, releaseYear, coverImage FROM Albums WHERE id = ?',
+    [id],
+  );
+}
+
+export async function updateAlbum(
+  id: string,
+  input: UpdateAlbum,
+): Promise<AlbumRecord> {
+  const current = await getAlbumById(id);
+  if (!current) throw new Error('آلبوم پیدا نشد.');
+
+  const album = {
+    ...current,
+    ...input,
+    title: input.title?.trim() || current.title,
+  };
+  if (!album.title.trim()) throw new Error('عنوان آلبوم الزامی است.');
+
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE Albums SET title = ?, releaseYear = ?, coverImage = ? WHERE id = ?`,
+    [album.title, album.releaseYear, album.coverImage, id],
+  );
+  return album;
+}
+
+export async function deleteAlbum(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Albums WHERE id = ?', [id]);
 }
 
 export async function addTrack(input: NewTrack): Promise<TrackRecord> {
@@ -127,4 +220,101 @@ export async function getTracks(): Promise<TrackRecord[]> {
     'SELECT id, title, duration, albumId, audioUri, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
     [],
   );
+}
+
+export async function getTrackById(id: string): Promise<TrackRecord | null> {
+  const database = await requireDatabase();
+  return database.getFirstAsync<TrackRecord>(
+    'SELECT id, title, duration, albumId, audioUri, coverImage FROM Tracks WHERE id = ?',
+    [id],
+  );
+}
+
+export async function updateTrack(
+  id: string,
+  input: UpdateTrack,
+): Promise<TrackRecord> {
+  const current = await getTrackById(id);
+  if (!current) throw new Error('قطعه پیدا نشد.');
+
+  const track = {
+    ...current,
+    ...input,
+    title: input.title?.trim() || current.title,
+  };
+  if (!track.title.trim()) throw new Error('عنوان قطعه الزامی است.');
+
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE Tracks
+     SET title = ?, duration = ?, albumId = ?, audioUri = ?, coverImage = ?
+     WHERE id = ?`,
+    [
+      track.title,
+      track.duration,
+      track.albumId,
+      track.audioUri,
+      track.coverImage,
+      id,
+    ],
+  );
+  return track;
+}
+
+export async function deleteTrack(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Tracks WHERE id = ?', [id]);
+}
+
+function mapRelationship(
+  row: Omit<PersonalRelationshipRecord, 'favorite'> & { favorite: number },
+): PersonalRelationshipRecord {
+  return { ...row, favorite: Boolean(row.favorite) };
+}
+
+export async function getPersonalRelationship(
+  trackId: string,
+): Promise<PersonalRelationshipRecord | null> {
+  const database = await requireDatabase();
+  const row = await database.getFirstAsync<
+    Omit<PersonalRelationshipRecord, 'favorite'> & { favorite: number }
+  >(
+    `SELECT trackId, rating, favorite, emotionalTags, personalNote, listeningCount
+     FROM PersonalRelationships WHERE trackId = ?`,
+    [trackId],
+  );
+  return row ? mapRelationship(row) : null;
+}
+
+export async function upsertPersonalRelationship(
+  input: PersonalRelationshipInput,
+): Promise<PersonalRelationshipRecord> {
+  if (input.rating !== null && (input.rating < 1 || input.rating > 5)) {
+    throw new Error('امتیاز باید بین ۱ تا ۵ باشد.');
+  }
+
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO PersonalRelationships
+       (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(trackId) DO UPDATE SET
+       rating = excluded.rating,
+       favorite = excluded.favorite,
+       emotionalTags = excluded.emotionalTags,
+       personalNote = excluded.personalNote,
+       listeningCount = excluded.listeningCount`,
+    [
+      input.trackId,
+      input.rating,
+      input.favorite ? 1 : 0,
+      input.emotionalTags ?? null,
+      input.personalNote ?? null,
+      input.listeningCount ?? 0,
+    ],
+  );
+
+  const saved = await getPersonalRelationship(input.trackId);
+  if (!saved) throw new Error('رابطه‌ی شخصی ذخیره نشد.');
+  return saved;
 }

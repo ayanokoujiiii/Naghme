@@ -1,12 +1,20 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
 import { useColors } from '@/hooks/useColors';
-import { addTrack, AlbumRecord, getAlbums } from '@/src/db/queries';
+import {
+  addTrack,
+  AlbumRecord,
+  getAlbums,
+  getTrackById,
+  updateTrack,
+} from '@/src/db/queries';
 
 export default function AddTrackScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const editing = Boolean(id);
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [title, setTitle] = useState<string>('');
@@ -17,15 +25,31 @@ export default function AddTrackScreen() {
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+  const [loadingRecord, setLoadingRecord] = useState<boolean>(editing);
 
   useEffect(() => {
     let mounted = true;
-    getAlbums()
-      .then((items) => {
-        if (mounted) setAlbums(items);
+    Promise.all([getAlbums(), id ? getTrackById(id) : Promise.resolve(null)])
+      .then(([items, track]) => {
+        if (!mounted) return;
+        setAlbums(items);
+        if (id) {
+          if (!track) {
+            setError('قطعه پیدا نشد.');
+          } else {
+            setTitle(track.title);
+            setDuration(track.duration?.toString() ?? '');
+            setSelectedAlbumId(track.albumId);
+          }
+        }
       })
-      .catch(() => {
-        if (mounted) setAlbums([]);
+      .catch((loadError: unknown) => {
+        if (mounted) {
+          setError(loadError instanceof Error ? loadError.message : 'خواندن قطعه انجام نشد.');
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoadingRecord(false);
       });
     return () => {
       mounted = false;
@@ -50,14 +74,22 @@ export default function AddTrackScreen() {
     setError('');
     setSaving(true);
     try {
-      await addTrack({
-        title,
-        duration: parsedDuration,
-        albumId: selectedAlbumId,
-        audioUri: null,
-        coverImage: null,
-      });
-      setSuccess('قطعه با موفقیت به آرشیو اضافه شد.');
+      if (id) {
+        await updateTrack(id, {
+          title,
+          duration: parsedDuration,
+          albumId: selectedAlbumId,
+        });
+      } else {
+        await addTrack({
+          title,
+          duration: parsedDuration,
+          albumId: selectedAlbumId,
+          audioUri: null,
+          coverImage: null,
+        });
+      }
+      setSuccess(editing ? 'تغییرات قطعه ذخیره شد.' : 'قطعه با موفقیت به آرشیو اضافه شد.');
       setTimeout(() => router.back(), 650);
     } catch (saveError: unknown) {
       setError(saveError instanceof Error ? saveError.message : 'ذخیره‌ی قطعه انجام نشد.');
@@ -67,7 +99,10 @@ export default function AddTrackScreen() {
   };
 
   return (
-    <ArchiveFormPage title="افزودن قطعه" subtitle="یک نغمه‌ی تازه ثبت کن">
+    <ArchiveFormPage
+      title={editing ? 'ویرایش قطعه' : 'افزودن قطعه'}
+      subtitle={editing ? 'جزئیات قطعه را به‌روز کن' : 'یک نغمه‌ی تازه ثبت کن'}
+    >
       <FormMessage error={error} success={success} />
       <FormField
         label="عنوان قطعه"
@@ -131,7 +166,11 @@ export default function AddTrackScreen() {
           </View>
         ) : null}
       </View>
-      <SaveButton label="ذخیره‌ی قطعه" saving={saving} onPress={handleSave} />
+      <SaveButton
+        label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی قطعه'}
+        saving={saving || loadingRecord}
+        onPress={handleSave}
+      />
     </ArchiveFormPage>
   );
 }

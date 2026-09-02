@@ -1,0 +1,35 @@
+MASTER PROMPT: NAGHME - PHASE 3 (THE PERSONAL LAYER & COMPLETE CRUD)
+
+You are the Expert React Native Engineer. Phase 2 was a massive success. Your platform-specific SQLite adapter was excellent for the web preview. Do NOT alter the stable foundation.
+
+CRITICAL RULES:
+1. TARGET PLATFORM REMINDER: The ultimate goal is building an Android APK via Expo EAS. The web fallback is ONLY for Replit preview stability. Do NOT introduce any web-only dependencies that would break or complicate a native Android EAS build.
+2. Core Philosophy: "Naghme is about preserving the user's subjective relationship with music." The Personal Layer is the most important feature.
+3. Maintain strict RTL, Persian UI, and the minimal Dark Theme.
+
+PHASE 3 OBJECTIVES:
+1. Complete CRUD (Edit & Delete):
+- Add `deleteTrack`, `deleteArtist`, `deleteAlbum` to `src/db/queries.ts`.
+- Add basic update queries for them as well.
+- Implement a graceful delete flow: when deleting an item, show a confirmation (if possible) or just delete and navigate back to the Archive.
+
+2. Track Detail Screen (`app/track/[id].tsx`):
+- Create a dynamic route for the Track Detail page.
+- Fetch the track's objective metadata (Title, Duration, Album) and its associated `PersonalRelationships` from SQLite.
+- Design the screen in two distinct sections:
+  * Section A: Objective Metadata (Title, Album, etc.)
+  * Section B: A beautifully separated section titled «رابطه من با این قطعه» (My relationship with this track).
+
+3. The Personal Layer Form/UI:
+- Inside the "My relationship" section, add interactive elements:
+  * Favorite (❤️) toggle button.
+  * Personal Rating (⭐ 1 to 5).
+  * A text area for Personal Notes (یادداشت شخصی).
+- Create SQLite queries to `upsert` (insert or update) the `PersonalRelationships` table for the specific `trackId` when the user changes these values.
+- Save the personal data to SQLite immediately on change or via a "Save Notes" button.
+
+4. UI Polish & Navigation:
+- Ensure items in the Archive screen are clickable and navigate to their respective detail screens (`app/track/[id]`, etc.).
+- Implement basic detail screens for Artist (`app/artist/[id].tsx`) and Album (`app/album/[id].tsx`) showing their details and a Delete button.
+
+ACTION: Execute Phase 3 step-by-step. Prioritize Native/Android compatibility. Build the Track Detail screen with the Personal Layer logic. Verify that saving notes writes to SQLite. Stop and wait for my instruction when Phase 3 is fully functional and ready for an EAS build preview.

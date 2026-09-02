@@ -40,6 +40,9 @@ function RootLayoutNav() {
       <Stack.Screen name="add-artist" options={{ headerShown: false }} />
       <Stack.Screen name="add-album" options={{ headerShown: false }} />
       <Stack.Screen name="add-track" options={{ headerShown: false }} />
+      <Stack.Screen name="track/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="album/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="artist/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

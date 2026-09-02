@@ -81,7 +81,12 @@ export default function ArchiveScreen() {
   );
 
   const renderTrack = ({ item }: { item: TrackRecord }) => (
-    <View style={styles.item}>
+    <Pressable
+      testID={`track-${item.id}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/track/${item.id}`)}
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+    >
       <View style={styles.itemIcon}>
         <Feather name="music" size={19} color={colors.primary} />
       </View>
@@ -94,11 +99,17 @@ export default function ArchiveScreen() {
           {item.duration !== null ? `  •  ${formatDuration(item.duration)}` : ''}
         </Text>
       </View>
-    </View>
+      <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
+    </Pressable>
   );
 
   const renderAlbum = ({ item }: { item: AlbumRecord }) => (
-    <View style={styles.item}>
+    <Pressable
+      testID={`album-${item.id}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/album/${item.id}`)}
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+    >
       <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
         <Feather name="disc" size={19} color={colors.accentForeground} />
       </View>
@@ -108,11 +119,17 @@ export default function ArchiveScreen() {
           {item.releaseYear ? `سال انتشار: ${item.releaseYear}` : 'سال انتشار ثبت نشده'}
         </Text>
       </View>
-    </View>
+      <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
+    </Pressable>
   );
 
   const renderArtist = ({ item }: { item: ArtistRecord }) => (
-    <View style={styles.item}>
+    <Pressable
+      testID={`artist-${item.id}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/artist/${item.id}`)}
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+    >
       <View style={[styles.itemIcon, { backgroundColor: colors.secondary }]}>
         <Feather name="mic" size={19} color={colors.primary} />
       </View>
@@ -122,7 +139,8 @@ export default function ArchiveScreen() {
           {item.type || item.genres || 'هنرمند'}
         </Text>
       </View>
-    </View>
+      <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
+    </Pressable>
   );
 
   const activeData: ArchiveRecord[] =
@@ -338,6 +356,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       padding: 14,
       marginBottom: 10,
     },
+    itemPressed: { opacity: 0.72 },
     itemIcon: {
       width: 46,
       height: 46,
