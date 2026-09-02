@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -88,7 +89,11 @@ export default function ArchiveScreen() {
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
     >
       <View style={styles.itemIcon}>
-        <Feather name="music" size={19} color={colors.primary} />
+        {item.coverImage ? (
+          <Image source={{ uri: item.coverImage }} style={styles.itemCover} resizeMode="cover" />
+        ) : (
+          <Feather name="music" size={19} color={colors.primary} />
+        )}
       </View>
       <View style={styles.itemCopy}>
         <Text style={styles.itemTitle}>{item.title}</Text>
@@ -111,7 +116,11 @@ export default function ArchiveScreen() {
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
     >
       <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
-        <Feather name="disc" size={19} color={colors.accentForeground} />
+        {item.coverImage ? (
+          <Image source={{ uri: item.coverImage }} style={styles.itemCover} resizeMode="cover" />
+        ) : (
+          <Feather name="disc" size={19} color={colors.accentForeground} />
+        )}
       </View>
       <View style={styles.itemCopy}>
         <Text style={styles.itemTitle}>{item.title}</Text>
@@ -355,17 +364,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderColor: colors.border,
       padding: 14,
       marginBottom: 10,
+      minHeight: 92,
+      elevation: 3,
     },
     itemPressed: { opacity: 0.72 },
     itemIcon: {
-      width: 46,
-      height: 46,
-      borderRadius: 15,
+      width: 64,
+      height: 64,
+      borderRadius: 17,
       backgroundColor: colors.secondary,
       alignItems: 'center',
       justifyContent: 'center',
-      marginLeft: 12,
+      marginLeft: 14,
+      overflow: 'hidden',
     },
+    itemCover: { width: '100%', height: '100%' },
     itemCopy: { flex: 1 },
     itemTitle: {
       color: colors.cardForeground,

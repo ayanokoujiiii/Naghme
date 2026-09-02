@@ -320,6 +320,21 @@ export default function TrackDetailScreen() {
       onEdit={() => router.push(`/add-track?id=${track.id}`)}
       onDelete={confirmDelete}
     >
+      <View style={styles.artworkCard}>
+        {track.coverImage ? (
+          <Image
+            source={{ uri: track.coverImage }}
+            style={styles.artwork}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.artworkFallback}>
+            <Feather name="music" size={52} color={colors.primary} />
+            <Text style={styles.artworkFallbackText}>آرشیو نغمه</Text>
+          </View>
+        )}
+      </View>
+
       {error ? (
         <View style={styles.errorBox}>
           <Feather name="alert-circle" size={17} color={colors.destructive} />
@@ -599,28 +614,42 @@ function AudioPlayer({
   useEffect(() => {
     const unsubscribe = subscribeToAudio(setAudio);
     setInteractionError('');
-    void loadAudio(uri, trackId, {
-      title: track.title,
-      coverImage: track.coverImage,
-      versionName: track.versionName,
-      artistName,
-      lyrics: track.lyrics,
-      durationSeconds: track.duration,
-    }).catch(() => undefined);
+    const currentAudio = getAudioSnapshot();
+    if (!currentAudio.trackId || (currentAudio.trackId === trackId && currentAudio.uri === uri)) {
+      void loadAudio(uri, trackId, {
+        title: track.title,
+        coverImage: track.coverImage,
+        versionName: track.versionName,
+        artistName,
+        lyrics: track.lyrics,
+        durationSeconds: track.duration,
+      }).catch(() => undefined);
+    }
     return unsubscribe;
   }, [artistName, track, trackId, uri]);
 
   const isCurrentTrack = audio.trackId === trackId && audio.uri === uri;
   const ready = isCurrentTrack && audio.isLoaded;
   const isPlaying = isCurrentTrack && audio.isPlaying;
-  const busy = !isCurrentTrack || audio.isLoading || audio.isBuffering;
+  const busy = isCurrentTrack && (audio.isLoading || audio.isBuffering);
   const error = isCurrentTrack ? interactionError || audio.error : '';
+  const metadata = {
+    title: track.title,
+    coverImage: track.coverImage,
+    versionName: track.versionName,
+    artistName,
+    lyrics: track.lyrics,
+    durationSeconds: track.duration,
+  };
 
   const togglePlayback = async () => {
-    if (!ready || busy) return;
+    if (busy) return;
 
     setInteractionError('');
     try {
+      if (!isCurrentTrack) {
+        await loadAudio(uri, trackId, metadata);
+      }
       const started = await toggleAudioPlayback();
       if (started) onPlayStarted?.();
     } catch {
@@ -649,11 +678,11 @@ function AudioPlayer({
         testID="track-audio-toggle"
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? 'توقف پخش' : 'پخش قطعه'}
-        disabled={!ready || busy}
+         disabled={busy || (isCurrentTrack && !ready)}
         onPress={() => void togglePlayback()}
         style={({ pressed }) => [
           styles.audioPlayerButton,
-          (!ready || busy) && styles.audioPlayerButtonDisabled,
+           (busy || (isCurrentTrack && !ready)) && styles.audioPlayerButtonDisabled,
           pressed && styles.pressed,
         ]}
       >
@@ -989,6 +1018,30 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       minHeight: 220,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    artworkCard: {
+      width: '100%',
+      aspectRatio: 1,
+      borderRadius: 26,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      marginBottom: 24,
+      elevation: 5,
+    },
+    artwork: { width: '100%', height: '100%' },
+    artworkFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+      gap: 10,
+    },
+    artworkFallbackText: {
+      color: colors.accentForeground,
+      fontSize: 14,
+      fontWeight: '700',
     },
     errorBox: {
       flexDirection: 'row-reverse',

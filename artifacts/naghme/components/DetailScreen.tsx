@@ -190,9 +190,10 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.card,
       borderColor: colors.border,
       borderWidth: 1,
-      borderRadius: 20,
-      padding: 16,
-      marginBottom: 18,
+      borderRadius: 22,
+      padding: 18,
+      marginBottom: 20,
+      elevation: 3,
     },
     row: {
       flexDirection: 'row-reverse',

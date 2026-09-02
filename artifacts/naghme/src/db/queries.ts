@@ -500,15 +500,14 @@ export async function searchLibraryByFilter(
     );
   }
 
-  return database.getAllAsync<SearchResult>(
-    `SELECT id, title, subtitle, type, matchSource
-     FROM (
-       SELECT
+  const [trackResults, albumResults, artistResults, journalResults] = await Promise.all([
+    database.getAllAsync<SearchResult>(
+      `SELECT
          Tracks.id,
          Tracks.title,
          CASE
            WHEN Tracks.title LIKE ? COLLATE NOCASE THEN Albums.title
-           ELSE 'متن ترانه: ' || substr(replace(Tracks.lyrics, char(10), ' '), 1, 90)
+           ELSE 'متن ترانه: ' || substr(replace(COALESCE(Tracks.lyrics, ''), char(10), ' '), 1, 90)
          END AS subtitle,
          'track' AS type,
          CASE
@@ -517,35 +516,58 @@ export async function searchLibraryByFilter(
          END AS matchSource
        FROM Tracks
        LEFT JOIN Albums ON Albums.id = Tracks.albumId
-       WHERE Tracks.title LIKE ? COLLATE NOCASE OR Tracks.lyrics LIKE ? COLLATE NOCASE
-       UNION ALL
-       SELECT Albums.id, Albums.title, CAST(Albums.releaseYear AS TEXT), 'album', 'title'
+       WHERE Tracks.title LIKE ? COLLATE NOCASE
+          OR COALESCE(Tracks.lyrics, '') LIKE ? COLLATE NOCASE
+       ORDER BY Tracks.title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, pattern, pattern, pattern, safeLimit],
+    ),
+    database.getAllAsync<SearchResult>(
+      `SELECT id, title, CAST(releaseYear AS TEXT) AS subtitle,
+         'album' AS type, 'title' AS matchSource
        FROM Albums
-       WHERE Albums.title LIKE ? COLLATE NOCASE
-       UNION ALL
-       SELECT Artists.id, Artists.name, Artists.type, 'artist', 'title'
+       WHERE title LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    ),
+    database.getAllAsync<SearchResult>(
+      `SELECT id, name AS title, type AS subtitle,
+         'artist' AS type, 'title' AS matchSource
        FROM Artists
-       WHERE Artists.name LIKE ? COLLATE NOCASE
-       UNION ALL
-       SELECT
-         JournalEntries.trackId,
+       WHERE name LIKE ? COLLATE NOCASE
+       ORDER BY name COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    ),
+    database.getAllAsync<SearchResult>(
+      `SELECT
+         JournalEntries.trackId AS id,
          Tracks.title,
          'دفترچه: ' || COALESCE(JournalEntries.mood, '') || ' • ' ||
-           substr(replace(JournalEntries.note, char(10), ' '), 1, 80),
-         'track',
-         'journal'
+           substr(replace(COALESCE(JournalEntries.note, ''), char(10), ' '), 1, 80) AS subtitle,
+         'track' AS type,
+         'journal' AS matchSource
        FROM JournalEntries
        INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
-       WHERE (
-         JournalEntries.note LIKE ? COLLATE NOCASE OR
-         JournalEntries.mood LIKE ? COLLATE NOCASE
-       )
-       GROUP BY JournalEntries.trackId
-     )
-     ORDER BY title COLLATE NOCASE ASC
-     LIMIT ?`,
-    [pattern, pattern, pattern, pattern, pattern, pattern, pattern, safeLimit],
-  );
+       WHERE JournalEntries.note LIKE ? COLLATE NOCASE
+          OR JournalEntries.mood LIKE ? COLLATE NOCASE
+       ORDER BY datetime(JournalEntries.createdAt) DESC
+       LIMIT ?`,
+      [pattern, pattern, safeLimit],
+    ),
+  ]);
+
+  const seen = new Set<string>();
+  return [...trackResults, ...albumResults, ...artistResults, ...journalResults]
+    .filter((result) => {
+      const key = `${result.type}:${result.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => left.title.localeCompare(right.title, 'fa'))
+    .slice(0, safeLimit);
 }
 
 export async function getTrackById(id: string): Promise<TrackRecord | null> {
