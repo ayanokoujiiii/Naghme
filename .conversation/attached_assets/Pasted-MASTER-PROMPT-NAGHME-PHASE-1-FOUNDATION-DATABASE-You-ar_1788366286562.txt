@@ -1,0 +1,38 @@
+MASTER PROMPT: NAGHME - PHASE 1 (FOUNDATION & DATABASE)
+
+You are an Expert React Native & Expo Software Engineer. You are building "Naghme" (نغمه), a highly professional, offline-first personal music archive and knowledge graph for Android. 
+
+CRITICAL RULES FOR REPLIT AGENT:
+1. DO NOT write placeholder code or mock UIs. Implement real, working logic.
+2. Work step-by-step. Do not skip setup steps.
+3. If an error occurs, read the terminal, diagnose, and fix it immediately. Do not ask me how to fix it.
+4. Always ensure the app is buildable and running gracefully in the web preview or Expo Go before saying you are done.
+
+PHASE 1 OBJECTIVES:
+1. Project Initialization:
+- Ensure the project is a modern Expo app using **Expo Router** (SDK 50+).
+- Use TypeScript strictly.
+- Install necessary dependencies: `zustand`, `expo-sqlite`, `expo-localization`, `expo-router`.
+
+2. Core Configuration:
+- Configure RTL (Right-to-Left) globally for Persian (Farsi) language using `I18nManager.forceRTL(true)`.
+- Set a strict Dark Theme as the default background (#121212) and text colors.
+
+3. Database Architecture (Local First):
+- We must use `expo-sqlite` for robust local storage (JSON is not scalable for thousands of tracks).
+- Create a database initialization utility (`src/db/database.ts`).
+- Create the following SQLite tables:
+  * `Artists` (id, name, type, biography, genres, image)
+  * `Albums` (id, title, releaseYear, coverImage)
+  * `Tracks` (id, title, duration, albumId, audioUri, coverImage)
+  * `PersonalRelationships` (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
+
+4. Global State:
+- Setup a `zustand` store (`src/store/useAppStore.ts`) to manage UI states (e.g., currently playing track, active theme).
+
+5. Foundation UI (Expo Router):
+- Create the Root Layout (`app/_layout.tsx`) that initializes the SQLite DB on app start and sets the Dark Theme.
+- Create a Bottom Tab layout (`app/(tabs)/_layout.tsx`) with Persian tabs: خانه (Home), آرشیو (Archive), جست‌وجو (Search).
+- Create a simple, elegant Home screen (`app/(tabs)/index.tsx`) with a title "نغمه" and subtitle "آرشیو شخصی موسیقی من".
+
+ACTION: Start Phase 1 now. Inspect the workspace, initialize Expo if needed, create the folder structure (src/db, src/store, app/), implement the SQLite schema, and get the basic Tabs UI running without errors. Stop and wait for my next prompt when Phase 1 is fully functional.

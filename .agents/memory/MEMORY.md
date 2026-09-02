@@ -1,0 +1,1 @@
+- [Expo first-build compatibility](expo-first-build-compatibility.md) — keep SDK-native modules aligned and guard native-only UI paths in the web preview.
