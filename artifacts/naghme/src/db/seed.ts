@@ -123,6 +123,65 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
   },
 ];
 
+const SAMPLE_JOURNAL_ENTRIES = [
+  {
+    id: 'sample_journal_bidad_calm',
+    trackId: SAMPLE_TRACK_IDS.tasnifBidad,
+    note: 'امروز این قطعه یادم انداخت که برای آرام شدن لازم نیست همیشه دنبال جواب بگردم.',
+    mood: 'آرام',
+    createdAt: '2025-05-14T19:30:00.000Z',
+  },
+  {
+    id: 'sample_journal_bidad_thoughtful',
+    trackId: SAMPLE_TRACK_IDS.tasnifBidad,
+    note: 'صدای سازها انگار بخشی از یک خاطره‌ی دور را دوباره روشن کرد.',
+    mood: 'متفکر',
+    createdAt: '2025-06-02T21:15:00.000Z',
+  },
+  {
+    id: 'sample_journal_kavir_calm',
+    trackId: SAMPLE_TRACK_IDS.shabSokoutKavir,
+    note: 'برای یک شب آرام و خلوت، انتخاب همیشگی من است.',
+    mood: 'آرام',
+    createdAt: '2025-06-18T22:05:00.000Z',
+  },
+  {
+    id: 'sample_journal_kavir_thoughtful',
+    trackId: SAMPLE_TRACK_IDS.shabSokoutKavir,
+    note: 'امشب بیشتر از همیشه به فاصله‌ی بین سکوت‌ها گوش دادم.',
+    mood: 'متفکر',
+    createdAt: '2025-07-01T23:40:00.000Z',
+  },
+] as const;
+
+const SAMPLE_LISTENING_HISTORY = [
+  {
+    id: 'sample_listen_bidad_1',
+    trackId: SAMPLE_TRACK_IDS.tasnifBidad,
+    listenedAt: '2025-05-14T19:28:00.000Z',
+  },
+  {
+    id: 'sample_listen_bidad_2',
+    trackId: SAMPLE_TRACK_IDS.tasnifBidad,
+    listenedAt: '2025-06-02T21:12:00.000Z',
+  },
+  {
+    id: 'sample_listen_bidad_3',
+    trackId: SAMPLE_TRACK_IDS.tasnifBidad,
+    listenedAt: '2025-07-06T18:20:00.000Z',
+  },
+  {
+    id: 'sample_listen_kavir_1',
+    trackId: SAMPLE_TRACK_IDS.shabSokoutKavir,
+    listenedAt: '2025-06-18T22:02:00.000Z',
+  },
+  {
+    id: 'sample_listen_kavir_2',
+    trackId: SAMPLE_TRACK_IDS.shabSokoutKavir,
+    listenedAt: '2025-07-01T23:37:00.000Z',
+  },
+] as const;
+
 async function requireDatabase() {
   const database = await getDatabase();
   if (!database) {
@@ -207,6 +266,22 @@ export async function injectSampleData(): Promise<SeedResult> {
      VALUES (?, ?, ?, ?, ?, ?)`,
     [SAMPLE_TRACK_IDS.shabSokoutKavir, 4, 1, 'خلوت، شبانه', 'برای شب‌های آرام.', 2],
   );
+
+  for (const entry of SAMPLE_JOURNAL_ENTRIES) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO JournalEntries (id, trackId, note, mood, createdAt)
+       VALUES (?, ?, ?, ?, ?)`,
+      [entry.id, entry.trackId, entry.note, entry.mood, entry.createdAt],
+    );
+  }
+
+  for (const historyEntry of SAMPLE_LISTENING_HISTORY) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO ListeningHistory (id, trackId, listenedAt)
+       VALUES (?, ?, ?)`,
+      [historyEntry.id, historyEntry.trackId, historyEntry.listenedAt],
+    );
+  }
 
   return {
     artists: SAMPLE_ARTISTS.length,

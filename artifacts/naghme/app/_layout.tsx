@@ -16,6 +16,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { initializeDatabase } from '@/src/db/database';
+import { configureBackgroundAudio } from '@/src/audio/audioManager';
 import colors from '@/constants/colors';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -60,6 +61,11 @@ export default function RootLayout() {
     initializeDatabase().catch((error: unknown) => {
       if (__DEV__) {
         console.warn('Naghme database initialization failed', error);
+      }
+    });
+    configureBackgroundAudio().catch((error: unknown) => {
+      if (__DEV__) {
+        console.warn('Naghme background audio setup failed', error);
       }
     });
   }, []);

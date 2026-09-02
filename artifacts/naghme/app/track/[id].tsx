@@ -1,7 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { Audio, AVPlaybackStatus } from 'expo-av';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +14,13 @@ import {
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
+import {
+  AudioPlaybackSnapshot,
+  getAudioSnapshot,
+  loadAudio,
+  subscribeToAudio,
+  toggleAudioPlayback,
+} from '@/src/audio/audioManager';
 import {
   addJournalEntry,
   getAlbumById,
@@ -56,7 +62,7 @@ export default function TrackDetailScreen() {
   const [albumTitle, setAlbumTitle] = useState<string>('بدون آلبوم');
   const [relationship, setRelationship] =
     useState<PersonalRelationshipRecord>(emptyRelationship);
-  const [legacyNote, setLegacyNote] = useState<string>('');
+  const [generalNote, setGeneralNote] = useState<string>('');
   const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
@@ -104,7 +110,7 @@ export default function TrackDetailScreen() {
         trackId: foundTrack.id,
       };
       setRelationship(nextRelationship);
-      setLegacyNote(nextRelationship.personalNote ?? '');
+      setGeneralNote(nextRelationship.personalNote ?? '');
       setJournalEntries(savedJournalEntries);
       setListeningHistory(savedListeningHistory);
     } catch (loadError: unknown) {
@@ -134,7 +140,7 @@ export default function TrackDetailScreen() {
     try {
       const saved = await upsertPersonalRelationship(nextRelationship);
       setRelationship(saved);
-      setLegacyNote(saved.personalNote ?? '');
+      setGeneralNote(saved.personalNote ?? '');
       setRelationshipMessage(successMessage);
     } catch (saveError: unknown) {
       setRelationshipMessage(
@@ -274,6 +280,7 @@ export default function TrackDetailScreen() {
 
       {track.audioUri ? (
         <AudioPlayer
+          trackId={track.id}
           uri={track.audioUri}
           colors={colors}
           styles={styles}
@@ -334,11 +341,54 @@ export default function TrackDetailScreen() {
           </View>
         </View>
 
+        <View style={styles.generalNoteBlock}>
+          <Text style={styles.preferenceLabel}>یادداشت کلی اثر</Text>
+          <Text style={styles.generalNoteCaption}>
+            یادداشتی ثابت درباره‌ی معنای این قطعه برای تو
+          </Text>
+          <TextInput
+            testID="track-personal-note"
+            multiline
+            value={generalNote}
+            onChangeText={setGeneralNote}
+            placeholder="این قطعه چه خاطره یا معنایی برایت دارد؟"
+            placeholderTextColor={colors.mutedForeground}
+            selectionColor={colors.primary}
+            style={styles.generalNoteInput}
+            textAlign="right"
+            textAlignVertical="top"
+          />
+          <Pressable
+            testID="track-save-note"
+            accessibilityRole="button"
+            disabled={savingRelationship}
+            onPress={() =>
+              void saveRelationship(
+                { personalNote: generalNote.trim() || null },
+                'یادداشت کلی اثر ذخیره شد.',
+              )
+            }
+            style={({ pressed }) => [
+              styles.noteButton,
+              (pressed || savingRelationship) && styles.pressed,
+            ]}
+          >
+            {savingRelationship ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <>
+                <Feather name="save" size={17} color={colors.primaryForeground} />
+                <Text style={styles.noteButtonText}>ذخیره‌ی یادداشت کلی</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+
         <View style={styles.diaryBlock}>
           <View style={styles.diaryHeader}>
             <View style={styles.diaryHeaderCopy}>
-              <Text style={styles.preferenceLabel}>دفترچه‌ی حال من</Text>
-              <Text style={styles.diaryCaption}>ردپای احساس تو در گذر زمان</Text>
+              <Text style={styles.preferenceLabel}>دفترچه خاطرات لحظه‌ای</Text>
+              <Text style={styles.diaryCaption}>هر ثبت، یک لحظه‌ی تازه؛ هیچ‌چیز جایگزین نمی‌شود</Text>
             </View>
             <View style={styles.diaryIcon}>
               <Feather name="book-open" size={18} color={colors.primary} />
@@ -378,48 +428,6 @@ export default function TrackDetailScreen() {
           </Pressable>
         </View>
 
-        {relationship.personalNote ? (
-          <View style={styles.legacyNoteBlock}>
-            <Text style={styles.legacyNoteLabel}>یادداشت شخصی قبلی</Text>
-            <TextInput
-              testID="track-personal-note"
-              multiline
-              value={legacyNote}
-              onChangeText={setLegacyNote}
-              placeholder="یادداشت قبلی را ویرایش کن"
-              placeholderTextColor={colors.mutedForeground}
-              selectionColor={colors.primary}
-              style={styles.legacyNoteInput}
-              textAlign="right"
-              textAlignVertical="top"
-            />
-            <Pressable
-              testID="track-save-note"
-              accessibilityRole="button"
-              disabled={savingRelationship}
-              onPress={() =>
-                void saveRelationship(
-                  { personalNote: legacyNote.trim() || null },
-                  'یادداشت شخصی ذخیره شد.',
-                )
-              }
-              style={({ pressed }) => [
-                styles.noteButton,
-                (pressed || savingRelationship) && styles.pressed,
-              ]}
-            >
-              {savingRelationship ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <>
-                  <Feather name="save" size={17} color={colors.primaryForeground} />
-                  <Text style={styles.noteButtonText}>ذخیره‌ی یادداشت قبلی</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        ) : null}
-
         {relationshipMessage ? (
           <Text
             style={[
@@ -450,79 +458,43 @@ export default function TrackDetailScreen() {
 }
 
 function AudioPlayer({
+  trackId,
   uri,
   colors,
   styles,
   onPlayStarted,
 }: {
+  trackId: string;
   uri: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
   onPlayStarted?: () => void;
 }) {
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const mountedRef = useRef<boolean>(true);
-  const [ready, setReady] = useState<boolean>(false);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [busy, setBusy] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
+  const [audio, setAudio] = useState<AudioPlaybackSnapshot>(() => getAudioSnapshot());
+  const [interactionError, setInteractionError] = useState<string>('');
 
   useEffect(() => {
-    mountedRef.current = true;
-    const sound = new Audio.Sound();
-    soundRef.current = sound;
-    setReady(false);
-    setIsPlaying(false);
-    setBusy(true);
-    setError('');
+    const unsubscribe = subscribeToAudio(setAudio);
+    setInteractionError('');
+    void loadAudio(uri, trackId).catch(() => undefined);
+    return unsubscribe;
+  }, [trackId, uri]);
 
-    sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-      if (!mountedRef.current) return;
-      if (status.isLoaded) {
-        setReady(true);
-        setBusy(false);
-        setIsPlaying(status.isPlaying);
-        if (status.didJustFinish) setIsPlaying(false);
-      } else if (status.error) {
-        setBusy(false);
-        setError('پخش این فایل صوتی ممکن نیست.');
-      }
-    });
-
-    void sound
-      .loadAsync({ uri }, { shouldPlay: false })
-      .catch(() => {
-        if (!mountedRef.current) return;
-        setBusy(false);
-        setError('بارگذاری فایل صوتی انجام نشد.');
-      });
-
-    return () => {
-      mountedRef.current = false;
-      sound.setOnPlaybackStatusUpdate(null);
-      if (soundRef.current === sound) soundRef.current = null;
-      void sound.unloadAsync();
-    };
-  }, [uri]);
+  const isCurrentTrack = audio.trackId === trackId && audio.uri === uri;
+  const ready = isCurrentTrack && audio.isLoaded;
+  const isPlaying = isCurrentTrack && audio.isPlaying;
+  const busy = !isCurrentTrack || audio.isLoading || audio.isBuffering;
+  const error = isCurrentTrack ? interactionError || audio.error : '';
 
   const togglePlayback = async () => {
-    const sound = soundRef.current;
-    if (!sound || !ready || busy) return;
+    if (!ready || busy) return;
 
-    setBusy(true);
+    setInteractionError('');
     try {
-      const status = await sound.getStatusAsync();
-      if (!status.isLoaded) throw new Error('audio-not-loaded');
-      if (status.isPlaying) {
-        await sound.pauseAsync();
-      } else {
-        await sound.playAsync();
-          onPlayStarted?.();
-      }
+      const started = await toggleAudioPlayback();
+      if (started) onPlayStarted?.();
     } catch {
-      if (mountedRef.current) setError('پخش فایل صوتی انجام نشد.');
-    } finally {
-      if (mountedRef.current) setBusy(false);
+      setInteractionError('پخش فایل صوتی انجام نشد.');
     }
   };
 
@@ -811,30 +783,29 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     starButton: { padding: 3 },
     diaryBlock: { paddingTop: 16 },
-    legacyNoteBlock: {
-      marginTop: 4,
+    generalNoteBlock: {
       paddingTop: 16,
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
-    legacyNoteLabel: {
+    generalNoteCaption: {
       color: colors.mutedForeground,
-      fontSize: 12,
-      fontWeight: '700',
+      fontSize: 11,
       textAlign: 'right',
+      marginTop: 4,
       marginBottom: 9,
     },
-    legacyNoteInput: {
-      minHeight: 92,
+    generalNoteInput: {
+      minHeight: 104,
       borderWidth: 1,
       borderColor: colors.input,
       backgroundColor: colors.secondary,
       borderRadius: 15,
       color: colors.foreground,
-      fontSize: 13,
-      lineHeight: 21,
+      fontSize: 14,
+      lineHeight: 22,
       paddingHorizontal: 14,
-      paddingTop: 12,
+      paddingTop: 13,
     },
     diaryHeader: {
       flexDirection: 'row-reverse',
