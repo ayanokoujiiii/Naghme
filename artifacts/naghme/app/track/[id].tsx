@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -187,6 +188,10 @@ export default function TrackDetailScreen() {
         />
       </DetailCard>
 
+      {track.audioUri ? (
+        <AudioPlayer uri={track.audioUri} colors={colors} styles={styles} />
+      ) : null}
+
       <SectionHeading title="رابطه من با این قطعه" caption="چیزی که فقط برای تو معنا دارد" />
       <DetailCard>
         <View style={styles.preferenceRow}>
@@ -292,6 +297,117 @@ export default function TrackDetailScreen() {
   );
 }
 
+function AudioPlayer({
+  uri,
+  colors,
+  styles,
+}: {
+  uri: string;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const mountedRef = useRef<boolean>(true);
+  const [ready, setReady] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [busy, setBusy] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const sound = new Audio.Sound();
+    soundRef.current = sound;
+    setReady(false);
+    setIsPlaying(false);
+    setBusy(true);
+    setError('');
+
+    sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+      if (!mountedRef.current) return;
+      if (status.isLoaded) {
+        setReady(true);
+        setBusy(false);
+        setIsPlaying(status.isPlaying);
+        if (status.didJustFinish) setIsPlaying(false);
+      } else if (status.error) {
+        setBusy(false);
+        setError('پخش این فایل صوتی ممکن نیست.');
+      }
+    });
+
+    void sound
+      .loadAsync({ uri }, { shouldPlay: false })
+      .catch(() => {
+        if (!mountedRef.current) return;
+        setBusy(false);
+        setError('بارگذاری فایل صوتی انجام نشد.');
+      });
+
+    return () => {
+      mountedRef.current = false;
+      sound.setOnPlaybackStatusUpdate(null);
+      if (soundRef.current === sound) soundRef.current = null;
+      void sound.unloadAsync();
+    };
+  }, [uri]);
+
+  const togglePlayback = async () => {
+    const sound = soundRef.current;
+    if (!sound || !ready || busy) return;
+
+    setBusy(true);
+    try {
+      const status = await sound.getStatusAsync();
+      if (!status.isLoaded) throw new Error('audio-not-loaded');
+      if (status.isPlaying) {
+        await sound.pauseAsync();
+      } else {
+        await sound.playAsync();
+      }
+    } catch {
+      if (mountedRef.current) setError('پخش فایل صوتی انجام نشد.');
+    } finally {
+      if (mountedRef.current) setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.audioPlayerCard}>
+      <View style={styles.audioPlayerIcon}>
+        <Feather name="headphones" size={19} color={colors.primary} />
+      </View>
+      <View style={styles.audioPlayerCopy}>
+        <Text style={styles.audioPlayerTitle}>فایل صوتی قطعه</Text>
+        <Text style={styles.audioPlayerSubtitle}>
+          {error || (busy && !ready ? 'در حال آماده‌سازی…' : isPlaying ? 'در حال پخش' : 'آماده‌ی پخش')}
+        </Text>
+      </View>
+      <Pressable
+        testID="track-audio-toggle"
+        accessibilityRole="button"
+        accessibilityLabel={isPlaying ? 'توقف پخش' : 'پخش قطعه'}
+        disabled={!ready || busy}
+        onPress={() => void togglePlayback()}
+        style={({ pressed }) => [
+          styles.audioPlayerButton,
+          (!ready || busy) && styles.audioPlayerButtonDisabled,
+          pressed && styles.pressed,
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color={colors.primaryForeground} />
+        ) : (
+          <Feather
+            name={isPlaying ? 'pause' : 'play'}
+            size={19}
+            color={colors.primaryForeground}
+          />
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -394,6 +510,38 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       textAlign: 'right',
       marginTop: 11,
     },
+    audioPlayerCard: {
+      minHeight: 78,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 11,
+      backgroundColor: colors.accent,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 13,
+      marginBottom: 24,
+    },
+    audioPlayerIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+    },
+    audioPlayerCopy: { flex: 1, alignItems: 'flex-end' },
+    audioPlayerTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    audioPlayerSubtitle: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 4 },
+    audioPlayerButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    audioPlayerButtonDisabled: { opacity: 0.55 },
     pressed: { opacity: 0.72 },
   });
 }

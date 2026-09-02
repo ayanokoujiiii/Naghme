@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "نغمه | آرشیو موسیقی شخصی",
+    "name": "نغمه",
     "slug": "naghme",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.user.naghme"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -30,7 +32,9 @@
       "expo-font",
       "expo-web-browser",
       "expo-localization",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-av",
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true,

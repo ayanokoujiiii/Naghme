@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -15,13 +16,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { createArchiveBackup } from '@/src/db/portability';
+import { createArchiveBackup, restoreArchiveBackup } from '@/src/db/portability';
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [restoring, setRestoring] = useState<boolean>(false);
 
   const exportArchive = async () => {
     if (Platform.OS === 'web') {
@@ -51,6 +53,40 @@ export default function SettingsScreen() {
       Alert.alert('خروجی گرفتن انجام نشد', message);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const restoreArchive = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('بازیابی در دسترس نیست', 'بازیابی آرشیو را در برنامه‌ی Android انجام بده.');
+      return;
+    }
+    setRestoring(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset) throw new Error('فایلی انتخاب نشد.');
+      const json = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const summary = await restoreArchiveBackup(json);
+      Alert.alert(
+        'بازیابی انجام شد',
+        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.tracks} قطعه و ${summary.personalRelationships} رابطه‌ی شخصی بازیابی شد.`,
+        [{ text: 'باشه', onPress: () => router.back() }],
+      );
+    } catch (restoreError: unknown) {
+      const message =
+        restoreError instanceof Error ? restoreError.message : 'بازیابی اطلاعات انجام نشد.';
+      Alert.alert('بازیابی انجام نشد', message);
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -117,6 +153,33 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.actionCard}>
+        <View style={styles.actionIcon}>
+          <Feather name="upload" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.actionCopy}>
+          <Text style={styles.actionTitle}>بازیابی اطلاعات</Text>
+          <Text style={styles.actionDescription}>یک فایل پشتیبان JSON را انتخاب کن تا اطلاعات آرشیو روی این دستگاه بازنویسی شود.</Text>
+        </View>
+        <Pressable
+          testID="restore-archive"
+          accessibilityRole="button"
+          accessibilityLabel="بازیابی اطلاعات از فایل"
+          disabled={restoring}
+          onPress={() => void restoreArchive()}
+          style={({ pressed }) => [styles.restoreButton, pressed && styles.pressed]}
+        >
+          {restoring ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Feather name="folder" size={16} color={colors.primary} />
+              <Text style={styles.restoreButtonText}>بازیابی اطلاعات از فایل</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+
       <View style={styles.footerNote}>
         <Feather name="file-text" size={16} color={colors.mutedForeground} />
         <Text style={styles.footerText}>نام فایل خروجی: naghme_backup.json</Text>
@@ -146,6 +209,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     actionDescription: { color: colors.mutedForeground, fontSize: 13, lineHeight: 22, textAlign: 'center', marginTop: 7 },
     exportButton: { minHeight: 46, width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, marginTop: 18, paddingHorizontal: 14 },
     exportButtonText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
+    restoreButton: { minHeight: 46, width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.secondary, borderRadius: 14, borderWidth: 1, borderColor: colors.primary, marginTop: 18, paddingHorizontal: 14 },
+    restoreButtonText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
     footerNote: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 18 },
     footerText: { color: colors.mutedForeground, fontSize: 12 },
     pressed: { opacity: 0.74 },

@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -19,6 +20,8 @@ export default function AddTrackScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [title, setTitle] = useState<string>('');
   const [duration, setDuration] = useState<string>('');
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string>('');
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
@@ -40,6 +43,8 @@ export default function AddTrackScreen() {
             setTitle(track.title);
             setDuration(track.duration?.toString() ?? '');
             setSelectedAlbumId(track.albumId);
+            setAudioUri(track.audioUri);
+            setAudioName(track.audioUri ? 'فایل صوتی انتخاب‌شده' : '');
           }
         }
       })
@@ -57,6 +62,37 @@ export default function AddTrackScreen() {
   }, []);
 
   const selectedAlbum = albums.find((album) => album.id === selectedAlbumId);
+
+  const pickAudio = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('انتخاب صوت در دسترس نیست', 'انتخاب فایل صوتی را در برنامه‌ی Android انجام بده.');
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset) throw new Error('فایل صوتی انتخاب نشد.');
+      setAudioUri(asset.uri);
+      setAudioName(asset.name || 'فایل صوتی انتخاب‌شده');
+      setError('');
+    } catch (pickError: unknown) {
+      Alert.alert(
+        'انتخاب فایل انجام نشد',
+        pickError instanceof Error ? pickError.message : 'فایل صوتی انتخاب نشد.',
+      );
+    }
+  };
+
+  const clearAudio = () => {
+    setAudioUri(null);
+    setAudioName('');
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -79,13 +115,14 @@ export default function AddTrackScreen() {
           title,
           duration: parsedDuration,
           albumId: selectedAlbumId,
+            audioUri,
         });
       } else {
         await addTrack({
           title,
           duration: parsedDuration,
           albumId: selectedAlbumId,
-          audioUri: null,
+          audioUri,
           coverImage: null,
         });
       }
@@ -166,6 +203,43 @@ export default function AddTrackScreen() {
           </View>
         ) : null}
       </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>فایل صوتی محلی</Text>
+        <View style={styles.audioPickerCard}>
+          <View style={styles.audioIcon}>
+            <Feather name={audioUri ? 'volume-2' : 'music'} size={19} color={colors.primary} />
+          </View>
+          <View style={styles.audioCopy}>
+            <Text style={styles.audioTitle} numberOfLines={1}>
+              {audioName || (audioUri ? 'فایل صوتی انتخاب‌شده' : 'هنوز فایلی انتخاب نشده')}
+            </Text>
+            <Text style={styles.audioHint}>فایل روی همین دستگاه نگهداری می‌شود.</Text>
+          </View>
+          {audioUri ? (
+            <Pressable
+              testID="remove-audio"
+              accessibilityRole="button"
+              accessibilityLabel="حذف فایل صوتی"
+              onPress={clearAudio}
+              style={({ pressed }) => [styles.audioAction, pressed && styles.pressed]}
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          testID="pick-audio"
+          accessibilityRole="button"
+          accessibilityLabel="انتخاب فایل صوتی"
+          onPress={() => void pickAudio()}
+          style={({ pressed }) => [styles.audioButton, pressed && styles.pressed]}
+        >
+          <Feather name="folder" size={17} color={colors.primary} />
+          <Text style={styles.audioButtonText}>{audioUri ? 'تغییر فایل صوتی' : 'انتخاب فایل صوتی'}</Text>
+        </Pressable>
+      </View>
+
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی قطعه'}
         saving={saving || loadingRecord}
@@ -229,6 +303,42 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       textAlign: 'right',
       padding: 16,
     },
+    audioPickerCard: {
+      minHeight: 68,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      paddingHorizontal: 12,
+    },
+    audioIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+    },
+    audioCopy: { flex: 1, alignItems: 'flex-end' },
+    audioTitle: { color: colors.foreground, fontSize: 13, fontWeight: '600', textAlign: 'right' },
+    audioHint: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
+    audioAction: { padding: 7 },
+    audioButton: {
+      minHeight: 44,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.secondary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 9,
+    },
+    audioButtonText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
     pressed: { opacity: 0.72 },
   });
 }
