@@ -11,6 +11,8 @@ export interface AudioPlaybackSnapshot {
   error: string | null;
   positionMillis: number;
   durationMillis: number;
+  repeatMode: RepeatMode;
+  isLooping: boolean;
 }
 
 export interface AudioTrackMetadata {
@@ -21,6 +23,8 @@ export interface AudioTrackMetadata {
   lyrics: string | null;
   durationSeconds: number | null;
 }
+
+export type RepeatMode = 'off' | 'track' | 'context';
 
 type AudioListener = (snapshot: AudioPlaybackSnapshot) => void;
 
@@ -35,6 +39,8 @@ const initialSnapshot: AudioPlaybackSnapshot = {
   error: null,
   positionMillis: 0,
   durationMillis: 0,
+  repeatMode: 'off',
+  isLooping: false,
 };
 
 let snapshot = initialSnapshot;
@@ -60,6 +66,7 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
       error: null,
       positionMillis: status.positionMillis,
       durationMillis: status.durationMillis,
+      isLooping: status.isLooping,
     });
     return;
   }
@@ -153,6 +160,7 @@ export async function loadAudio(
       source,
       {
         shouldPlay: false,
+        isLooping: snapshot.repeatMode !== 'off',
         progressUpdateIntervalMillis: 500,
         androidImplementation: 'ExoPlayer',
       },
@@ -176,6 +184,9 @@ export async function loadAudio(
         : track.durationSeconds
           ? track.durationSeconds * 1000
           : 0,
+      isLooping: created.status.isLoaded
+        ? created.status.isLooping
+        : snapshot.repeatMode !== 'off',
       error: created.status.isLoaded
         ? null
         : created.status.error
@@ -218,4 +229,41 @@ export async function toggleAudioPlayback(): Promise<boolean> {
 
   await sound.playAsync();
   return true;
+}
+
+export async function rewindAudio(milliseconds = 10000): Promise<number> {
+  if (loadRequest) {
+    await loadRequest;
+  }
+  if (!sound) return 0;
+
+  const status = await sound.getStatusAsync();
+  if (!status.isLoaded) return 0;
+
+  const nextPosition = Math.max(0, status.positionMillis - milliseconds);
+  await sound.setPositionAsync(nextPosition);
+  updateSnapshot({ positionMillis: nextPosition });
+  return nextPosition;
+}
+
+export async function setRepeatMode(mode: RepeatMode): Promise<RepeatMode> {
+  const shouldLoop = mode !== 'off';
+  if (sound) {
+    const status = await sound.getStatusAsync();
+    if (status.isLoaded) {
+      await sound.setIsLoopingAsync(shouldLoop);
+    }
+  }
+  updateSnapshot({ repeatMode: mode, isLooping: shouldLoop });
+  return mode;
+}
+
+export async function cycleRepeatMode(): Promise<RepeatMode> {
+  const nextMode: RepeatMode =
+    snapshot.repeatMode === 'off'
+      ? 'track'
+      : snapshot.repeatMode === 'track'
+        ? 'context'
+        : 'off';
+  return setRepeatMode(nextMode);
 }

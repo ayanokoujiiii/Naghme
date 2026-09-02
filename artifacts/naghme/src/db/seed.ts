@@ -302,6 +302,12 @@ export async function injectSampleData(): Promise<SeedResult> {
         track.versionName,
       ],
     );
+    await database.runAsync(
+      `UPDATE Tracks
+       SET lyrics = ?, coverImage = ?, versionName = ?
+       WHERE id = ?`,
+      [track.lyrics, track.coverImage, track.versionName, track.id],
+    );
   }
 
   // Keep personal edits intact when the sample button is pressed again.

@@ -16,8 +16,11 @@ import { useColors } from '@/hooks/useColors';
 import {
   AudioPlaybackSnapshot,
   getAudioSnapshot,
+  cycleRepeatMode,
+  rewindAudio,
   subscribeToAudio,
   toggleAudioPlayback,
+  RepeatMode,
 } from '@/src/audio/audioManager';
 
 export default function PlayerScreen() {
@@ -36,6 +39,25 @@ export default function PlayerScreen() {
       await toggleAudioPlayback();
     } catch {
       setError('پخش این قطعه انجام نشد.');
+    }
+  };
+
+  const rewind = async () => {
+    if (!audio.isLoaded || audio.isBuffering) return;
+    setError('');
+    try {
+      await rewindAudio();
+    } catch {
+      setError('بازگشت ده‌ثانیه‌ای انجام نشد.');
+    }
+  };
+
+  const repeat = async () => {
+    setError('');
+    try {
+      await cycleRepeatMode();
+    } catch {
+      setError('تغییر حالت تکرار انجام نشد.');
     }
   };
 
@@ -122,7 +144,21 @@ export default function PlayerScreen() {
         </View>
 
         <View style={styles.controls}>
-          <View style={styles.controlSpacer} />
+          <Pressable
+            testID="player-rewind"
+            accessibilityRole="button"
+            accessibilityLabel="بازگشت ده ثانیه"
+            disabled={!audio.isLoaded || audio.isBuffering}
+            onPress={() => void rewind()}
+            style={({ pressed }) => [
+              styles.secondaryControl,
+              (!audio.isLoaded || audio.isBuffering) && styles.secondaryControlDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="rotate-ccw" size={21} color={colors.foreground} />
+            <Text style={styles.secondaryControlText}>۱۰ ثانیه</Text>
+          </Pressable>
           <Pressable
             testID="player-toggle"
             accessibilityRole="button"
@@ -145,7 +181,23 @@ export default function PlayerScreen() {
               />
             )}
           </Pressable>
-          <View style={styles.controlSpacer} />
+          <Pressable
+            testID="player-repeat"
+            accessibilityRole="button"
+            accessibilityLabel={repeatModeLabel(audio.repeatMode)}
+            accessibilityState={{ selected: audio.repeatMode !== 'off' }}
+            onPress={() => void repeat()}
+            style={({ pressed }) => [
+              styles.secondaryControl,
+              audio.repeatMode !== 'off' && styles.secondaryControlActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="repeat" size={21} color={audio.repeatMode !== 'off' ? colors.primary : colors.foreground} />
+            <Text style={[styles.secondaryControlText, audio.repeatMode !== 'off' && styles.secondaryControlTextActive]}>
+              {repeatModeShortLabel(audio.repeatMode)}
+            </Text>
+          </Pressable>
         </View>
 
         {error || audio.error ? <Text style={styles.errorText}>{error || audio.error}</Text> : null}
@@ -171,6 +223,18 @@ function formatTime(milliseconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function repeatModeLabel(mode: RepeatMode): string {
+  if (mode === 'track') return 'تکرار قطعه';
+  if (mode === 'context') return 'تکرار آلبوم';
+  return 'بدون تکرار';
+}
+
+function repeatModeShortLabel(mode: RepeatMode): string {
+  if (mode === 'track') return 'قطعه';
+  if (mode === 'context') return 'آلبوم';
+  return 'تکرار';
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {
@@ -218,7 +282,23 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
     time: { color: colors.mutedForeground, fontSize: 11 },
     controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18 },
-    controlSpacer: { flex: 1 },
+    secondaryControl: {
+      minWidth: 68,
+      minHeight: 56,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 12,
+      paddingHorizontal: 8,
+    },
+    secondaryControlDisabled: { opacity: 0.5 },
+    secondaryControlActive: { borderColor: colors.primary, backgroundColor: colors.accent },
+    secondaryControlText: { color: colors.mutedForeground, fontSize: 10, fontWeight: '600' },
+    secondaryControlTextActive: { color: colors.primary },
     playButton: {
       width: 68,
       height: 68,

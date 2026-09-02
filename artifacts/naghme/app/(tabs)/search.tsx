@@ -124,6 +124,35 @@ export default function SearchScreen() {
         </View>
       </View>
 
+      <ScrollView
+        horizontal
+        style={styles.filterScroll}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {filterOptions.map((option) => {
+          const selected = option.value === filter;
+          return (
+            <Pressable
+              key={option.value}
+              testID={`search-filter-${option.value}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => selectFilter(option.value)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                selected && styles.filterChipSelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       <View style={styles.searchBox}>
         <Feather name="search" size={20} color={colors.primary} />
         <TextInput
@@ -155,34 +184,6 @@ export default function SearchScreen() {
           </Pressable>
         ) : null}
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-      >
-        {filterOptions.map((option) => {
-          const selected = option.value === filter;
-          return (
-            <Pressable
-              key={option.value}
-              testID={`search-filter-${option.value}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => selectFilter(option.value)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                selected && styles.filterChipSelected,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
 
       {loading ? (
         <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
@@ -255,6 +256,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     headerIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
     searchBox: { minHeight: 60, flexDirection: 'row-reverse', alignItems: 'center', gap: 11, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary, borderRadius: 18, paddingHorizontal: 16 },
     input: { flex: 1, color: colors.foreground, fontSize: 15, minHeight: 58 },
+    filterScroll: { flexGrow: 0 },
     filterRow: { gap: 8, paddingVertical: 14, paddingHorizontal: 2, alignItems: 'center' },
     filterChip: {
       minHeight: 38,

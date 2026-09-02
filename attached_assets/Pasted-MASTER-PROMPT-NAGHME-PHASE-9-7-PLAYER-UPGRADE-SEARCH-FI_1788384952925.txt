@@ -1,0 +1,25 @@
+MASTER PROMPT: NAGHME - PHASE 9.7 (PLAYER UPGRADE, SEARCH FIX & SEED DATA ENFORCEMENT)
+
+You are an Expert React Native & Expo Software Architect. The previous phase left some UX issues that need immediate fixing before we move to the final polish.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Do NOT break existing SQLite queries.
+
+FIXES & OBJECTIVES TO IMPLEMENT:
+
+1. Search Layout Fix (CRITICAL & STRICT):
+- The user explicitly requested the Search Filters to be located ABOVE the search input box. 
+- Open `app/(tabs)/search.tsx` and move the horizontal `ScrollView` containing the filters to the VERY TOP of the screen, physically ABOVE the `<TextInput>` search bar. Do not place it anywhere else.
+
+2. Premium Player Upgrade & Audio Controls (`app/player.tsx` & Audio Manager):
+- The current full-screen player is too basic. Make it look premium (elegant spacing, large beautiful poster, polished typography for lyrics).
+- Add new functional playback controls using `expo-av`:
+  * **10s Rewind ONLY:** Add a "Skip Backward 10s" (Rewind 10s) button next to the Play/Pause button. Implement the seek logic in the audio manager. (DO NOT add a skip forward button, the user explicitly only wants rewind).
+  * **Repeat Toggle:** Add a "Repeat" toggle button. It should cycle through states (No Repeat, Repeat Track, Repeat Context/Album). Implement `isLooping` logic for the current track via `expo-av`.
+
+3. Force Seed Data Update (`src/db/seed.ts`):
+- The user did not see the lyrics or posters. The `injectSampleData` function is likely failing to update existing seeded tracks.
+- Modify the SQLite seed logic: explicitly run `UPDATE Tracks SET lyrics = ?, coverImage = ?, versionName = ? WHERE id = ?` for the seed tracks to overwrite empty fields. Ensure that when the user clicks "تزریق داده‌های آزمایشی", it forces the new rich data (Persian lyrics, real posters) into the database so they appear in the player.
+
+ACTION: Execute these fixes step-by-step. 1. Move the search filters STRICTLY above the search bar. 2. Upgrade the Player UI and add 10s rewind and repeat functionalities. 3. Fix the seed data SQL logic to force updates. Test thoroughly and wait for my instruction.
