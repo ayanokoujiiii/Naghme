@@ -59,6 +59,22 @@ export interface HomeTrackRecord extends TrackRecord {
   albumTitle: string | null;
 }
 
+export interface MusicGraphRow {
+  artistId: string | null;
+  artistName: string | null;
+  albumId: string | null;
+  albumTitle: string | null;
+  albumReleaseYear: number | null;
+  albumCoverImage: string | null;
+  trackId: string;
+  trackTitle: string;
+  trackDuration: number | null;
+  trackArtistId: string | null;
+  trackAlbumId: string | null;
+  trackAudioUri: string | null;
+  trackCoverImage: string | null;
+}
+
 export interface RecommendationTrack extends TrackRecord {
   artistName: string | null;
   albumTitle: string | null;
@@ -296,6 +312,56 @@ export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord
      ORDER BY Tracks.rowid DESC
      LIMIT ?`,
     [safeLimit],
+  );
+}
+
+export async function getTracksByArtistId(artistId: string): Promise<TrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<TrackRecord>(
+    `SELECT id, title, duration, artistId, albumId, audioUri, coverImage
+     FROM Tracks
+     WHERE artistId = ?
+     ORDER BY title COLLATE NOCASE ASC`,
+    [artistId],
+  );
+}
+
+export async function getTracksByAlbumId(albumId: string): Promise<TrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<TrackRecord>(
+    `SELECT id, title, duration, artistId, albumId, audioUri, coverImage
+     FROM Tracks
+     WHERE albumId = ?
+     ORDER BY title COLLATE NOCASE ASC`,
+    [albumId],
+  );
+}
+
+export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<MusicGraphRow>(
+    `SELECT
+       Artists.id AS artistId,
+       Artists.name AS artistName,
+       Albums.id AS albumId,
+       Albums.title AS albumTitle,
+       Albums.releaseYear AS albumReleaseYear,
+       Albums.coverImage AS albumCoverImage,
+       Tracks.id AS trackId,
+       Tracks.title AS trackTitle,
+       Tracks.duration AS trackDuration,
+       Tracks.artistId AS trackArtistId,
+       Tracks.albumId AS trackAlbumId,
+       Tracks.audioUri AS trackAudioUri,
+       Tracks.coverImage AS trackCoverImage
+     FROM Tracks
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     ORDER BY
+       COALESCE(Artists.name, '') COLLATE NOCASE ASC,
+       COALESCE(Albums.title, '') COLLATE NOCASE ASC,
+       Tracks.title COLLATE NOCASE ASC`,
+    [],
   );
 }
 

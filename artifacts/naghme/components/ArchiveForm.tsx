@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ReactNode, useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 
@@ -18,15 +18,17 @@ export function ArchiveFormPage({
   children,
 }: ArchiveFormPageProps) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <KeyboardAwareScrollViewCompat
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 28 },
+          {
+            paddingTop: (Platform.OS === 'web' ? 67 : 0) + 16,
+            paddingBottom: (Platform.OS === 'web' ? 34 : 0) + 28,
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -46,7 +48,7 @@ export function ArchiveFormPage({
         </View>
         {children}
       </KeyboardAwareScrollViewCompat>
-    </View>
+    </SafeAreaView>
   );
 }
 

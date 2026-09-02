@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { type ComponentProps, type ReactNode, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 
@@ -24,15 +24,17 @@ export function DetailShell({
   onDelete,
 }: DetailShellProps) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <KeyboardAwareScrollViewCompat
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 30 },
+          {
+            paddingTop: (Platform.OS === 'web' ? 67 : 0) + 16,
+            paddingBottom: (Platform.OS === 'web' ? 34 : 0) + 30,
+          },
         ]}
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
@@ -87,7 +89,7 @@ export function DetailShell({
           </View>
         ) : null}
       </KeyboardAwareScrollViewCompat>
-    </View>
+    </SafeAreaView>
   );
 }
 

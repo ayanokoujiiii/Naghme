@@ -179,7 +179,7 @@ export default function AddTrackScreen() {
             size={18}
             color={colors.mutedForeground}
           />
-          <Text style={[styles.pickerText, !selectedArtist && styles.placeholder]}>
+          <Text style={[styles.pickerText, !selectedArtist && styles.placeholder]} numberOfLines={1}>
             {selectedArtist?.name ?? 'بدون هنرمند'}
           </Text>
         </Pressable>
@@ -192,7 +192,7 @@ export default function AddTrackScreen() {
               }}
               style={styles.menuItem}
             >
-              <Text style={styles.menuText}>بدون هنرمند</Text>
+              <Text style={styles.menuText} numberOfLines={1}>بدون هنرمند</Text>
             </Pressable>
             {artists.length > 0 ? (
               artists.map((artist) => (
@@ -204,7 +204,7 @@ export default function AddTrackScreen() {
                   }}
                   style={styles.menuItem}
                 >
-                  <Text style={styles.menuText}>{artist.name}</Text>
+                  <Text style={styles.menuText} numberOfLines={1}>{artist.name}</Text>
                 </Pressable>
               ))
             ) : (
@@ -226,7 +226,7 @@ export default function AddTrackScreen() {
             size={18}
             color={colors.mutedForeground}
           />
-          <Text style={[styles.pickerText, !selectedAlbum && styles.placeholder]}>
+          <Text style={[styles.pickerText, !selectedAlbum && styles.placeholder]} numberOfLines={1}>
             {selectedAlbum?.title ?? 'بدون آلبوم'}
           </Text>
         </Pressable>
@@ -239,7 +239,7 @@ export default function AddTrackScreen() {
               }}
               style={styles.menuItem}
             >
-              <Text style={styles.menuText}>بدون آلبوم</Text>
+              <Text style={styles.menuText} numberOfLines={1}>بدون آلبوم</Text>
             </Pressable>
             {albums.length > 0 ? (
               albums.map((album) => (
@@ -251,7 +251,7 @@ export default function AddTrackScreen() {
                   }}
                   style={styles.menuItem}
                 >
-                  <Text style={styles.menuText}>{album.title}</Text>
+                  <Text style={styles.menuText} numberOfLines={1}>{album.title}</Text>
                 </Pressable>
               ))
             ) : (
@@ -329,6 +329,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     pickerText: {
       flex: 1,
+      flexShrink: 1,
       color: colors.foreground,
       fontSize: 15,
       textAlign: 'right',
@@ -352,6 +353,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     menuText: {
       color: colors.foreground,
       fontSize: 14,
+      flexShrink: 1,
       textAlign: 'right',
     },
     noAlbums: {

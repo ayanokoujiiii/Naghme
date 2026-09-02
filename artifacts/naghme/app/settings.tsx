@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,7 +16,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import {
   fetchAvailableGeminiModels,
@@ -29,7 +31,6 @@ import { createArchiveBackup, restoreArchiveBackup } from '@/src/db/portability'
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [exporting, setExporting] = useState<boolean>(false);
   const [restoring, setRestoring] = useState<boolean>(false);
@@ -41,6 +42,7 @@ export default function SettingsScreen() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [fetchingModels, setFetchingModels] = useState<boolean>(false);
   const [modelMessage, setModelMessage] = useState<string>('');
+  const [modelPickerVisible, setModelPickerVisible] = useState<boolean>(false);
 
   useEffect(() => {
     void Promise.all([getGeminiApiKey(), getGeminiModel()])
@@ -82,6 +84,9 @@ export default function SettingsScreen() {
     setModelMessage('');
     try {
       const models = await fetchAvailableGeminiModels(key);
+      if (models.length === 0) {
+        throw new Error('مدل متنی قابل استفاده‌ای از Gemini دریافت نشد.');
+      }
       setAvailableModels(models);
       const currentModel = selectedModel && models.some((model) => model.name === selectedModel)
         ? selectedModel
@@ -89,6 +94,7 @@ export default function SettingsScreen() {
       setSelectedModel(currentModel);
       await saveGeminiModel(currentModel);
       setModelMessage(`${models.length} مدل متنی پیدا شد. مدل موردنظر را انتخاب کن.`);
+      setModelPickerVisible(true);
     } catch (fetchError: unknown) {
       const message =
         fetchError instanceof Error ? fetchError.message : 'استعلام مدل‌ها انجام نشد.';
@@ -101,10 +107,10 @@ export default function SettingsScreen() {
 
   const handleSelectModel = async (model: GeminiModelOption) => {
     setSelectedModel(model.name);
-    setModelMessage('');
+    setModelPickerVisible(false);
+    setModelMessage(`مدل «${model.displayName}» برای پیشنهادها انتخاب شد.`);
     try {
       await saveGeminiModel(model.name);
-      setModelMessage(`مدل «${model.displayName}» برای پیشنهادها انتخاب شد.`);
     } catch (saveError: unknown) {
       const message = saveError instanceof Error ? saveError.message : 'ذخیره‌ی مدل انجام نشد.';
       setModelMessage(message);
@@ -177,14 +183,13 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 38 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <KeyboardAwareScrollViewCompat
+        contentContainerStyle={styles.content}
+        bottomOffset={24}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.header}>
         <Pressable
           testID="settings-back"
@@ -259,35 +264,21 @@ export default function SettingsScreen() {
         {availableModels.length ? (
           <View style={styles.modelSelector}>
             <Text style={styles.modelSelectorLabel}>مدل فعال برای پیشنهاد هوشمند</Text>
-            {availableModels.map((model) => {
-              const selected = selectedModel === model.name;
-              return (
-                <Pressable
-                  key={model.name}
-                  testID={`gemini-model-${model.name}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => void handleSelectModel(model)}
-                  style={({ pressed }) => [
-                    styles.modelOption,
-                    selected && styles.modelOptionSelected,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.modelOptionCopy}>
-                    <Text style={[styles.modelOptionText, selected && styles.modelOptionTextSelected]}>
-                      {model.displayName}
-                    </Text>
-                    <Text style={styles.modelName}>{model.name}</Text>
-                  </View>
-                  <Feather
-                    name={selected ? 'check-circle' : 'circle'}
-                    size={18}
-                    color={selected ? colors.primaryForeground : colors.mutedForeground}
-                  />
-                </Pressable>
-              );
-            })}
+            <Pressable
+              testID="open-gemini-model-picker"
+              accessibilityRole="button"
+              accessibilityLabel="انتخاب مدل Gemini"
+              onPress={() => setModelPickerVisible(true)}
+              style={({ pressed }) => [styles.modelPickerButton, pressed && styles.pressed]}
+            >
+              <Feather name="chevron-down" size={18} color={colors.primary} />
+              <View style={styles.modelOptionCopy}>
+                <Text style={styles.modelOptionText} numberOfLines={1}>
+                  {availableModels.find((model) => model.name === selectedModel)?.displayName ?? selectedModel}
+                </Text>
+                <Text style={styles.modelName} numberOfLines={1}>{selectedModel}</Text>
+              </View>
+            </Pressable>
           </View>
         ) : null}
         {modelMessage ? <Text style={styles.aiMessage}>{modelMessage}</Text> : null}
@@ -371,7 +362,76 @@ export default function SettingsScreen() {
         <Feather name="file-text" size={16} color={colors.mutedForeground} />
         <Text style={styles.footerText}>نام فایل خروجی: naghme_backup.json</Text>
       </View>
-    </ScrollView>
+      </KeyboardAwareScrollViewCompat>
+      <Modal
+        visible={modelPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModelPickerVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            accessibilityLabel="بستن انتخاب مدل"
+            style={styles.modalDismissArea}
+            onPress={() => setModelPickerVisible(false)}
+          />
+          <View style={styles.modelModal}>
+            <View style={styles.modalHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="بستن"
+                onPress={() => setModelPickerVisible(false)}
+                hitSlop={10}
+              >
+                <Feather name="x" size={21} color={colors.foreground} />
+              </Pressable>
+              <View style={styles.modalHeaderCopy}>
+                <Text style={styles.modalTitle}>انتخاب مدل Gemini</Text>
+                <Text style={styles.modalCaption}>{availableModels.length} مدل متنی در دسترس است</Text>
+              </View>
+            </View>
+            <ScrollView
+              style={styles.modelModalScroll}
+              contentContainerStyle={styles.modelModalContent}
+              showsVerticalScrollIndicator
+            >
+              {availableModels.map((model) => {
+                const selected = selectedModel === model.name;
+                return (
+                  <Pressable
+                    key={model.name}
+                    testID={`gemini-model-${model.name}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => void handleSelectModel(model)}
+                    style={({ pressed }) => [
+                      styles.modelOption,
+                      selected && styles.modelOptionSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View style={styles.modelOptionCopy}>
+                      <Text
+                        style={[styles.modelOptionText, selected && styles.modelOptionTextSelected]}
+                        numberOfLines={1}
+                      >
+                        {model.displayName}
+                      </Text>
+                      <Text style={styles.modelName} numberOfLines={1}>{model.name}</Text>
+                    </View>
+                    <Feather
+                      name={selected ? 'check-circle' : 'circle'}
+                      size={18}
+                      color={selected ? colors.primaryForeground : colors.mutedForeground}
+                    />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -399,12 +459,22 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     modelFetchButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     modelSelector: { marginTop: 15, gap: 8 },
     modelSelectorLabel: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    modelPickerButton: { minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.secondary },
     modelOption: { minHeight: 52, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary },
     modelOptionSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
     modelOptionCopy: { flex: 1, alignItems: 'flex-end' },
     modelOptionText: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
     modelOptionTextSelected: { color: colors.primaryForeground },
     modelName: { color: colors.mutedForeground, fontSize: 10, marginTop: 3, textAlign: 'right' },
+    modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.58)' },
+    modalDismissArea: { flex: 1 },
+    modelModal: { maxHeight: '78%', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: colors.background },
+    modalHeader: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+    modalHeaderCopy: { flex: 1, alignItems: 'flex-end' },
+    modalTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', textAlign: 'right' },
+    modalCaption: { color: colors.mutedForeground, fontSize: 12, marginTop: 4, textAlign: 'right' },
+    modelModalScroll: { marginTop: 12 },
+    modelModalContent: { gap: 8, paddingBottom: 8 },
     aiHint: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 11 },
     sectionTitle: { color: colors.foreground, fontSize: 20, fontWeight: '700', textAlign: 'right', marginBottom: 13 },
     actionCard: { alignItems: 'center', padding: 16, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },

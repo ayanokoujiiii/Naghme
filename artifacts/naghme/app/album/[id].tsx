@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { useColors } from '@/hooks/useColors';
@@ -8,7 +8,7 @@ import {
   AlbumRecord,
   deleteAlbum,
   getAlbumById,
-  getTracks,
+  getTracksByAlbumId,
   TrackRecord,
 } from '@/src/db/queries';
 
@@ -31,12 +31,15 @@ export default function AlbumDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundAlbum, allTracks] = await Promise.all([getAlbumById(albumId), getTracks()]);
+      const [foundAlbum, albumTracks] = await Promise.all([
+        getAlbumById(albumId),
+        getTracksByAlbumId(albumId),
+      ]);
       if (!foundAlbum) {
         setError('آلبوم پیدا نشد.');
       } else {
         setAlbum(foundAlbum);
-        setTracks(allTracks.filter((track) => track.albumId === foundAlbum.id));
+        setTracks(albumTracks);
       }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن آلبوم انجام نشد.');
@@ -45,9 +48,11 @@ export default function AlbumDetailScreen() {
     }
   }, [albumId]);
 
-  useEffect(() => {
-    void loadAlbum();
-  }, [loadAlbum]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadAlbum();
+    }, [loadAlbum]),
+  );
 
   const confirmDelete = () => {
     if (!album) return;
@@ -130,7 +135,7 @@ export default function AlbumDetailScreen() {
               style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
             >
               <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
-              <Text style={styles.trackTitle}>{track.title}</Text>
+              <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
             </Pressable>
           ))
         ) : (
@@ -170,6 +175,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     trackTitle: {
       flex: 1,
+      flexShrink: 1,
       color: colors.foreground,
       fontSize: 14,
       textAlign: 'right',

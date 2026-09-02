@@ -1,10 +1,16 @@
 import { Feather } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { useColors } from '@/hooks/useColors';
-import { ArtistRecord, deleteArtist, getArtistById } from '@/src/db/queries';
+import {
+  ArtistRecord,
+  deleteArtist,
+  getArtistById,
+  getTracksByArtistId,
+  TrackRecord,
+} from '@/src/db/queries';
 
 export default function ArtistDetailScreen() {
   const colors = useColors();
@@ -12,6 +18,7 @@ export default function ArtistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const artistId = Array.isArray(id) ? id[0] : id;
   const [artist, setArtist] = useState<ArtistRecord | null>(null);
+  const [tracks, setTracks] = useState<TrackRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
 
@@ -24,9 +31,15 @@ export default function ArtistDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const foundArtist = await getArtistById(artistId);
+      const [foundArtist, artistTracks] = await Promise.all([
+        getArtistById(artistId),
+        getTracksByArtistId(artistId),
+      ]);
       if (!foundArtist) setError('هنرمند پیدا نشد.');
-      else setArtist(foundArtist);
+      else {
+        setArtist(foundArtist);
+        setTracks(artistTracks);
+      }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن هنرمند انجام نشد.');
     } finally {
@@ -34,9 +47,11 @@ export default function ArtistDetailScreen() {
     }
   }, [artistId]);
 
-  useEffect(() => {
-    void loadArtist();
-  }, [loadArtist]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadArtist();
+    }, [loadArtist]),
+  );
 
   const confirmDelete = () => {
     if (!artist) return;
@@ -112,6 +127,25 @@ export default function ArtistDetailScreen() {
           {artist.biography ?? 'هنوز یادداشتی برای این هنرمند ثبت نشده است.'}
         </Text>
       </DetailCard>
+
+      <SectionHeading title="قطعه‌های هنرمند" caption={`${tracks.length} قطعه`} />
+      <DetailCard>
+        {tracks.length > 0 ? (
+          tracks.map((track) => (
+            <Pressable
+              key={track.id}
+              testID={`artist-track-${track.id}`}
+              onPress={() => router.push(`/track/${track.id}`)}
+              style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
+            >
+              <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+              <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={styles.mutedText}>هنوز قطعه‌ای به این هنرمند وصل نشده است.</Text>
+        )}
+      </DetailCard>
     </DetailShell>
   );
 }
@@ -141,5 +175,27 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       lineHeight: 24,
       textAlign: 'right',
     },
+    trackRow: {
+      minHeight: 46,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    trackTitle: {
+      flex: 1,
+      flexShrink: 1,
+      color: colors.foreground,
+      fontSize: 14,
+      textAlign: 'right',
+    },
+    mutedText: {
+      color: colors.mutedForeground,
+      fontSize: 13,
+      lineHeight: 21,
+      textAlign: 'right',
+    },
+    pressed: { opacity: 0.72 },
   });
 }

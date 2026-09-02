@@ -9,14 +9,15 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
   AlbumRecord,
   ArtistRecord,
   getAlbums,
   getArtists,
-  getTracks,
+  getMusicGraphRows,
+  MusicGraphRow,
   TrackRecord,
 } from '@/src/db/queries';
 import { SAMPLE_ARTIST_ALBUM_LINKS } from '@/src/db/seed';
@@ -27,7 +28,6 @@ type GraphArtist = ArtistRecord & { albums: GraphAlbum[] };
 
 export default function GraphScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [artists, setArtists] = useState<GraphArtist[]>([]);
   const [unassignedAlbums, setUnassignedAlbums] = useState<GraphAlbum[]>([]);
@@ -40,28 +40,38 @@ export default function GraphScreen() {
     setLoading(true);
     setError('');
     try {
-      const [artistItems, albumItems, trackItems] = await Promise.all([
+      const [artistItems, albumItems, graphRows] = await Promise.all([
         getArtists(),
         getAlbums(),
-        getTracks(),
+        getMusicGraphRows(),
       ]);
       const albumById = new Map(albumItems.map((album) => [album.id, album]));
       const tracksByAlbum = new Map<string, TrackRecord[]>();
-      const looseTracks: TrackRecord[] = [];
-      trackItems.forEach((track) => {
-        if (!track.albumId) {
-          looseTracks.push(track);
-          return;
+      const artistAlbumIds = new Map<string, Set<string>>();
+      const tracksById = new Map<string, TrackRecord>();
+      SAMPLE_ARTIST_ALBUM_LINKS.forEach((link) => {
+        const albumIds = artistAlbumIds.get(link.artistId) ?? new Set<string>();
+        albumIds.add(link.albumId);
+        artistAlbumIds.set(link.artistId, albumIds);
+      });
+      graphRows.forEach((row) => {
+        const track = mapGraphTrack(row);
+        tracksById.set(track.id, track);
+        if (track.albumId) {
+          const existing = tracksByAlbum.get(track.albumId) ?? [];
+          existing.push(track);
+          tracksByAlbum.set(track.albumId, existing);
         }
-        const existing = tracksByAlbum.get(track.albumId) ?? [];
-        existing.push(track);
-        tracksByAlbum.set(track.albumId, existing);
+        if (row.artistId && row.albumId) {
+          const albumIds = artistAlbumIds.get(row.artistId) ?? new Set<string>();
+          albumIds.add(row.albumId);
+          artistAlbumIds.set(row.artistId, albumIds);
+        }
       });
       const linkedAlbumIds = new Set<string>();
       const nextArtists = artistItems.map((artist) => {
-        const linkedAlbums = SAMPLE_ARTIST_ALBUM_LINKS
-          .filter((link) => link.artistId === artist.id)
-          .map((link) => albumById.get(link.albumId))
+        const linkedAlbums = Array.from(artistAlbumIds.get(artist.id) ?? [])
+          .map((albumId) => albumById.get(albumId))
           .filter((album): album is AlbumRecord => Boolean(album))
           .map((album) => {
             linkedAlbumIds.add(album.id);
@@ -84,7 +94,7 @@ export default function GraphScreen() {
       });
       setArtists(nextArtists);
       setUnassignedAlbums(nextUnassignedAlbums);
-      setUnassignedTracks(looseTracks);
+      setUnassignedTracks(Array.from(tracksById.values()).filter((track) => !track.albumId));
       setExpanded(nextExpanded);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن نقشه انجام نشد.');
@@ -104,107 +114,117 @@ export default function GraphScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 104 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <Feather name="git-branch" size={21} color={colors.primary} />
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Feather name="git-branch" size={21} color={colors.primary} />
+          </View>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>ارتباط‌های آرشیو</Text>
+            <Text style={styles.title}>نقشه‌ی موسیقی</Text>
+          </View>
         </View>
-        <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>ارتباط‌های آرشیو</Text>
-          <Text style={styles.title}>نقشه‌ی موسیقی</Text>
-        </View>
-      </View>
-      <Text style={styles.intro}>
-        از هنرمند شروع کن و مسیر آلبوم تا قطعه را دنبال کن. برای دیدن جزئیات روی هر گره بزن.
-      </Text>
+        <Text style={styles.intro}>
+          از هنرمند شروع کن و مسیر آلبوم تا قطعه را دنبال کن. برای دیدن جزئیات روی هر گره بزن.
+        </Text>
 
-      {loading ? (
-        <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
-      ) : error ? (
-        <View style={styles.errorBox}>
-          <Feather name="alert-circle" size={17} color={colors.destructive} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : artists.length === 0 && unassignedAlbums.length === 0 && unassignedTracks.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Feather name="git-branch" size={26} color={colors.mutedForeground} />
-          <Text style={styles.emptyTitle}>نقشه هنوز خالی است</Text>
-          <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های آزمایشی را تزریق کن.</Text>
-        </View>
-      ) : (
-        <View style={styles.tree}>
-          {artists.map((artist) => (
-            <View key={artist.id} style={styles.artistBranch}>
-              <NodeHeader
-                icon="mic"
-                label={artist.name}
-                caption={artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
-                colors={colors}
-                styles={styles}
-                onPress={() => router.push(`/artist/${artist.id}`)}
-                onToggle={artist.albums.length ? () => toggle(`artist:${artist.id}`) : undefined}
-                expanded={expanded[`artist:${artist.id}`]}
-              />
-              {expanded[`artist:${artist.id}`] ? (
-                <View style={styles.children}>
-                  {artist.albums.map((album) => (
-                    <AlbumBranch
-                      key={album.id}
-                      album={album}
-                      expanded={expanded[`album:${album.id}`]}
-                      onPress={() => router.push(`/album/${album.id}`)}
-                      onToggle={() => toggle(`album:${album.id}`)}
-                      colors={colors}
-                      styles={styles}
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ))}
-          {unassignedAlbums.length > 0 ? (
-            <View style={styles.unassignedBranch}>
-              <Text style={styles.groupLabel}>آلبوم‌های بدون هنرمند</Text>
-              {unassignedAlbums.map((album) => (
-                <AlbumBranch
-                  key={album.id}
-                  album={album}
-                  expanded={expanded[`album:${album.id}`]}
-                  onPress={() => router.push(`/album/${album.id}`)}
-                  onToggle={() => toggle(`album:${album.id}`)}
+        {loading ? (
+          <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
+        ) : error ? (
+          <View style={styles.errorBox}>
+            <Feather name="alert-circle" size={17} color={colors.destructive} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : artists.length === 0 && unassignedAlbums.length === 0 && unassignedTracks.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Feather name="git-branch" size={26} color={colors.mutedForeground} />
+            <Text style={styles.emptyTitle}>نقشه هنوز خالی است</Text>
+            <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های آزمایشی را تزریق کن.</Text>
+          </View>
+        ) : (
+          <View style={styles.tree}>
+            {artists.map((artist) => (
+              <View key={artist.id} style={styles.artistBranch}>
+                <NodeHeader
+                  icon="mic"
+                  label={artist.name}
+                  caption={artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
                   colors={colors}
                   styles={styles}
+                  onPress={() => router.push(`/artist/${artist.id}`)}
+                  onToggle={artist.albums.length ? () => toggle(`artist:${artist.id}`) : undefined}
+                  expanded={expanded[`artist:${artist.id}`]}
                 />
-              ))}
-            </View>
-          ) : null}
-          {unassignedTracks.length > 0 ? (
-            <View style={styles.unassignedBranch}>
-              <Text style={styles.groupLabel}>قطعه‌های بدون آلبوم</Text>
-              {unassignedTracks.map((track) => (
-                <Pressable
-                  key={track.id}
-                  onPress={() => router.push(`/track/${track.id}`)}
-                  style={({ pressed }) => [styles.trackNode, pressed && styles.pressed]}
-                >
-                  <Feather name="music" size={17} color={colors.primary} />
-                  <Text style={styles.nodeTitle}>{track.title}</Text>
-                  <Feather name="chevron-left" size={17} color={colors.mutedForeground} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      )}
-    </ScrollView>
+                {expanded[`artist:${artist.id}`] ? (
+                  <View style={styles.children}>
+                    {artist.albums.map((album) => (
+                      <AlbumBranch
+                        key={album.id}
+                        album={album}
+                        expanded={expanded[`album:${album.id}`]}
+                        onPress={() => router.push(`/album/${album.id}`)}
+                        onToggle={() => toggle(`album:${album.id}`)}
+                        colors={colors}
+                        styles={styles}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ))}
+            {unassignedAlbums.length > 0 ? (
+              <View style={styles.unassignedBranch}>
+                <Text style={styles.groupLabel}>آلبوم‌های بدون هنرمند</Text>
+                {unassignedAlbums.map((album) => (
+                  <AlbumBranch
+                    key={album.id}
+                    album={album}
+                    expanded={expanded[`album:${album.id}`]}
+                    onPress={() => router.push(`/album/${album.id}`)}
+                    onToggle={() => toggle(`album:${album.id}`)}
+                    colors={colors}
+                    styles={styles}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {unassignedTracks.length > 0 ? (
+              <View style={styles.unassignedBranch}>
+                <Text style={styles.groupLabel}>قطعه‌های بدون آلبوم</Text>
+                {unassignedTracks.map((track) => (
+                  <Pressable
+                    key={track.id}
+                    onPress={() => router.push(`/track/${track.id}`)}
+                    style={({ pressed }) => [styles.trackNode, pressed && styles.pressed]}
+                  >
+                    <Feather name="music" size={17} color={colors.primary} />
+                    <Text style={styles.nodeTitle} numberOfLines={2}>{track.title}</Text>
+                    <Feather name="chevron-left" size={17} color={colors.mutedForeground} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
+}
+
+function mapGraphTrack(row: MusicGraphRow): TrackRecord {
+  return {
+    id: row.trackId,
+    title: row.trackTitle,
+    duration: row.trackDuration,
+    artistId: row.trackArtistId,
+    albumId: row.trackAlbumId,
+    audioUri: row.trackAudioUri,
+    coverImage: row.trackCoverImage,
+  };
 }
 
 function NodeHeader({
@@ -246,7 +266,7 @@ function NodeHeader({
       >
         <View style={styles.nodeIcon}><Feather name={icon} size={18} color={colors.primary} /></View>
         <View style={styles.nodeCopy}>
-          <Text style={styles.nodeTitle}>{label}</Text>
+          <Text style={styles.nodeTitle} numberOfLines={2}>{label}</Text>
           <Text style={styles.nodeCaption}>{caption}</Text>
         </View>
         <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
@@ -291,7 +311,7 @@ function AlbumBranch({
               style={({ pressed }) => [styles.trackNode, pressed && styles.pressed]}
             >
               <Feather name="music" size={16} color={colors.accentForeground} />
-              <Text style={styles.nodeTitle}>{track.title}</Text>
+              <Text style={styles.nodeTitle} numberOfLines={2}>{track.title}</Text>
               <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
             </Pressable>
           ))}
@@ -304,7 +324,7 @@ function AlbumBranch({
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background },
-    content: { paddingHorizontal: 20 },
+    content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 104 },
     header: { flexDirection: 'row-reverse', alignItems: 'center', gap: 13, marginBottom: 16 },
     headerIcon: { width: 48, height: 48, borderRadius: 17, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
     headerCopy: { flex: 1 },
@@ -325,8 +345,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     toggle: { width: 28, height: 40, alignItems: 'center', justifyContent: 'center' },
     nodeButton: { flex: 1, minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderRadius: 15, backgroundColor: colors.secondary },
     nodeIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-    nodeCopy: { flex: 1 },
-    nodeTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    nodeCopy: { flex: 1, minWidth: 0 },
+    nodeTitle: { flex: 1, flexShrink: 1, color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     nodeCaption: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
     trackChildren: { marginRight: 37, borderRightWidth: 1, borderRightColor: colors.border, paddingRight: 10, gap: 6 },
     trackNode: { minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderRadius: 13, backgroundColor: colors.muted },

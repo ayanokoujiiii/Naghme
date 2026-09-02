@@ -1,0 +1,27 @@
+MASTER PROMPT: NAGHME - PHASE 8.7 (PRO REVISION: DEEP RELATIONAL CONSISTENCY, ADVANCED UI & RESPONSIVENESS)
+
+You are an Expert React Native & Expo Software Architect. Phase 8.5 introduced great features, but the user identified critical relational data desyncs, a clunky UI in the Settings, and potential screen responsiveness issues.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Do NOT break existing SQLite data. Use robust queries.
+
+FIXES & OBJECTIVES TO IMPLEMENT:
+
+1. Deep Relational Consistency (Graph, Artists & Albums):
+- The `Track` model now has an `artistId`, but the Music Graph and Detail screens aren't fully syncing.
+- Update the DAL (`src/db/queries.ts`): Rewrite the Graph generation query using explicit `LEFT JOIN`s between `Artists`, `Albums`, and `Tracks`. Ensure that a track linked to both an Artist and an Album appears correctly under that Artist's node in the Graph, NOT as an "Orphan" or "Artist-less" item.
+- Update `app/artist/[id].tsx` and `app/album/[id].tsx`: Ensure they dynamically fetch and display all tracks associated with them based on the updated `artistId` and `albumId`.
+
+2. Collapsible Model Selector (`app/settings.tsx`):
+- Replace the current raw list of Gemini models with a professional UI.
+- Use a React Native `Modal` (Bottom Sheet style) or a clean collapsible state container.
+- Flow: User taps "استعلام مدل‌ها" -> Models are fetched and displayed in a constrained, scrollable overlay/dropdown -> User taps a model -> It saves to AsyncStorage, the overlay/dropdown IMMEDIATELY CLOSES, and the selected model is displayed on the main Settings screen.
+
+3. Bulletproof Responsive UI (Preventing Overlaps & Clipping):
+- Audit and harden the layout architecture across all screens (especially Home, Track Detail, and Graph).
+- Implement `SafeAreaView` and wrap scrollable content in `ScrollView` with `contentContainerStyle`.
+- Use `KeyboardAvoidingView` (behavior="padding" or "height") for all forms (`add-track`, `settings`) to prevent the keyboard from overlapping inputs on smaller devices.
+- Use `flexShrink: 1` and `numberOfLines` for long titles (Track/Album names) to prevent text overflow from breaking flexbox layouts.
+
+ACTION: Execute these fixes sequentially. 1. Fix SQL JOINs for the Music Graph and Detail screens. 2. Build the collapsible Gemini model dropdown. 3. Harden the UI with SafeAreaView/KeyboardAvoidingView and text truncation. Test thoroughly and wait for my instruction when complete.

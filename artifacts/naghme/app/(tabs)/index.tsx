@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
   getFavoriteTracks,
@@ -27,7 +27,6 @@ const emptyStats: LibraryStats = { tracks: 0, albums: 0, artists: 0 };
 
 export default function HomeScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [stats, setStats] = useState<LibraryStats>(emptyStats);
   const [recentTracks, setRecentTracks] = useState<HomeTrackRecord[]>([]);
@@ -81,14 +80,11 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 104 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.topRow}>
         <View>
           <Text style={styles.eyebrow}>آرشیو شخصی من</Text>
@@ -212,7 +208,8 @@ export default function HomeScreen() {
           )}
         </Pressable>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -283,8 +280,8 @@ function FavoriteRow({
     >
       <Feather name="heart" size={17} color={colors.destructive} />
       <View style={styles.favoriteCopy}>
-        <Text style={styles.favoriteTitle}>{track.title}</Text>
-        <Text style={styles.favoriteSubtitle}>{track.albumTitle ?? 'بدون آلبوم'}</Text>
+         <Text style={styles.favoriteTitle} numberOfLines={2}>{track.title}</Text>
+         <Text style={styles.favoriteSubtitle} numberOfLines={1}>{track.albumTitle ?? 'بدون آلبوم'}</Text>
       </View>
       <Feather name="chevron-left" size={19} color={colors.mutedForeground} />
     </Pressable>
@@ -311,7 +308,7 @@ function EmptySection({
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background },
-    content: { paddingHorizontal: 20 },
+     content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 104 },
     topRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 26 },
     headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 5 },
@@ -344,7 +341,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     trackAlbum: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 4 },
     favoriteList: { gap: 9 },
     favoriteRow: { minHeight: 63, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 17 },
-    favoriteCopy: { flex: 1 },
+     favoriteCopy: { flex: 1, minWidth: 0 },
     favoriteTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     favoriteSubtitle: { color: colors.mutedForeground, fontSize: 12, textAlign: 'right', marginTop: 3 },
     emptySection: { minHeight: 70, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.muted, paddingHorizontal: 16 },
