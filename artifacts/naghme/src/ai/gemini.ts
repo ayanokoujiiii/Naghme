@@ -1,12 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GEMINI_API_KEY_STORAGE_KEY = 'naghme.gemini.apiKey';
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL_STORAGE_KEY = 'naghme.gemini.model';
+export const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
 
 export interface GeminiRecommendation {
   title: string;
   recommendation: string;
   culturalNote: string;
+}
+
+export interface GeminiModelOption {
+  name: string;
+  displayName: string;
+  description?: string;
 }
 
 export async function getGeminiApiKey(): Promise<string> {
@@ -22,16 +29,82 @@ export async function saveGeminiApiKey(value: string): Promise<void> {
   }
 }
 
+export async function getGeminiModel(): Promise<string> {
+  return (await AsyncStorage.getItem(GEMINI_MODEL_STORAGE_KEY))?.trim() || DEFAULT_GEMINI_MODEL;
+}
+
+export async function saveGeminiModel(value: string): Promise<void> {
+  const model = normalizeModelName(value);
+  if (model) {
+    await AsyncStorage.setItem(GEMINI_MODEL_STORAGE_KEY, model);
+  } else {
+    await AsyncStorage.removeItem(GEMINI_MODEL_STORAGE_KEY);
+  }
+}
+
+export async function fetchAvailableGeminiModels(
+  apiKey: string,
+): Promise<GeminiModelOption[]> {
+  const cleanKey = apiKey.trim();
+  if (!cleanKey) throw new Error('برای استعلام مدل‌ها ابتدا کلید Gemini را وارد کن.');
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`,
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw createGeminiApiError(response.status, body, 'استعلام مدل‌های Gemini انجام نشد.');
+  }
+
+  let payload: { models?: Array<{
+    name?: string;
+    displayName?: string;
+    description?: string;
+    supportedGenerationMethods?: string[];
+  }> };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch (parseError: unknown) {
+    const message = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    console.error('[Gemini model fetch parse error]', message, body);
+    throw new Error(`پاسخ استعلام مدل‌ها قابل خواندن نیست: ${message}`);
+  }
+
+  const models = (payload.models ?? [])
+    .map((model) => {
+      const name = normalizeModelName(model.name ?? '');
+      return {
+        name,
+        displayName: model.displayName?.trim() || name,
+        description: model.description?.trim(),
+        supportedGenerationMethods: model.supportedGenerationMethods ?? [],
+      };
+    })
+    .filter(
+      (model) =>
+        model.name.startsWith('gemini-') &&
+        model.supportedGenerationMethods.includes('generateContent'),
+    )
+    .map(({ name, displayName, description }) => ({ name, displayName, description }));
+
+  if (!models.length) {
+    throw new Error('هیچ مدل متنیِ قابل استفاده‌ای برای این کلید پیدا نشد.');
+  }
+  return models;
+}
+
 export async function askGeminiForRecommendation(
   apiKey: string,
   archiveSummary: string,
   currentMood: string,
+  selectedModel = DEFAULT_GEMINI_MODEL,
 ): Promise<GeminiRecommendation> {
   const cleanKey = apiKey.trim();
   if (!cleanKey) throw new Error('کلید Gemini تنظیم نشده است.');
+  const model = normalizeModelName(selectedModel) || DEFAULT_GEMINI_MODEL;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(cleanKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cleanKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,12 +135,20 @@ ${archiveSummary}`,
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body.includes('API key') ? 'کلید Gemini معتبر نیست.' : 'دریافت پیشنهاد از Gemini انجام نشد.');
+    throw createGeminiApiError(response.status, body, 'دریافت پیشنهاد از Gemini انجام نشد.');
   }
 
-  const payload = (await response.json()) as {
+  const body = await response.text();
+  let payload: {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch (parseError: unknown) {
+    const message = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    console.error('[Gemini recommendation parse error]', message, body);
+    throw new Error(`پاسخ Gemini قابل خواندن نیست: ${message}`);
+  }
   const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
   if (!text) throw new Error('Gemini پاسخ قابل استفاده‌ای برنگرداند.');
 
@@ -76,6 +157,23 @@ ${archiveSummary}`,
     throw new Error('پاسخ Gemini ساختار مورد انتظار را ندارد.');
   }
   return parsed;
+}
+
+function normalizeModelName(value: string): string {
+  return value.trim().replace(/^models\//, '');
+}
+
+function createGeminiApiError(status: number, body: string, fallback: string): Error {
+  let detail = body.trim();
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; status?: string } };
+    detail = parsed.error?.message?.trim() || parsed.error?.status?.trim() || detail;
+  } catch {
+    // Keep the raw response for exact debugging when it is not JSON.
+  }
+  const message = detail ? `${fallback} (${status}): ${detail}` : `${fallback} (${status})`;
+  console.error('[Gemini API error]', message, { status, body });
+  return new Error(message);
 }
 
 function parseRecommendation(text: string): GeminiRecommendation {

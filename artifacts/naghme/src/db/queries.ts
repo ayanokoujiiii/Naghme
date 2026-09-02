@@ -87,6 +87,7 @@ export type UpdateAlbum = Partial<NewAlbum>;
 export type UpdateTrack = Partial<NewTrack>;
 
 export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
+export type UpdateJournalEntry = Pick<JournalEntryRecord, 'note' | 'mood'>;
 
 export type PersonalRelationshipInput = Omit<
   PersonalRelationshipRecord,
@@ -524,6 +525,32 @@ export async function getJournalEntries(trackId: string): Promise<JournalEntryRe
 export async function deleteJournalEntry(id: string): Promise<void> {
   const database = await requireDatabase();
   await database.runAsync('DELETE FROM JournalEntries WHERE id = ?', [id]);
+}
+
+export async function updateJournalEntry(
+  id: string,
+  input: UpdateJournalEntry,
+): Promise<JournalEntryRecord> {
+  const note = input.note.trim();
+  const mood = input.mood.trim();
+  if (!mood) throw new Error('انتخاب حال الزامی است.');
+  if (!note) throw new Error('یادداشت حال خود را بنویس.');
+
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE JournalEntries
+     SET note = ?, mood = ?
+     WHERE id = ?`,
+    [note, mood, id],
+  );
+  const updated = await database.getFirstAsync<JournalEntryRecord>(
+    `SELECT id, trackId, note, mood, createdAt
+     FROM JournalEntries
+     WHERE id = ?`,
+    [id],
+  );
+  if (!updated) throw new Error('یادداشت ویرایش نشد.');
+  return updated;
 }
 
 export async function logListen(trackId: string): Promise<ListeningHistoryRecord> {

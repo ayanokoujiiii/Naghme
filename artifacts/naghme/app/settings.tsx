@@ -17,7 +17,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { getGeminiApiKey, saveGeminiApiKey } from '@/src/ai/gemini';
+import {
+  fetchAvailableGeminiModels,
+  getGeminiApiKey,
+  getGeminiModel,
+  GeminiModelOption,
+  saveGeminiApiKey,
+  saveGeminiModel,
+} from '@/src/ai/gemini';
 import { createArchiveBackup, restoreArchiveBackup } from '@/src/db/portability';
 
 export default function SettingsScreen() {
@@ -30,10 +37,17 @@ export default function SettingsScreen() {
   const [loadingGeminiKey, setLoadingGeminiKey] = useState<boolean>(true);
   const [savingGeminiKey, setSavingGeminiKey] = useState<boolean>(false);
   const [geminiKeyMessage, setGeminiKeyMessage] = useState<string>('');
+  const [availableModels, setAvailableModels] = useState<GeminiModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [fetchingModels, setFetchingModels] = useState<boolean>(false);
+  const [modelMessage, setModelMessage] = useState<string>('');
 
   useEffect(() => {
-    void getGeminiApiKey()
-      .then(setGeminiApiKey)
+    void Promise.all([getGeminiApiKey(), getGeminiModel()])
+      .then(([apiKey, model]) => {
+        setGeminiApiKey(apiKey);
+        setSelectedModel(model);
+      })
       .catch(() => setGeminiKeyMessage('خواندن تنظیمات Gemini انجام نشد.'))
       .finally(() => setLoadingGeminiKey(false));
   }, []);
@@ -53,6 +67,47 @@ export default function SettingsScreen() {
       );
     } finally {
       setSavingGeminiKey(false);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (fetchingModels || savingGeminiKey) return;
+    const key = geminiApiKey.trim();
+    if (!key) {
+      setModelMessage('برای استعلام مدل‌ها ابتدا کلید Gemini را وارد و ذخیره کن.');
+      return;
+    }
+
+    setFetchingModels(true);
+    setModelMessage('');
+    try {
+      const models = await fetchAvailableGeminiModels(key);
+      setAvailableModels(models);
+      const currentModel = selectedModel && models.some((model) => model.name === selectedModel)
+        ? selectedModel
+        : models[0].name;
+      setSelectedModel(currentModel);
+      await saveGeminiModel(currentModel);
+      setModelMessage(`${models.length} مدل متنی پیدا شد. مدل موردنظر را انتخاب کن.`);
+    } catch (fetchError: unknown) {
+      const message =
+        fetchError instanceof Error ? fetchError.message : 'استعلام مدل‌ها انجام نشد.';
+      console.error('[Gemini settings model fetch]', fetchError);
+      setModelMessage(message);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleSelectModel = async (model: GeminiModelOption) => {
+    setSelectedModel(model.name);
+    setModelMessage('');
+    try {
+      await saveGeminiModel(model.name);
+      setModelMessage(`مدل «${model.displayName}» برای پیشنهادها انتخاب شد.`);
+    } catch (saveError: unknown) {
+      const message = saveError instanceof Error ? saveError.message : 'ذخیره‌ی مدل انجام نشد.';
+      setModelMessage(message);
     }
   };
 
@@ -183,7 +238,59 @@ export default function SettingsScreen() {
           style={styles.aiInput}
           textAlign="left"
         />
+        <Pressable
+          testID="fetch-gemini-models"
+          accessibilityRole="button"
+          disabled={loadingGeminiKey || fetchingModels || savingGeminiKey}
+          onPress={() => void handleFetchModels()}
+          style={({ pressed }) => [
+            styles.modelFetchButton,
+            (pressed || fetchingModels) && styles.pressed,
+          ]}
+        >
+          {fetchingModels ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Feather name="refresh-cw" size={16} color={colors.primary} />
+          )}
+          <Text style={styles.modelFetchButtonText}>استعلام مدل‌های در دسترس</Text>
+        </Pressable>
         {geminiKeyMessage ? <Text style={styles.aiMessage}>{geminiKeyMessage}</Text> : null}
+        {availableModels.length ? (
+          <View style={styles.modelSelector}>
+            <Text style={styles.modelSelectorLabel}>مدل فعال برای پیشنهاد هوشمند</Text>
+            {availableModels.map((model) => {
+              const selected = selectedModel === model.name;
+              return (
+                <Pressable
+                  key={model.name}
+                  testID={`gemini-model-${model.name}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => void handleSelectModel(model)}
+                  style={({ pressed }) => [
+                    styles.modelOption,
+                    selected && styles.modelOptionSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.modelOptionCopy}>
+                    <Text style={[styles.modelOptionText, selected && styles.modelOptionTextSelected]}>
+                      {model.displayName}
+                    </Text>
+                    <Text style={styles.modelName}>{model.name}</Text>
+                  </View>
+                  <Feather
+                    name={selected ? 'check-circle' : 'circle'}
+                    size={18}
+                    color={selected ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        {modelMessage ? <Text style={styles.aiMessage}>{modelMessage}</Text> : null}
         <Pressable
           testID="save-gemini-api-key"
           accessibilityRole="button"
@@ -288,6 +395,16 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     aiMessage: { color: colors.primary, fontSize: 12, lineHeight: 20, textAlign: 'right', marginTop: 9 },
     aiButton: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, marginTop: 12 },
     aiButtonText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
+    modelFetchButton: { minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.secondary, borderRadius: 13, borderWidth: 1, borderColor: colors.primary, marginTop: 10 },
+    modelFetchButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    modelSelector: { marginTop: 15, gap: 8 },
+    modelSelectorLabel: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    modelOption: { minHeight: 52, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary },
+    modelOptionSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    modelOptionCopy: { flex: 1, alignItems: 'flex-end' },
+    modelOptionText: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    modelOptionTextSelected: { color: colors.primaryForeground },
+    modelName: { color: colors.mutedForeground, fontSize: 10, marginTop: 3, textAlign: 'right' },
     aiHint: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 11 },
     sectionTitle: { color: colors.foreground, fontSize: 20, fontWeight: '700', textAlign: 'right', marginBottom: 13 },
     actionCard: { alignItems: 'center', padding: 16, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },

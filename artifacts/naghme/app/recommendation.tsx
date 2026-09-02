@@ -14,6 +14,7 @@ import { useColors } from '@/hooks/useColors';
 import {
   askGeminiForRecommendation,
   getGeminiApiKey,
+  getGeminiModel,
   GeminiRecommendation,
 } from '@/src/ai/gemini';
 import {
@@ -89,15 +90,20 @@ export default function RecommendationScreen() {
       const apiKey = await getGeminiApiKey();
       if (apiKey) {
         try {
+          const selectedModel = await getGeminiModel();
           const aiContent = await askGeminiForRecommendation(
             apiKey,
             createGeminiSummary(tracks),
             selectedMood,
+            selectedModel,
           );
           setResult({ track: local.track, content: aiContent, source: 'gemini' });
           return;
-        } catch {
-          setNotice('Gemini در دسترس نبود؛ پیشنهاد محلی نغمه را برایت آماده کردم.');
+        } catch (geminiError: unknown) {
+          const message =
+            geminiError instanceof Error ? geminiError.message : 'خطای ناشناخته در Gemini';
+          console.error('[Gemini recommendation fallback]', geminiError);
+          setNotice(`Gemini خطا داد: ${message} پیشنهاد محلی نغمه را برایت آماده کردم.`);
         }
       } else {
         setNotice('این پیشنهاد با توجه به تاریخچه‌ی شنیدن و حال‌های دفترچه ساخته شد.');

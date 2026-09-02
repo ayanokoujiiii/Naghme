@@ -36,6 +36,7 @@ import {
   logListen,
   PersonalRelationshipRecord,
   TrackRecord,
+  updateJournalEntry,
   upsertPersonalRelationship,
 } from '@/src/db/queries';
 
@@ -69,6 +70,7 @@ export default function TrackDetailScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
+  const [editingJournalEntryId, setEditingJournalEntryId] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState<string>('');
   const [journalNote, setJournalNote] = useState<string>('');
   const [savingJournal, setSavingJournal] = useState<boolean>(false);
@@ -155,8 +157,17 @@ export default function TrackDetailScreen() {
   };
 
   const openJournalModal = () => {
+    setEditingJournalEntryId(null);
     setSelectedMood('');
     setJournalNote('');
+    setJournalMessage('');
+    setJournalModalVisible(true);
+  };
+
+  const openEditJournalModal = (entry: JournalEntryRecord) => {
+    setEditingJournalEntryId(entry.id);
+    setSelectedMood(entry.mood);
+    setJournalNote(entry.note);
     setJournalMessage('');
     setJournalModalVisible(true);
   };
@@ -164,6 +175,7 @@ export default function TrackDetailScreen() {
   const closeJournalModal = () => {
     if (savingJournal) return;
     setJournalModalVisible(false);
+    setEditingJournalEntryId(null);
   };
 
   const submitJournalEntry = async () => {
@@ -180,13 +192,26 @@ export default function TrackDetailScreen() {
     setSavingJournal(true);
     setJournalMessage('');
     try {
-      const entry = await addJournalEntry({
-        trackId: track.id,
-        mood: selectedMood,
-        note: journalNote,
-      });
-      setJournalEntries((currentEntries) => [entry, ...currentEntries]);
+      if (editingJournalEntryId) {
+        const updatedEntry = await updateJournalEntry(editingJournalEntryId, {
+          mood: selectedMood,
+          note: journalNote,
+        });
+        setJournalEntries((currentEntries) =>
+          currentEntries.map((entry) =>
+            entry.id === updatedEntry.id ? updatedEntry : entry,
+          ),
+        );
+      } else {
+        const entry = await addJournalEntry({
+          trackId: track.id,
+          mood: selectedMood,
+          note: journalNote,
+        });
+        setJournalEntries((currentEntries) => [entry, ...currentEntries]);
+      }
       setJournalModalVisible(false);
+      setEditingJournalEntryId(null);
       setSelectedMood('');
       setJournalNote('');
     } catch (saveError: unknown) {
@@ -436,6 +461,7 @@ export default function TrackDetailScreen() {
                   colors={colors}
                   styles={styles}
                   onDelete={() => confirmDeleteJournal(entry)}
+                   onEdit={() => openEditJournalModal(entry)}
                 />
               ))}
             </View>
@@ -474,6 +500,7 @@ export default function TrackDetailScreen() {
 
       <JournalEntryModal
         visible={journalModalVisible}
+        editing={Boolean(editingJournalEntryId)}
         selectedMood={selectedMood}
         note={journalNote}
         message={journalMessage}
@@ -573,12 +600,14 @@ function JournalTimelineEntry({
   colors,
   styles,
   onDelete,
+  onEdit,
 }: {
   entry: JournalEntryRecord;
   isLast: boolean;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   return (
     <View style={styles.timelineEntry}>
@@ -593,6 +622,16 @@ function JournalTimelineEntry({
             <View style={styles.moodBadge}>
               <Text style={styles.moodBadgeText}>{entry.mood}</Text>
             </View>
+            <Pressable
+              testID={`edit-journal-${entry.id}`}
+              accessibilityRole="button"
+              accessibilityLabel="ویرایش این یادداشت"
+              onPress={onEdit}
+              hitSlop={8}
+              style={({ pressed }) => [styles.timelineEdit, pressed && styles.pressed]}
+            >
+              <Feather name="edit-2" size={14} color={colors.primary} />
+            </Pressable>
             <Pressable
               testID={`delete-journal-${entry.id}`}
               accessibilityRole="button"
@@ -613,6 +652,7 @@ function JournalTimelineEntry({
 
 function JournalEntryModal({
   visible,
+  editing,
   selectedMood,
   note,
   message,
@@ -625,6 +665,7 @@ function JournalEntryModal({
   onSubmit,
 }: {
   visible: boolean;
+  editing: boolean;
   selectedMood: string;
   note: string;
   message: string;
@@ -663,7 +704,9 @@ function JournalEntryModal({
               </Pressable>
               <View style={styles.modalTitleCopy}>
                 <Text style={styles.modalEyebrow}>دفترچه‌ی شخصی</Text>
-                <Text style={styles.modalTitle}>الان چه حالی داری؟</Text>
+                 <Text style={styles.modalTitle}>
+                   {editing ? 'ویرایش حال ثبت‌شده' : 'الان چه حالی داری؟'}
+                 </Text>
               </View>
               <View style={styles.modalIcon}>
                 <Feather name="feather" size={19} color={colors.primary} />
@@ -737,7 +780,9 @@ function JournalEntryModal({
               ) : (
                 <>
                   <Feather name="check" size={18} color={colors.primaryForeground} />
-                  <Text style={styles.modalSubmitText}>ثبت در دفترچه</Text>
+                   <Text style={styles.modalSubmitText}>
+                     {editing ? 'ذخیره‌ی ویرایش' : 'ثبت در دفترچه'}
+                   </Text>
                 </>
               )}
             </Pressable>
@@ -935,6 +980,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       textAlign: 'right',
     },
     timelineDelete: {
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.secondary,
+    },
+    timelineEdit: {
       width: 28,
       height: 28,
       borderRadius: 9,
