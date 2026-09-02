@@ -94,8 +94,19 @@ export default function HomeScreen() {
           <Text style={styles.eyebrow}>آرشیو شخصی من</Text>
           <Text style={styles.title}>نغمه</Text>
         </View>
-        <View style={styles.profileMark}>
-          <Feather name="headphones" size={20} color={colors.primary} />
+        <View style={styles.headerActions}>
+          <Pressable
+            testID="home-settings"
+            accessibilityRole="button"
+            accessibilityLabel="تنظیمات"
+            onPress={() => router.push('/settings')}
+            style={({ pressed }) => [styles.profileMark, pressed && styles.pressed]}
+          >
+            <Feather name="settings" size={19} color={colors.primary} />
+          </Pressable>
+          <View style={styles.profileMark}>
+            <Feather name="headphones" size={20} color={colors.primary} />
+          </View>
         </View>
       </View>
 
@@ -292,6 +303,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     screen: { flex: 1, backgroundColor: colors.background },
     content: { paddingHorizontal: 20 },
     topRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 26 },
+    headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 5 },
     title: { color: colors.foreground, fontSize: 34, lineHeight: 42, fontWeight: '700', textAlign: 'right' },
     profileMark: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card },

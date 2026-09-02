@@ -44,6 +44,15 @@ export interface HomeTrackRecord extends TrackRecord {
   albumTitle: string | null;
 }
 
+export type SearchResultType = 'track' | 'album' | 'artist';
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  type: SearchResultType;
+}
+
 export type NewArtist = Omit<ArtistRecord, 'id'>;
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
 export type NewTrack = Omit<TrackRecord, 'id'>;
@@ -274,6 +283,35 @@ export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
      ORDER BY Tracks.rowid DESC
      LIMIT ?`,
     [safeLimit],
+  );
+}
+
+export async function searchLibrary(query: string, limit = 60): Promise<SearchResult[]> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
+
+  const database = await requireDatabase();
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+  const pattern = `%${normalizedQuery}%`;
+  return database.getAllAsync<SearchResult>(
+    `SELECT id, title, subtitle, type
+     FROM (
+       SELECT Tracks.id, Tracks.title, Albums.title AS subtitle, 'track' AS type
+       FROM Tracks
+       LEFT JOIN Albums ON Albums.id = Tracks.albumId
+       WHERE Tracks.title LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Albums.id, Albums.title, CAST(Albums.releaseYear AS TEXT), 'album' AS type
+       FROM Albums
+       WHERE Albums.title LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Artists.id, Artists.name, Artists.type, 'artist' AS type
+       FROM Artists
+       WHERE Artists.name LIKE ? COLLATE NOCASE
+     )
+     ORDER BY title COLLATE NOCASE ASC
+     LIMIT ?`,
+    [pattern, pattern, pattern, safeLimit],
   );
 }
 

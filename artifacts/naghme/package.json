@@ -56,7 +56,9 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "expo-file-system": "~19.0.24",
     "expo-localization": "^17.0.9",
+    "expo-sharing": "~14.0.8",
     "expo-sqlite": "^16.0.10",
     "zustand": "^5.0.15"
   }
