@@ -7,6 +7,7 @@ import { useColors } from '@/hooks/useColors';
 import {
   AudioPlaybackSnapshot,
   getAudioSnapshot,
+  stopAndUnloadAudio,
   subscribeToAudio,
   toggleAudioPlayback,
 } from '@/src/audio/audioManager';
@@ -31,29 +32,44 @@ export function MiniPlayer() {
     if (!audio.isLoaded || audio.isBuffering) return;
     await toggleAudioPlayback().catch(() => undefined);
   };
+  const dismiss = async () => {
+    await stopAndUnloadAudio().catch(() => undefined);
+  };
 
   return (
     <View style={[styles.positioner, { bottom, pointerEvents: 'box-none' }]}>
-      <Pressable
-        testID="mini-player"
-        accessibilityRole="button"
-        accessibilityLabel="بازکردن پخش‌کننده"
-        onPress={() => router.push('/player')}
-        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      >
-        {audio.track.coverImage ? (
-          <Image source={{ uri: audio.track.coverImage }} style={styles.cover} />
-        ) : (
-          <View style={styles.coverFallback}>
-            <Feather name="music" size={18} color={colors.primary} />
+      <View style={styles.card}>
+        <Pressable
+          testID="mini-player-dismiss"
+          accessibilityRole="button"
+          accessibilityLabel="بستن و توقف پخش"
+          onPress={() => void dismiss()}
+          hitSlop={8}
+          style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}
+        >
+          <Feather name="x" size={16} color={colors.mutedForeground} />
+        </Pressable>
+        <Pressable
+          testID="mini-player"
+          accessibilityRole="button"
+          accessibilityLabel="بازکردن پخش‌کننده"
+          onPress={() => router.push('/player')}
+          style={({ pressed }) => [styles.cardTapArea, pressed && styles.pressed]}
+        >
+          {audio.track.coverImage ? (
+            <Image source={{ uri: audio.track.coverImage }} style={styles.cover} />
+          ) : (
+            <View style={styles.coverFallback}>
+              <Feather name="music" size={18} color={colors.primary} />
+            </View>
+          )}
+          <View style={styles.copy}>
+            <Text style={styles.title} numberOfLines={1}>{audio.track.title}</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {audio.error || audio.track.versionName || audio.track.artistName || 'در حال پخش'}
+            </Text>
           </View>
-        )}
-        <View style={styles.copy}>
-          <Text style={styles.title} numberOfLines={1}>{audio.track.title}</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {audio.error || audio.track.versionName || audio.track.artistName || 'در حال پخش'}
-          </Text>
-        </View>
+        </Pressable>
         <Pressable
           testID="mini-player-toggle"
           accessibilityRole="button"
@@ -72,7 +88,7 @@ export function MiniPlayer() {
             />
           )}
         </Pressable>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -88,10 +104,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     card: {
       minHeight: 64,
-      flexDirection: 'row-reverse',
+      flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
       paddingHorizontal: 9,
+      paddingRight: 52,
       paddingVertical: 8,
       borderRadius: 18,
       borderWidth: 1,
@@ -101,6 +118,18 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       shadowOpacity: 0.32,
       shadowRadius: 12,
       shadowOffset: { width: 0, height: 4 },
+    },
+    cardTapArea: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+    dismiss: {
+      position: 'absolute',
+      right: 9,
+      top: 16,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.secondary,
     },
     cover: { width: 46, height: 46, borderRadius: 13, backgroundColor: colors.secondary },
     coverFallback: {

@@ -15,6 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  MINI_PLAYER_CONTENT_PADDING,
+  useMiniPlayerActive,
+} from '@/hooks/useMiniPlayerActive';
+import {
   getFavoriteTracks,
   getLibraryStats,
   getRecentlyAddedTracks,
@@ -28,6 +32,7 @@ const emptyStats: LibraryStats = { tracks: 0, albums: 0, artists: 0 };
 export default function HomeScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const miniPlayerActive = useMiniPlayerActive();
   const [stats, setStats] = useState<LibraryStats>(emptyStats);
   const [recentTracks, setRecentTracks] = useState<HomeTrackRecord[]>([]);
   const [favoriteTracks, setFavoriteTracks] = useState<HomeTrackRecord[]>([]);
@@ -82,7 +87,10 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          miniPlayerActive && { paddingBottom: 104 + MINI_PLAYER_CONTENT_PADDING },
+        ]}
         showsVerticalScrollIndicator={false}
       >
       <View style={styles.topRow}>

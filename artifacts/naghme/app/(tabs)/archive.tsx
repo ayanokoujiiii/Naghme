@@ -14,6 +14,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  MINI_PLAYER_CONTENT_PADDING,
+  useMiniPlayerActive,
+} from '@/hooks/useMiniPlayerActive';
+import {
   AlbumRecord,
   ArtistRecord,
   getAlbums,
@@ -35,6 +39,7 @@ export default function ArchiveScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const miniPlayerActive = useMiniPlayerActive();
   const [activeView, setActiveView] = useState<ArchiveView>('tracks');
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
@@ -228,6 +233,10 @@ export default function ArchiveScreen() {
           }}
           contentContainerStyle={[
             styles.listContent,
+            {
+              paddingBottom:
+                24 + (miniPlayerActive ? MINI_PLAYER_CONTENT_PADDING : 0),
+            },
             activeData.length === 0 && styles.emptyListContent,
           ]}
           refreshControl={

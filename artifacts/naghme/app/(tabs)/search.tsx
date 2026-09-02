@@ -14,6 +14,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  MINI_PLAYER_CONTENT_PADDING,
+  useMiniPlayerActive,
+} from '@/hooks/useMiniPlayerActive';
+import {
   SearchFilter,
   SearchResult,
   SearchResultType,
@@ -51,6 +55,7 @@ export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const miniPlayerActive = useMiniPlayerActive();
   const [query, setQuery] = useState<string>('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [filter, setFilter] = useState<SearchFilter>('all');
@@ -203,7 +208,15 @@ export default function SearchScreen() {
           data={displayResults}
           keyExtractor={(result) => `${result.type}-${result.id}-${result.matchSource}`}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.results, { paddingBottom: insets.bottom + 120 }]}
+           contentContainerStyle={[
+             styles.results,
+             {
+               paddingBottom:
+                 insets.bottom +
+                 120 +
+                 (miniPlayerActive ? MINI_PLAYER_CONTENT_PADDING : 0),
+             },
+           ]}
           renderItem={({ item: result, index }) => {
             const previousResult = displayResults[index - 1];
             const showGroupHeader = !previousResult || previousResult.type !== result.type;

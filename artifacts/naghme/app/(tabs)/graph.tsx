@@ -12,6 +12,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  MINI_PLAYER_CONTENT_PADDING,
+  useMiniPlayerActive,
+} from '@/hooks/useMiniPlayerActive';
+import {
   AlbumRecord,
   ArtistRecord,
   getAlbums,
@@ -29,6 +33,7 @@ type GraphArtist = ArtistRecord & { albums: GraphAlbum[] };
 export default function GraphScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const miniPlayerActive = useMiniPlayerActive();
   const [artists, setArtists] = useState<GraphArtist[]>([]);
   const [unassignedAlbums, setUnassignedAlbums] = useState<GraphAlbum[]>([]);
   const [unassignedTracks, setUnassignedTracks] = useState<TrackRecord[]>([]);
@@ -116,7 +121,10 @@ export default function GraphScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          miniPlayerActive && { paddingBottom: 104 + MINI_PLAYER_CONTENT_PADDING },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>

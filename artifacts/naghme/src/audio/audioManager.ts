@@ -231,6 +231,37 @@ export async function toggleAudioPlayback(): Promise<boolean> {
   return true;
 }
 
+export async function stopAndUnloadAudio(): Promise<void> {
+  if (loadRequest) {
+    await loadRequest.catch(() => undefined);
+  }
+
+  const activeSound = sound;
+  sound = null;
+  loadedUri = null;
+  loadedTrackId = null;
+
+  if (activeSound) {
+    await activeSound.stopAsync().catch(() => undefined);
+    await activeSound.unloadAsync().catch(() => undefined);
+  }
+
+  updateSnapshot({
+    trackId: null,
+    uri: null,
+    track: null,
+    isLoaded: false,
+    isLoading: false,
+    isPlaying: false,
+    isBuffering: false,
+    error: null,
+    positionMillis: 0,
+    durationMillis: 0,
+    repeatMode: 'off',
+    isLooping: false,
+  });
+}
+
 export async function rewindAudio(milliseconds = 10000): Promise<number> {
   if (loadRequest) {
     await loadRequest;

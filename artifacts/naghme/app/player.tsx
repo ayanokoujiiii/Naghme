@@ -281,7 +281,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     progressValue: { height: '100%', borderRadius: 3, backgroundColor: colors.primary },
     timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
     time: { color: colors.mutedForeground, fontSize: 11 },
-    controls: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', justifyContent: 'center', marginTop: 18 },
+    controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18 },
     secondaryControl: {
       minWidth: 68,
       minHeight: 56,

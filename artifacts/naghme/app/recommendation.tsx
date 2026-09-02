@@ -12,6 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  MINI_PLAYER_CONTENT_PADDING,
+  useMiniPlayerActive,
+} from '@/hooks/useMiniPlayerActive';
+import {
   askGeminiForRecommendation,
   getGeminiApiKey,
   getGeminiModel,
@@ -44,6 +48,7 @@ export default function RecommendationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const miniPlayerActive = useMiniPlayerActive();
   const [selectedMood, setSelectedMood] = useState<string>('آرام');
   const [tracks, setTracks] = useState<RecommendationTrack[]>([]);
   const [result, setResult] = useState<RecommendationResult | null>(null);
@@ -133,7 +138,13 @@ export default function RecommendationScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 42 },
+        {
+          paddingTop: insets.top + 20,
+          paddingBottom:
+            insets.bottom +
+            42 +
+            (miniPlayerActive ? MINI_PLAYER_CONTENT_PADDING : 0),
+        },
       ]}
       showsVerticalScrollIndicator={false}
     >
