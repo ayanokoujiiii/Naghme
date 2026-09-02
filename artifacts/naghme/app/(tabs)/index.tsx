@@ -123,14 +123,24 @@ export default function HomeScreen() {
         <Text style={styles.heroCopy}>
           قطعه‌ها، هنرمندها و یادداشت‌های شنیداری‌ات؛ همه در یک جای آرام و شخصی.
         </Text>
-        <Pressable
-          testID="home-open-archive"
-          onPress={() => router.push('/archive')}
-          style={({ pressed }) => [styles.heroButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.heroButtonText}>رفتن به آرشیو</Text>
-          <Feather name="arrow-left" size={18} color={colors.primaryForeground} />
-        </Pressable>
+        <View style={styles.heroActions}>
+          <Pressable
+            testID="home-open-recommendation"
+            onPress={() => router.push('/recommendation')}
+            style={({ pressed }) => [styles.heroButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.heroButtonText}>قطعه‌ای برای امشب</Text>
+            <Feather name="moon" size={17} color={colors.primaryForeground} />
+          </Pressable>
+          <Pressable
+            testID="home-open-archive"
+            onPress={() => router.push('/archive')}
+            style={({ pressed }) => [styles.heroSecondaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.heroSecondaryButtonText}>رفتن به آرشیو</Text>
+            <Feather name="arrow-left" size={17} color={colors.primary} />
+          </Pressable>
+        </View>
       </LinearGradient>
 
       {error ? (
@@ -313,8 +323,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     heroKicker: { color: colors.accentForeground, fontSize: 13, fontWeight: '600', textAlign: 'right', marginBottom: 9 },
     heroTitle: { color: colors.foreground, fontSize: 28, lineHeight: 38, fontWeight: '700', textAlign: 'right', marginBottom: 10 },
     heroCopy: { color: colors.mutedForeground, fontSize: 14, lineHeight: 24, textAlign: 'right', marginBottom: 20 },
+    heroActions: { alignItems: 'flex-end', gap: 9 },
     heroButton: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 9, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
     heroButtonText: { color: colors.primaryForeground, fontSize: 14, fontWeight: '700' },
+    heroSecondaryButton: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 14 },
+    heroSecondaryButtonText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
     sectionHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 14 },
     sectionTitle: { color: colors.foreground, fontSize: 20, fontWeight: '700', textAlign: 'right' },
     sectionHint: { color: colors.mutedForeground, fontSize: 12 },

@@ -93,6 +93,7 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     id: SAMPLE_TRACK_IDS.tasnifBidad,
     title: 'تصنیف بیداد',
     duration: 356,
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
     albumId: SAMPLE_ALBUM_IDS.bidad,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
@@ -101,6 +102,7 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     id: SAMPLE_TRACK_IDS.baroun,
     title: 'بارون',
     duration: 287,
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
     albumId: SAMPLE_ALBUM_IDS.bidad,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
@@ -109,6 +111,7 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     id: SAMPLE_TRACK_IDS.khaneh,
     title: 'خانه‌ام ابری است',
     duration: 318,
+    artistId: SAMPLE_ARTIST_IDS.alizadeh,
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
@@ -117,6 +120,7 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     id: SAMPLE_TRACK_IDS.shabSokoutKavir,
     title: 'شب، سکوت، کویر',
     duration: 402,
+    artistId: SAMPLE_ARTIST_IDS.kalhor,
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
@@ -234,11 +238,12 @@ export async function injectSampleData(): Promise<SeedResult> {
 
   for (const track of SAMPLE_TRACKS) {
     await database.runAsync(
-      `INSERT INTO Tracks (id, title, duration, albumId, audioUri, coverImage)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          duration = excluded.duration,
+         artistId = excluded.artistId,
          albumId = excluded.albumId,
          audioUri = excluded.audioUri,
          coverImage = excluded.coverImage`,
@@ -246,6 +251,7 @@ export async function injectSampleData(): Promise<SeedResult> {
         track.id,
         track.title,
         track.duration,
+        track.artistId,
         track.albumId,
         track.audioUri,
         track.coverImage,

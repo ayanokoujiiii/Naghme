@@ -23,10 +23,12 @@ import {
 } from '@/src/audio/audioManager';
 import {
   addJournalEntry,
+  deleteJournalEntry,
   getAlbumById,
   getJournalEntries,
   getListeningHistory,
   deleteTrack,
+  getArtistById,
   getPersonalRelationship,
   getTrackById,
   JournalEntryRecord,
@@ -59,6 +61,7 @@ export default function TrackDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const trackId = Array.isArray(id) ? id[0] : id;
   const [track, setTrack] = useState<TrackRecord | null>(null);
+  const [artistName, setArtistName] = useState<string>('بدون هنرمند');
   const [albumTitle, setAlbumTitle] = useState<string>('بدون آلبوم');
   const [relationship, setRelationship] =
     useState<PersonalRelationshipRecord>(emptyRelationship);
@@ -92,12 +95,12 @@ export default function TrackDetailScreen() {
       }
 
       setTrack(foundTrack);
-      if (foundTrack.albumId) {
-        const album = await getAlbumById(foundTrack.albumId);
-        setAlbumTitle(album?.title ?? 'آلبوم پیدا نشد');
-      } else {
-        setAlbumTitle('بدون آلبوم');
-      }
+      const [album, artist] = await Promise.all([
+        foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
+        foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
+      ]);
+      setAlbumTitle(foundTrack.albumId ? album?.title ?? 'آلبوم پیدا نشد' : 'بدون آلبوم');
+      setArtistName(foundTrack.artistId ? artist?.name ?? 'هنرمند پیدا نشد' : 'بدون هنرمند');
 
       const [savedRelationship, savedJournalEntries, savedListeningHistory] =
         await Promise.all([
@@ -206,6 +209,33 @@ export default function TrackDetailScreen() {
       });
   };
 
+  const confirmDeleteJournal = (entry: JournalEntryRecord) => {
+    Alert.alert(
+      'حذف از دفترچه',
+      'این لحظه از دفترچه‌ی خاطرات حذف شود؟',
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void deleteJournalEntry(entry.id)
+              .then(() => {
+                setJournalEntries((currentEntries) =>
+                  currentEntries.filter((currentEntry) => currentEntry.id !== entry.id),
+                );
+              })
+              .catch((deleteError: unknown) => {
+                setRelationshipMessage(
+                  deleteError instanceof Error ? deleteError.message : 'حذف یادداشت انجام نشد.',
+                );
+              });
+          },
+        },
+      ],
+    );
+  };
+
   const confirmDelete = () => {
     if (!track) return;
     Alert.alert(
@@ -271,6 +301,7 @@ export default function TrackDetailScreen() {
       <SectionHeading title="اطلاعات قطعه" caption="جزئیات ثبت‌شده" />
       <DetailCard>
         <DetailRow label="عنوان" value={track.title} />
+        <DetailRow label="هنرمند" value={artistName} />
         <DetailRow label="آلبوم" value={albumTitle} />
         <DetailRow
           label="مدت‌زمان"
@@ -404,6 +435,7 @@ export default function TrackDetailScreen() {
                   isLast={index === journalEntries.length - 1}
                   colors={colors}
                   styles={styles}
+                  onDelete={() => confirmDeleteJournal(entry)}
                 />
               ))}
             </View>
@@ -540,11 +572,13 @@ function JournalTimelineEntry({
   isLast,
   colors,
   styles,
+  onDelete,
 }: {
   entry: JournalEntryRecord;
   isLast: boolean;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
+  onDelete: () => void;
 }) {
   return (
     <View style={styles.timelineEntry}>
@@ -555,8 +589,20 @@ function JournalTimelineEntry({
       <View style={styles.timelineContent}>
         <View style={styles.timelineMeta}>
           <Text style={styles.timelineDate}>{formatDiaryDate(entry.createdAt)}</Text>
-          <View style={styles.moodBadge}>
-            <Text style={styles.moodBadgeText}>{entry.mood}</Text>
+          <View style={styles.timelineMetaActions}>
+            <View style={styles.moodBadge}>
+              <Text style={styles.moodBadgeText}>{entry.mood}</Text>
+            </View>
+            <Pressable
+              testID={`delete-journal-${entry.id}`}
+              accessibilityRole="button"
+              accessibilityLabel="حذف این یادداشت"
+              onPress={onDelete}
+              hitSlop={8}
+              style={({ pressed }) => [styles.timelineDelete, pressed && styles.pressed]}
+            >
+              <Feather name="trash-2" size={14} color={colors.mutedForeground} />
+            </Pressable>
           </View>
         </View>
         <Text style={styles.timelineNote}>{entry.note}</Text>
@@ -865,6 +911,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'space-between',
       gap: 8,
     },
+    timelineMetaActions: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 7,
+    },
     timelineDate: {
       flex: 1,
       color: colors.mutedForeground,
@@ -882,6 +933,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 11,
       fontWeight: '700',
       textAlign: 'right',
+    },
+    timelineDelete: {
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.secondary,
     },
     timelineNote: {
       color: colors.foreground,

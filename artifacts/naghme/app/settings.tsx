@@ -3,7 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,10 +12,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { getGeminiApiKey, saveGeminiApiKey } from '@/src/ai/gemini';
 import { createArchiveBackup, restoreArchiveBackup } from '@/src/db/portability';
 
 export default function SettingsScreen() {
@@ -24,6 +26,35 @@ export default function SettingsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [exporting, setExporting] = useState<boolean>(false);
   const [restoring, setRestoring] = useState<boolean>(false);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [loadingGeminiKey, setLoadingGeminiKey] = useState<boolean>(true);
+  const [savingGeminiKey, setSavingGeminiKey] = useState<boolean>(false);
+  const [geminiKeyMessage, setGeminiKeyMessage] = useState<string>('');
+
+  useEffect(() => {
+    void getGeminiApiKey()
+      .then(setGeminiApiKey)
+      .catch(() => setGeminiKeyMessage('خواندن تنظیمات Gemini انجام نشد.'))
+      .finally(() => setLoadingGeminiKey(false));
+  }, []);
+
+  const handleSaveGeminiKey = async () => {
+    setSavingGeminiKey(true);
+    setGeminiKeyMessage('');
+    try {
+      await saveGeminiApiKey(geminiApiKey);
+      setGeminiApiKey(await getGeminiApiKey());
+      setGeminiKeyMessage(
+        geminiApiKey.trim() ? 'کلید Gemini روی همین دستگاه ذخیره شد.' : 'کلید Gemini پاک شد.',
+      );
+    } catch (saveError: unknown) {
+      setGeminiKeyMessage(
+        saveError instanceof Error ? saveError.message : 'ذخیره‌ی کلید Gemini انجام نشد.',
+      );
+    } finally {
+      setSavingGeminiKey(false);
+    }
+  };
 
   const exportArchive = async () => {
     if (Platform.OS === 'web') {
@@ -78,7 +109,7 @@ export default function SettingsScreen() {
       const summary = await restoreArchiveBackup(json);
       Alert.alert(
         'بازیابی انجام شد',
-        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.tracks} قطعه و ${summary.personalRelationships} رابطه‌ی شخصی بازیابی شد.`,
+        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.tracks} قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} رکورد تاریخچه بازیابی شد.`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {
@@ -123,6 +154,55 @@ export default function SettingsScreen() {
           <Feather name="shield" size={19} color={colors.primary} />
         </View>
         <Text style={styles.infoText}>آرشیو تو روی دستگاه نگهداری می‌شود و کنترل داده‌ها همیشه دست خودت است.</Text>
+      </View>
+
+      <View style={styles.aiCard}>
+        <View style={styles.aiCardHeader}>
+          <View style={styles.actionIcon}>
+            <Feather name="zap" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.aiCardCopy}>
+            <Text style={styles.actionTitle}>پیشنهادهای هوشمند Gemini</Text>
+            <Text style={styles.actionDescription}>
+              کلید API فقط روی این دستگاه ذخیره می‌شود و برای پیشنهاد قطعه‌ای برای امشب استفاده خواهد شد.
+            </Text>
+          </View>
+        </View>
+        <TextInput
+          testID="gemini-api-key"
+          accessibilityLabel="کلید API جمنای"
+          value={geminiApiKey}
+          onChangeText={setGeminiApiKey}
+          placeholder="کلید API جمنای (Gemini API Key)"
+          placeholderTextColor={colors.mutedForeground}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loadingGeminiKey && !savingGeminiKey}
+          selectionColor={colors.primary}
+          style={styles.aiInput}
+          textAlign="left"
+        />
+        {geminiKeyMessage ? <Text style={styles.aiMessage}>{geminiKeyMessage}</Text> : null}
+        <Pressable
+          testID="save-gemini-api-key"
+          accessibilityRole="button"
+          disabled={loadingGeminiKey || savingGeminiKey}
+          onPress={() => void handleSaveGeminiKey()}
+          style={({ pressed }) => [styles.aiButton, pressed && styles.pressed]}
+        >
+          {savingGeminiKey ? (
+            <ActivityIndicator size="small" color={colors.primaryForeground} />
+          ) : (
+            <>
+              <Feather name="lock" size={16} color={colors.primaryForeground} />
+              <Text style={styles.aiButtonText}>ذخیره‌ی کلید Gemini</Text>
+            </>
+          )}
+        </Pressable>
+        <Text style={styles.aiHint}>
+          بدون کلید هم پیشنهاد محلی نغمه فعال است. برای حذف کلید، فیلد را خالی ذخیره کن.
+        </Text>
       </View>
 
       <Text style={styles.sectionTitle}>مدیریت داده‌ها</Text>
@@ -201,6 +281,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     infoCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 11, padding: 15, borderRadius: 18, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.border, marginBottom: 30 },
     infoIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
     infoText: { flex: 1, color: colors.accentForeground, fontSize: 13, lineHeight: 22, textAlign: 'right' },
+    aiCard: { padding: 16, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 28 },
+    aiCardHeader: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12 },
+    aiCardCopy: { flex: 1, alignItems: 'flex-end' },
+    aiInput: { minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: colors.input, backgroundColor: colors.secondary, color: colors.foreground, fontSize: 13, paddingHorizontal: 14, marginTop: 15 },
+    aiMessage: { color: colors.primary, fontSize: 12, lineHeight: 20, textAlign: 'right', marginTop: 9 },
+    aiButton: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, marginTop: 12 },
+    aiButtonText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
+    aiHint: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 11 },
     sectionTitle: { color: colors.foreground, fontSize: 20, fontWeight: '700', textAlign: 'right', marginBottom: 13 },
     actionCard: { alignItems: 'center', padding: 16, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
     actionIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },

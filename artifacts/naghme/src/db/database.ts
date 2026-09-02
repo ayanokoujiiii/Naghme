@@ -26,9 +26,11 @@ const schema = `
     id TEXT PRIMARY KEY NOT NULL,
     title TEXT NOT NULL,
     duration INTEGER,
+    artistId TEXT,
     albumId TEXT,
     audioUri TEXT,
     coverImage TEXT,
+    FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE SET NULL,
     FOREIGN KEY (albumId) REFERENCES Albums(id) ON DELETE SET NULL
   );
 
@@ -68,6 +70,13 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
     databasePromise = openDatabaseAsync('naghme.db')
       .then(async (database) => {
         await database.execAsync(schema);
+        const columns = await database.getAllAsync<{ name: string }>(
+          'PRAGMA table_info(Tracks)',
+          [],
+        );
+        if (!columns.some((column) => column.name === 'artistId')) {
+          await database.execAsync('ALTER TABLE Tracks ADD COLUMN artistId TEXT;');
+        }
         return database;
       })
       .catch((error: unknown) => {

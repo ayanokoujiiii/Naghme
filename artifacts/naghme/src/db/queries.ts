@@ -20,6 +20,7 @@ export interface TrackRecord {
   id: string;
   title: string;
   duration: number | null;
+  artistId: string | null;
   albumId: string | null;
   audioUri: string | null;
   coverImage: string | null;
@@ -56,6 +57,17 @@ export interface LibraryStats {
 
 export interface HomeTrackRecord extends TrackRecord {
   albumTitle: string | null;
+}
+
+export interface RecommendationTrack extends TrackRecord {
+  artistName: string | null;
+  albumTitle: string | null;
+  listeningCount: number;
+  lastListenedAt: string | null;
+  recentMoods: string | null;
+  favorite: boolean;
+  rating: number | null;
+  personalNote: string | null;
 }
 
 export type SearchResultType = 'track' | 'album' | 'artist';
@@ -164,6 +176,7 @@ export async function updateArtist(
 
 export async function deleteArtist(id: string): Promise<void> {
   const database = await requireDatabase();
+  await database.runAsync('UPDATE Tracks SET artistId = NULL WHERE artistId = ?', [id]);
   await database.runAsync('DELETE FROM Artists WHERE id = ?', [id]);
 }
 
@@ -235,12 +248,13 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
   const track: TrackRecord = { ...input, id: createId('track'), title };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO Tracks (id, title, duration, albumId, audioUri, coverImage)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       track.id,
       track.title,
       track.duration,
+      track.artistId,
       track.albumId,
       track.audioUri,
       track.coverImage,
@@ -252,7 +266,7 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
 export async function getTracks(): Promise<TrackRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<TrackRecord>(
-    'SELECT id, title, duration, albumId, audioUri, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
+    'SELECT id, title, duration, artistId, albumId, audioUri, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
     [],
   );
 }
@@ -274,7 +288,7 @@ export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 20));
   return database.getAllAsync<HomeTrackRecord>(
     `SELECT
-       Tracks.id, Tracks.title, Tracks.duration, Tracks.albumId,
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
        Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
      FROM Tracks
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
@@ -289,7 +303,7 @@ export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 20));
   return database.getAllAsync<HomeTrackRecord>(
     `SELECT
-       Tracks.id, Tracks.title, Tracks.duration, Tracks.albumId,
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
        Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
      FROM Tracks
      INNER JOIN PersonalRelationships
@@ -334,7 +348,7 @@ export async function searchLibrary(query: string, limit = 60): Promise<SearchRe
 export async function getTrackById(id: string): Promise<TrackRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<TrackRecord>(
-    'SELECT id, title, duration, albumId, audioUri, coverImage FROM Tracks WHERE id = ?',
+    'SELECT id, title, duration, artistId, albumId, audioUri, coverImage FROM Tracks WHERE id = ?',
     [id],
   );
 }
@@ -356,11 +370,12 @@ export async function updateTrack(
   const database = await requireDatabase();
   await database.runAsync(
     `UPDATE Tracks
-     SET title = ?, duration = ?, albumId = ?, audioUri = ?, coverImage = ?
+     SET title = ?, duration = ?, artistId = ?, albumId = ?, audioUri = ?, coverImage = ?
      WHERE id = ?`,
     [
       track.title,
       track.duration,
+      track.artistId,
       track.albumId,
       track.audioUri,
       track.coverImage,
@@ -373,6 +388,51 @@ export async function updateTrack(
 export async function deleteTrack(id: string): Promise<void> {
   const database = await requireDatabase();
   await database.runAsync('DELETE FROM Tracks WHERE id = ?', [id]);
+}
+
+export async function getRecommendationTracks(): Promise<RecommendationTrack[]> {
+  const database = await requireDatabase();
+  const rows = await database.getAllAsync<
+    Omit<RecommendationTrack, 'favorite'> & { favorite: number }
+  >(
+    `SELECT
+       Tracks.id,
+       Tracks.title,
+       Tracks.duration,
+       Tracks.artistId,
+       Tracks.albumId,
+       Tracks.audioUri,
+       Tracks.coverImage,
+       Artists.name AS artistName,
+       Albums.title AS albumTitle,
+       COALESCE(PersonalRelationships.listeningCount, 0) AS listeningCount,
+       PersonalRelationships.rating,
+       PersonalRelationships.personalNote,
+       PersonalRelationships.favorite,
+       (
+         SELECT MAX(ListeningHistory.listenedAt)
+         FROM ListeningHistory
+         WHERE ListeningHistory.trackId = Tracks.id
+       ) AS lastListenedAt,
+       (
+         SELECT GROUP_CONCAT(mood, '، ')
+         FROM (
+           SELECT mood
+           FROM JournalEntries
+           WHERE JournalEntries.trackId = Tracks.id
+           ORDER BY datetime(createdAt) DESC
+           LIMIT 5
+         )
+       ) AS recentMoods
+     FROM Tracks
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     LEFT JOIN PersonalRelationships
+       ON PersonalRelationships.trackId = Tracks.id
+     ORDER BY Tracks.title COLLATE NOCASE ASC`,
+    [],
+  );
+  return rows.map((row) => ({ ...row, favorite: Boolean(row.favorite) }));
 }
 
 function mapRelationship(
@@ -459,6 +519,11 @@ export async function getJournalEntries(trackId: string): Promise<JournalEntryRe
      ORDER BY datetime(createdAt) DESC`,
     [trackId],
   );
+}
+
+export async function deleteJournalEntry(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM JournalEntries WHERE id = ?', [id]);
 }
 
 export async function logListen(trackId: string): Promise<ListeningHistoryRecord> {

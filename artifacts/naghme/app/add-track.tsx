@@ -8,6 +8,8 @@ import { useColors } from '@/hooks/useColors';
 import {
   addTrack,
   AlbumRecord,
+  ArtistRecord,
+  getArtists,
   getAlbums,
   getTrackById,
   updateTrack,
@@ -22,9 +24,12 @@ export default function AddTrackScreen() {
   const [duration, setDuration] = useState<string>('');
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [audioName, setAudioName] = useState<string>('');
+  const [artists, setArtists] = useState<ArtistRecord[]>([]);
+  const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [artistPickerOpen, setArtistPickerOpen] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -32,16 +37,18 @@ export default function AddTrackScreen() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getAlbums(), id ? getTrackById(id) : Promise.resolve(null)])
-      .then(([items, track]) => {
+    Promise.all([getArtists(), getAlbums(), id ? getTrackById(id) : Promise.resolve(null)])
+      .then(([artistItems, albumItems, track]) => {
         if (!mounted) return;
-        setAlbums(items);
+        setArtists(artistItems);
+        setAlbums(albumItems);
         if (id) {
           if (!track) {
             setError('قطعه پیدا نشد.');
           } else {
             setTitle(track.title);
             setDuration(track.duration?.toString() ?? '');
+            setSelectedArtistId(track.artistId);
             setSelectedAlbumId(track.albumId);
             setAudioUri(track.audioUri);
             setAudioName(track.audioUri ? 'فایل صوتی انتخاب‌شده' : '');
@@ -62,6 +69,7 @@ export default function AddTrackScreen() {
   }, []);
 
   const selectedAlbum = albums.find((album) => album.id === selectedAlbumId);
+  const selectedArtist = artists.find((artist) => artist.id === selectedArtistId);
 
   const pickAudio = async () => {
     if (Platform.OS === 'web') {
@@ -114,13 +122,15 @@ export default function AddTrackScreen() {
         await updateTrack(id, {
           title,
           duration: parsedDuration,
+          artistId: selectedArtistId,
           albumId: selectedAlbumId,
-            audioUri,
+          audioUri,
         });
       } else {
         await addTrack({
           title,
           duration: parsedDuration,
+          artistId: selectedArtistId,
           albumId: selectedAlbumId,
           audioUri,
           coverImage: null,
@@ -156,6 +166,53 @@ export default function AddTrackScreen() {
         onChangeText={setDuration}
         keyboardType="number-pad"
       />
+
+      <View style={styles.field}>
+        <Text style={styles.label}>هنرمند</Text>
+        <Pressable
+          testID="artist-picker"
+          onPress={() => setArtistPickerOpen((open) => !open)}
+          style={({ pressed }) => [styles.picker, pressed && styles.pressed]}
+        >
+          <Feather
+            name={artistPickerOpen ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.mutedForeground}
+          />
+          <Text style={[styles.pickerText, !selectedArtist && styles.placeholder]}>
+            {selectedArtist?.name ?? 'بدون هنرمند'}
+          </Text>
+        </Pressable>
+        {artistPickerOpen ? (
+          <View style={styles.menu}>
+            <Pressable
+              onPress={() => {
+                setSelectedArtistId(null);
+                setArtistPickerOpen(false);
+              }}
+              style={styles.menuItem}
+            >
+              <Text style={styles.menuText}>بدون هنرمند</Text>
+            </Pressable>
+            {artists.length > 0 ? (
+              artists.map((artist) => (
+                <Pressable
+                  key={artist.id}
+                  onPress={() => {
+                    setSelectedArtistId(artist.id);
+                    setArtistPickerOpen(false);
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Text style={styles.menuText}>{artist.name}</Text>
+                </Pressable>
+              ))
+            ) : (
+              <Text style={styles.noAlbums}>هنوز هنرمندی ثبت نشده است.</Text>
+            )}
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.field}>
         <Text style={styles.label}>آلبوم</Text>

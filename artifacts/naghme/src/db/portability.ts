@@ -2,6 +2,8 @@ import { getDatabase } from '@/src/db/database';
 import type {
   AlbumRecord,
   ArtistRecord,
+  JournalEntryRecord,
+  ListeningHistoryRecord,
   PersonalRelationshipRecord,
   TrackRecord,
 } from '@/src/db/queries';
@@ -14,6 +16,8 @@ export interface ArchiveBackup {
   albums: AlbumRecord[];
   tracks: TrackRecord[];
   personalRelationships: PersonalRelationshipRecord[];
+  journalEntries: JournalEntryRecord[];
+  listeningHistory: ListeningHistoryRecord[];
 }
 
 export interface RestoreSummary {
@@ -21,6 +25,8 @@ export interface RestoreSummary {
   albums: number;
   tracks: number;
   personalRelationships: number;
+  journalEntries: number;
+  listeningHistory: number;
 }
 
 async function requireDatabase() {
@@ -33,12 +39,18 @@ async function requireDatabase() {
 
 export async function createArchiveBackup(): Promise<string> {
   const database = await requireDatabase();
-  const [artists, albums, tracks, personalRelationships] = await Promise.all([
+  const [artists, albums, tracks, personalRelationships, journalEntries, listeningHistory] =
+    await Promise.all([
     database.getAllAsync<ArtistRecord>('SELECT * FROM Artists ORDER BY rowid ASC', []),
     database.getAllAsync<AlbumRecord>('SELECT * FROM Albums ORDER BY rowid ASC', []),
     database.getAllAsync<TrackRecord>('SELECT * FROM Tracks ORDER BY rowid ASC', []),
     database.getAllAsync<PersonalRelationshipRecord>(
       'SELECT * FROM PersonalRelationships ORDER BY rowid ASC',
+      [],
+    ),
+    database.getAllAsync<JournalEntryRecord>('SELECT * FROM JournalEntries ORDER BY rowid ASC', []),
+    database.getAllAsync<ListeningHistoryRecord>(
+      'SELECT * FROM ListeningHistory ORDER BY rowid ASC',
       [],
     ),
   ]);
@@ -51,6 +63,8 @@ export async function createArchiveBackup(): Promise<string> {
     albums,
     tracks,
     personalRelationships,
+    journalEntries,
+    listeningHistory,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -59,10 +73,14 @@ export async function createArchiveBackup(): Promise<string> {
 export async function restoreArchiveBackup(json: string): Promise<RestoreSummary> {
   const database = await requireDatabase();
   const backup = parseBackup(json);
+  const artistIds = new Set(backup.artists.map((artist) => artist.id));
   const albumIds = new Set(backup.albums.map((album) => album.id));
   const trackIds = new Set(backup.tracks.map((track) => track.id));
 
   for (const track of backup.tracks) {
+    if (track.artistId && !artistIds.has(track.artistId)) {
+      throw new Error(`هنرمند مرتبط با قطعه‌ی «${track.title}» در فایل پیدا نشد.`);
+    }
     if (track.albumId && !albumIds.has(track.albumId)) {
       throw new Error(`آلبوم مرتبط با قطعه‌ی «${track.title}» در فایل پیدا نشد.`);
     }
@@ -70,6 +88,16 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   for (const relationship of backup.personalRelationships) {
     if (!trackIds.has(relationship.trackId)) {
       throw new Error('یکی از رابطه‌های شخصی به قطعه‌ای نامعتبر اشاره می‌کند.');
+    }
+  }
+  for (const entry of backup.journalEntries) {
+    if (!trackIds.has(entry.trackId)) {
+      throw new Error('یکی از یادداشت‌های دفترچه به قطعه‌ای نامعتبر اشاره می‌کند.');
+    }
+  }
+  for (const entry of backup.listeningHistory) {
+    if (!trackIds.has(entry.trackId)) {
+      throw new Error('یکی از رکوردهای تاریخچه به قطعه‌ای نامعتبر اشاره می‌کند.');
     }
   }
 
@@ -102,11 +130,12 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
 
     for (const track of backup.tracks) {
       await database.runAsync(
-        `INSERT INTO Tracks (id, title, duration, albumId, audioUri, coverImage)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            duration = excluded.duration,
+           artistId = excluded.artistId,
            albumId = excluded.albumId,
            audioUri = excluded.audioUri,
            coverImage = excluded.coverImage`,
@@ -114,6 +143,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
           track.id,
           track.title,
           track.duration,
+          track.artistId,
           track.albumId,
           track.audioUri,
           track.coverImage,
@@ -142,6 +172,30 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
         ],
       );
     }
+
+    for (const entry of backup.journalEntries) {
+      await database.runAsync(
+        `INSERT INTO JournalEntries (id, trackId, note, mood, createdAt)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           trackId = excluded.trackId,
+           note = excluded.note,
+           mood = excluded.mood,
+           createdAt = excluded.createdAt`,
+        [entry.id, entry.trackId, entry.note, entry.mood, entry.createdAt],
+      );
+    }
+
+    for (const entry of backup.listeningHistory) {
+      await database.runAsync(
+        `INSERT INTO ListeningHistory (id, trackId, listenedAt)
+         VALUES (?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           trackId = excluded.trackId,
+           listenedAt = excluded.listenedAt`,
+        [entry.id, entry.trackId, entry.listenedAt],
+      );
+    }
   });
 
   return {
@@ -149,6 +203,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     albums: backup.albums.length,
     tracks: backup.tracks.length,
     personalRelationships: backup.personalRelationships.length,
+    journalEntries: backup.journalEntries.length,
+    listeningHistory: backup.listeningHistory.length,
   };
 }
 
@@ -168,6 +224,8 @@ function parseBackup(json: string): ArchiveBackup {
   const albums = parseAlbums(parsed.albums);
   const tracks = parseTracks(parsed.tracks);
   const personalRelationships = parseRelationships(parsed.personalRelationships);
+  const journalEntries = parseJournalEntries(parsed.journalEntries);
+  const listeningHistory = parseListeningHistory(parsed.listeningHistory);
 
   return {
     format: 'naghme-archive',
@@ -177,7 +235,35 @@ function parseBackup(json: string): ArchiveBackup {
     albums,
     tracks,
     personalRelationships,
+    journalEntries,
+    listeningHistory,
   };
+}
+
+function parseJournalEntries(value: unknown): JournalEntryRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'دفترچه‌ی خاطرات').map((item, index) => {
+    const record = recordValue(item, `یادداشت دفترچه‌ی شماره‌ی ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسه‌ی یادداشت دفترچه'),
+      trackId: requiredString(record.trackId, 'شناسه‌ی قطعه در دفترچه'),
+      note: requiredString(record.note, 'متن یادداشت دفترچه'),
+      mood: requiredString(record.mood, 'حال دفترچه'),
+      createdAt: requiredString(record.createdAt, 'زمان یادداشت دفترچه'),
+    };
+  });
+}
+
+function parseListeningHistory(value: unknown): ListeningHistoryRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'تاریخچه‌ی شنیدن').map((item, index) => {
+    const record = recordValue(item, `رکورد شنیدن شماره‌ی ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسه‌ی رکورد شنیدن'),
+      trackId: requiredString(record.trackId, 'شناسه‌ی قطعه در تاریخچه'),
+      listenedAt: requiredString(record.listenedAt, 'زمان شنیدن'),
+    };
+  });
 }
 
 function parseArtists(value: unknown): ArtistRecord[] {
@@ -213,6 +299,7 @@ function parseTracks(value: unknown): TrackRecord[] {
       id: requiredString(record.id, 'شناسه‌ی قطعه'),
       title: requiredString(record.title, 'عنوان قطعه'),
       duration: nullableInteger(record.duration, 'مدت‌زمان قطعه'),
+      artistId: nullableString(record.artistId, 'شناسه‌ی هنرمند قطعه'),
       albumId: nullableString(record.albumId, 'شناسه‌ی آلبوم قطعه'),
       audioUri: nullableString(record.audioUri, 'مسیر فایل صوتی'),
       coverImage: nullableString(record.coverImage, 'تصویر قطعه'),

@@ -1,0 +1,26 @@
+MASTER PROMPT: NAGHME - PHASE 8 (GEMINI AI INTEGRATION & SMART RECOMMENDATIONS)
+
+You are the Expert React Native Engineer. Phase 7.5 was a total success. We are now introducing the core AI intelligence to "Naghme". Do NOT break existing SQLite tables, audio playback, or navigation.
+
+CRITICAL RULES:
+1. Native Android priority. Keep RTL, Persian UI, and Dark Theme intact.
+2. Ensure secure handling of API keys (store locally in AsyncStorage/SQLite).
+
+PHASE 8 OBJECTIVES:
+1. Gemini API Key Configuration Screen (`app/settings.tsx`):
+- Add a secure input field in the Settings screen for "کلید API جمنای (Gemini API Key)".
+- Save the key safely in local persistent storage so the user only has to enter it once.
+
+2. Fixes & Enhancements (Carried over from previous feedback):
+- In `app/add-track.tsx` (and edit mode), add an **Artist Selection / Input** field so users can properly assign an artist to a track upon creation.
+- In the Track Detail Journal timeline (`app/track/[id].tsx`), add a simple **Delete** option for individual diary/journal entries so users can manage their past mood entries.
+
+3. "قطعه‌ای برای امشب" (Smart Track Recommendation for Tonight):
+- Create a dedicated screen or section called "پیشنهاد هوشمند" (or "قطعه‌ای برای امشب").
+- Logic:
+  * Read the user's local tracks, their listening history (to find tracks that haven't been listened to in a long time, as requested in philosophy), and recent journal moods.
+  * If the Gemini API key is provided, send a lightweight summary of the archive and the user's current mood to Gemini API to get a poetic, context-aware recommendation with a brief cultural description.
+  * Fallback mechanism: If no API key is provided, use a smart local algorithm (e.g., picking a track with low listening count or matching the requested mood).
+- Design the recommendation screen to feel deeply personal, calm, and inspiring.
+
+ACTION: Execute Phase 8 step-by-step. Add the artist input field in track creation, add delete capability for journal entries, implement Gemini API storage in settings, and build the "قطعه‌ای برای امشب" smart recommendation feature. Test and verify. Stop and wait for my instruction when complete.
