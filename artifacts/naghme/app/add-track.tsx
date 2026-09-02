@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,8 +23,11 @@ export default function AddTrackScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [title, setTitle] = useState<string>('');
   const [duration, setDuration] = useState<string>('');
+  const [versionName, setVersionName] = useState<string>('');
+  const [lyrics, setLyrics] = useState<string>('');
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [audioName, setAudioName] = useState<string>('');
+  const [sheetMusicUri, setSheetMusicUri] = useState<string | null>(null);
   const [artists, setArtists] = useState<ArtistRecord[]>([]);
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
@@ -48,10 +52,13 @@ export default function AddTrackScreen() {
           } else {
             setTitle(track.title);
             setDuration(track.duration?.toString() ?? '');
+            setVersionName(track.versionName ?? '');
+            setLyrics(track.lyrics ?? '');
             setSelectedArtistId(track.artistId);
             setSelectedAlbumId(track.albumId);
             setAudioUri(track.audioUri);
             setAudioName(track.audioUri ? 'فایل صوتی انتخاب‌شده' : '');
+            setSheetMusicUri(track.sheetMusicUri);
           }
         }
       })
@@ -102,6 +109,32 @@ export default function AddTrackScreen() {
     setAudioName('');
   };
 
+  const pickSheetMusic = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('انتخاب تصویر در دسترس نیست', 'انتخاب تصویر نت را در برنامه‌ی Android انجام بده.');
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) throw new Error('تصویر نت انتخاب نشد.');
+      setSheetMusicUri(asset.uri);
+      setError('');
+    } catch (pickError: unknown) {
+      Alert.alert(
+        'انتخاب تصویر انجام نشد',
+        pickError instanceof Error ? pickError.message : 'تصویر نت انتخاب نشد.',
+      );
+    }
+  };
+
+  const clearSheetMusic = () => setSheetMusicUri(null);
+
   const handleSave = async () => {
     if (!title.trim()) {
       setError('عنوان قطعه الزامی است.');
@@ -125,6 +158,9 @@ export default function AddTrackScreen() {
           artistId: selectedArtistId,
           albumId: selectedAlbumId,
           audioUri,
+           versionName: versionName.trim() || null,
+           lyrics: lyrics.trim() || null,
+           sheetMusicUri,
         });
       } else {
         await addTrack({
@@ -134,6 +170,9 @@ export default function AddTrackScreen() {
           albumId: selectedAlbumId,
           audioUri,
           coverImage: null,
+           versionName: versionName.trim() || null,
+           lyrics: lyrics.trim() || null,
+           sheetMusicUri,
         });
       }
       setSuccess(editing ? 'تغییرات قطعه ذخیره شد.' : 'قطعه با موفقیت به آرشیو اضافه شد.');
@@ -165,6 +204,21 @@ export default function AddTrackScreen() {
         value={duration}
         onChangeText={setDuration}
         keyboardType="number-pad"
+      />
+      <FormField
+        label="نسخه / اجرا"
+        placeholder="مثلاً اجرای زنده، نسخه‌ی استودیویی"
+        value={versionName}
+        onChangeText={setVersionName}
+      />
+      <FormField
+        label="متن ترانه / تصنیف"
+        placeholder="متن را اینجا بنویس یا جای‌گذاری کن…"
+        value={lyrics}
+        onChangeText={setLyrics}
+        multiline
+        numberOfLines={8}
+        maxLength={12000}
       />
 
       <View style={styles.field}>
@@ -294,6 +348,44 @@ export default function AddTrackScreen() {
         >
           <Feather name="folder" size={17} color={colors.primary} />
           <Text style={styles.audioButtonText}>{audioUri ? 'تغییر فایل صوتی' : 'انتخاب فایل صوتی'}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>نت موسیقی</Text>
+        <View style={styles.audioPickerCard}>
+          <View style={styles.audioIcon}>
+            <Feather name={sheetMusicUri ? 'image' : 'file-text'} size={19} color={colors.primary} />
+          </View>
+          <View style={styles.audioCopy}>
+            <Text style={styles.audioTitle} numberOfLines={1}>
+              {sheetMusicUri ? 'تصویر نت انتخاب‌شده' : 'هنوز تصویری انتخاب نشده'}
+            </Text>
+            <Text style={styles.audioHint}>تصویر نت روی همین دستگاه نگهداری می‌شود.</Text>
+          </View>
+          {sheetMusicUri ? (
+            <Pressable
+              testID="remove-sheet-music"
+              accessibilityRole="button"
+              accessibilityLabel="حذف تصویر نت"
+              onPress={clearSheetMusic}
+              style={({ pressed }) => [styles.audioAction, pressed && styles.pressed]}
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          testID="pick-sheet-music"
+          accessibilityRole="button"
+          accessibilityLabel="انتخاب تصویر نت موسیقی"
+          onPress={() => void pickSheetMusic()}
+          style={({ pressed }) => [styles.audioButton, pressed && styles.pressed]}
+        >
+          <Feather name="image" size={17} color={colors.primary} />
+          <Text style={styles.audioButtonText}>
+            {sheetMusicUri ? 'تغییر تصویر نت' : 'انتخاب تصویر نت'}
+          </Text>
         </Pressable>
       </View>
 

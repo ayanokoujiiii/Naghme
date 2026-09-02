@@ -30,6 +30,9 @@ const schema = `
     albumId TEXT,
     audioUri TEXT,
     coverImage TEXT,
+    lyrics TEXT,
+    sheetMusicUri TEXT,
+    versionName TEXT,
     FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE SET NULL,
     FOREIGN KEY (albumId) REFERENCES Albums(id) ON DELETE SET NULL
   );
@@ -74,8 +77,16 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
           'PRAGMA table_info(Tracks)',
           [],
         );
-        if (!columns.some((column) => column.name === 'artistId')) {
-          await database.execAsync('ALTER TABLE Tracks ADD COLUMN artistId TEXT;');
+        const migrations = [
+          ['artistId', 'TEXT'],
+          ['lyrics', 'TEXT'],
+          ['sheetMusicUri', 'TEXT'],
+          ['versionName', 'TEXT'],
+        ] as const;
+        for (const [name, type] of migrations) {
+          if (!columns.some((column) => column.name === name)) {
+            await database.execAsync(`ALTER TABLE Tracks ADD COLUMN ${name} ${type};`);
+          }
         }
         return database;
       })

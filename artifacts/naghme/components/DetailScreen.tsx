@@ -9,6 +9,7 @@ import { useColors } from '@/hooks/useColors';
 type DetailShellProps = {
   eyebrow: string;
   title: string;
+  subtitle?: string;
   icon: ComponentProps<typeof Feather>['name'];
   children: ReactNode;
   onEdit?: () => void;
@@ -18,6 +19,7 @@ type DetailShellProps = {
 export function DetailShell({
   eyebrow,
   title,
+  subtitle,
   icon,
   children,
   onEdit,
@@ -54,6 +56,7 @@ export function DetailShell({
             <Text style={styles.title} numberOfLines={3}>
               {title}
             </Text>
+            {subtitle ? <Text style={styles.titleSubtitle} numberOfLines={2}>{subtitle}</Text> : null}
           </View>
           <View style={styles.heroIcon}>
             <Feather name={icon} size={24} color={colors.primary} />
@@ -166,6 +169,13 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       lineHeight: 35,
       fontWeight: '700',
       textAlign: 'right',
+    },
+    titleSubtitle: {
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: '600',
+      textAlign: 'right',
+      marginTop: 7,
     },
     heroIcon: {
       width: 52,

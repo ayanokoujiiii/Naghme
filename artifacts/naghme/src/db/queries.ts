@@ -24,6 +24,9 @@ export interface TrackRecord {
   albumId: string | null;
   audioUri: string | null;
   coverImage: string | null;
+  lyrics: string | null;
+  sheetMusicUri: string | null;
+  versionName: string | null;
 }
 
 export interface PersonalRelationshipRecord {
@@ -73,6 +76,9 @@ export interface MusicGraphRow {
   trackAlbumId: string | null;
   trackAudioUri: string | null;
   trackCoverImage: string | null;
+  trackLyrics: string | null;
+  trackSheetMusicUri: string | null;
+  trackVersionName: string | null;
 }
 
 export interface RecommendationTrack extends TrackRecord {
@@ -87,17 +93,23 @@ export interface RecommendationTrack extends TrackRecord {
 }
 
 export type SearchResultType = 'track' | 'album' | 'artist';
+export type SearchFilter = 'all' | 'track' | 'artist' | 'album' | 'lyrics' | 'journal';
+export type SearchMatchSource = 'title' | 'lyrics' | 'journal';
 
 export interface SearchResult {
   id: string;
   title: string;
   subtitle: string | null;
   type: SearchResultType;
+  matchSource: SearchMatchSource;
 }
 
 export type NewArtist = Omit<ArtistRecord, 'id'>;
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
-export type NewTrack = Omit<TrackRecord, 'id'>;
+export type NewTrack = Omit<
+  TrackRecord,
+  'id' | 'lyrics' | 'sheetMusicUri' | 'versionName'
+> & Partial<Pick<TrackRecord, 'lyrics' | 'sheetMusicUri' | 'versionName'>>;
 export type UpdateArtist = Partial<NewArtist>;
 export type UpdateAlbum = Partial<NewAlbum>;
 export type UpdateTrack = Partial<NewTrack>;
@@ -127,6 +139,9 @@ async function requireDatabase() {
   }
   return database;
 }
+
+const TRACK_COLUMNS =
+  'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName';
 
 export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
   const name = input.name.trim();
@@ -262,11 +277,19 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
     throw new Error('عنوان قطعه الزامی است.');
   }
 
-  const track: TrackRecord = { ...input, id: createId('track'), title };
+  const track: TrackRecord = {
+    ...input,
+    id: createId('track'),
+    title,
+    lyrics: input.lyrics ?? null,
+    sheetMusicUri: input.sheetMusicUri ?? null,
+    versionName: input.versionName ?? null,
+  };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Tracks
+       (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       track.id,
       track.title,
@@ -275,6 +298,9 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
       track.albumId,
       track.audioUri,
       track.coverImage,
+      track.lyrics,
+      track.sheetMusicUri,
+      track.versionName,
     ],
   );
   return track;
@@ -283,7 +309,7 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
 export async function getTracks(): Promise<TrackRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<TrackRecord>(
-    'SELECT id, title, duration, artistId, albumId, audioUri, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
+    `SELECT ${TRACK_COLUMNS} FROM Tracks ORDER BY title COLLATE NOCASE ASC`,
     [],
   );
 }
@@ -306,7 +332,8 @@ export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord
   return database.getAllAsync<HomeTrackRecord>(
     `SELECT
        Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
-       Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName, Albums.title AS albumTitle
      FROM Tracks
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
      ORDER BY Tracks.rowid DESC
@@ -318,7 +345,7 @@ export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord
 export async function getTracksByArtistId(artistId: string): Promise<TrackRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<TrackRecord>(
-    `SELECT id, title, duration, artistId, albumId, audioUri, coverImage
+    `SELECT ${TRACK_COLUMNS}
      FROM Tracks
      WHERE artistId = ?
      ORDER BY title COLLATE NOCASE ASC`,
@@ -329,7 +356,7 @@ export async function getTracksByArtistId(artistId: string): Promise<TrackRecord
 export async function getTracksByAlbumId(albumId: string): Promise<TrackRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<TrackRecord>(
-    `SELECT id, title, duration, artistId, albumId, audioUri, coverImage
+    `SELECT ${TRACK_COLUMNS}
      FROM Tracks
      WHERE albumId = ?
      ORDER BY title COLLATE NOCASE ASC`,
@@ -353,7 +380,10 @@ export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
        Tracks.artistId AS trackArtistId,
        Tracks.albumId AS trackAlbumId,
        Tracks.audioUri AS trackAudioUri,
-       Tracks.coverImage AS trackCoverImage
+       Tracks.coverImage AS trackCoverImage,
+       Tracks.lyrics AS trackLyrics,
+       Tracks.sheetMusicUri AS trackSheetMusicUri,
+       Tracks.versionName AS trackVersionName
      FROM Tracks
      LEFT JOIN Artists ON Artists.id = Tracks.artistId
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
@@ -371,7 +401,8 @@ export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
   return database.getAllAsync<HomeTrackRecord>(
     `SELECT
        Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
-       Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName, Albums.title AS albumTitle
      FROM Tracks
      INNER JOIN PersonalRelationships
        ON PersonalRelationships.trackId = Tracks.id
@@ -386,36 +417,141 @@ export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
 export async function searchLibrary(query: string, limit = 60): Promise<SearchResult[]> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return [];
+  return searchLibraryByFilter(normalizedQuery, 'all', limit);
+}
+
+export async function searchLibraryByFilter(
+  query: string,
+  filter: SearchFilter = 'all',
+  limit = 60,
+): Promise<SearchResult[]> {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return [];
 
   const database = await requireDatabase();
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 100));
   const pattern = `%${normalizedQuery}%`;
+
+  if (filter === 'artist') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT id, name AS title, type AS subtitle, 'artist' AS type, 'title' AS matchSource
+       FROM Artists
+       WHERE name LIKE ? COLLATE NOCASE
+       ORDER BY name COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    );
+  }
+
+  if (filter === 'album') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT id, title, CAST(releaseYear AS TEXT) AS subtitle, 'album' AS type, 'title' AS matchSource
+       FROM Albums
+       WHERE title LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    );
+  }
+
+  if (filter === 'track') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT id, title, NULL AS subtitle, 'track' AS type, 'title' AS matchSource
+       FROM Tracks
+       WHERE title LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    );
+  }
+
+  if (filter === 'lyrics') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT id, title,
+          'متن ترانه: ' || substr(replace(lyrics, char(10), ' '), 1, 90) AS subtitle,
+          'track' AS type, 'lyrics' AS matchSource
+       FROM Tracks
+       WHERE lyrics IS NOT NULL AND lyrics LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, safeLimit],
+    );
+  }
+
+  if (filter === 'journal') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT
+         Tracks.id,
+         Tracks.title,
+         'دفترچه: ' || COALESCE(JournalEntries.mood, '') || ' • ' ||
+           substr(replace(JournalEntries.note, char(10), ' '), 1, 80) AS subtitle,
+         'track' AS type,
+         'journal' AS matchSource
+       FROM Tracks
+       INNER JOIN JournalEntries ON JournalEntries.trackId = Tracks.id
+       WHERE (
+         JournalEntries.note LIKE ? COLLATE NOCASE OR
+         JournalEntries.mood LIKE ? COLLATE NOCASE
+       )
+       GROUP BY Tracks.id
+       ORDER BY MAX(datetime(JournalEntries.createdAt)) DESC
+       LIMIT ?`,
+      [pattern, pattern, safeLimit],
+    );
+  }
+
   return database.getAllAsync<SearchResult>(
-    `SELECT id, title, subtitle, type
+    `SELECT id, title, subtitle, type, matchSource
      FROM (
-       SELECT Tracks.id, Tracks.title, Albums.title AS subtitle, 'track' AS type
+       SELECT
+         Tracks.id,
+         Tracks.title,
+         CASE
+           WHEN Tracks.title LIKE ? COLLATE NOCASE THEN Albums.title
+           ELSE 'متن ترانه: ' || substr(replace(Tracks.lyrics, char(10), ' '), 1, 90)
+         END AS subtitle,
+         'track' AS type,
+         CASE
+           WHEN Tracks.title LIKE ? COLLATE NOCASE THEN 'title'
+           ELSE 'lyrics'
+         END AS matchSource
        FROM Tracks
        LEFT JOIN Albums ON Albums.id = Tracks.albumId
-       WHERE Tracks.title LIKE ? COLLATE NOCASE
+       WHERE Tracks.title LIKE ? COLLATE NOCASE OR Tracks.lyrics LIKE ? COLLATE NOCASE
        UNION ALL
-       SELECT Albums.id, Albums.title, CAST(Albums.releaseYear AS TEXT), 'album' AS type
+       SELECT Albums.id, Albums.title, CAST(Albums.releaseYear AS TEXT), 'album', 'title'
        FROM Albums
        WHERE Albums.title LIKE ? COLLATE NOCASE
        UNION ALL
-       SELECT Artists.id, Artists.name, Artists.type, 'artist' AS type
+       SELECT Artists.id, Artists.name, Artists.type, 'artist', 'title'
        FROM Artists
        WHERE Artists.name LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT
+         JournalEntries.trackId,
+         Tracks.title,
+         'دفترچه: ' || COALESCE(JournalEntries.mood, '') || ' • ' ||
+           substr(replace(JournalEntries.note, char(10), ' '), 1, 80),
+         'track',
+         'journal'
+       FROM JournalEntries
+       INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
+       WHERE (
+         JournalEntries.note LIKE ? COLLATE NOCASE OR
+         JournalEntries.mood LIKE ? COLLATE NOCASE
+       )
+       GROUP BY JournalEntries.trackId
      )
      ORDER BY title COLLATE NOCASE ASC
      LIMIT ?`,
-    [pattern, pattern, pattern, safeLimit],
+    [pattern, pattern, pattern, pattern, pattern, pattern, pattern, safeLimit],
   );
 }
 
 export async function getTrackById(id: string): Promise<TrackRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<TrackRecord>(
-    'SELECT id, title, duration, artistId, albumId, audioUri, coverImage FROM Tracks WHERE id = ?',
+    `SELECT ${TRACK_COLUMNS} FROM Tracks WHERE id = ?`,
     [id],
   );
 }
@@ -437,7 +573,8 @@ export async function updateTrack(
   const database = await requireDatabase();
   await database.runAsync(
     `UPDATE Tracks
-     SET title = ?, duration = ?, artistId = ?, albumId = ?, audioUri = ?, coverImage = ?
+      SET title = ?, duration = ?, artistId = ?, albumId = ?, audioUri = ?, coverImage = ?,
+          lyrics = ?, sheetMusicUri = ?, versionName = ?
      WHERE id = ?`,
     [
       track.title,
@@ -446,6 +583,9 @@ export async function updateTrack(
       track.albumId,
       track.audioUri,
       track.coverImage,
+      track.lyrics,
+      track.sheetMusicUri,
+      track.versionName,
       id,
     ],
   );
@@ -470,6 +610,9 @@ export async function getRecommendationTracks(): Promise<RecommendationTrack[]> 
        Tracks.albumId,
        Tracks.audioUri,
        Tracks.coverImage,
+       Tracks.lyrics,
+       Tracks.sheetMusicUri,
+       Tracks.versionName,
        Artists.name AS artistName,
        Albums.title AS albumTitle,
        COALESCE(PersonalRelationships.listeningCount, 0) AS listeningCount,

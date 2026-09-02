@@ -130,15 +130,19 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
 
     for (const track of backup.tracks) {
       await database.runAsync(
-        `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO Tracks
+           (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            duration = excluded.duration,
            artistId = excluded.artistId,
            albumId = excluded.albumId,
            audioUri = excluded.audioUri,
-           coverImage = excluded.coverImage`,
+            coverImage = excluded.coverImage,
+            lyrics = excluded.lyrics,
+            sheetMusicUri = excluded.sheetMusicUri,
+            versionName = excluded.versionName`,
         [
           track.id,
           track.title,
@@ -147,6 +151,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
           track.albumId,
           track.audioUri,
           track.coverImage,
+           track.lyrics,
+           track.sheetMusicUri,
+           track.versionName,
         ],
       );
     }
@@ -303,6 +310,9 @@ function parseTracks(value: unknown): TrackRecord[] {
       albumId: nullableString(record.albumId, 'شناسه‌ی آلبوم قطعه'),
       audioUri: nullableString(record.audioUri, 'مسیر فایل صوتی'),
       coverImage: nullableString(record.coverImage, 'تصویر قطعه'),
+      lyrics: nullableString(record.lyrics, 'متن ترانه'),
+      sheetMusicUri: nullableString(record.sheetMusicUri, 'نت موسیقی'),
+      versionName: nullableString(record.versionName, 'نسخه یا اجرا'),
     };
   });
 }

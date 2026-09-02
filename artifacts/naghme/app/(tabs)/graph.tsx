@@ -224,6 +224,9 @@ function mapGraphTrack(row: MusicGraphRow): TrackRecord {
     albumId: row.trackAlbumId,
     audioUri: row.trackAudioUri,
     coverImage: row.trackCoverImage,
+    lyrics: row.trackLyrics,
+    sheetMusicUri: row.trackSheetMusicUri,
+    versionName: row.trackVersionName,
   };
 }
 

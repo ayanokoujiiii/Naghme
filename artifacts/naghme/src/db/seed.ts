@@ -97,6 +97,9 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     albumId: SAMPLE_ALBUM_IDS.bidad,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
+    lyrics: null,
+    sheetMusicUri: null,
+    versionName: null,
   },
   {
     id: SAMPLE_TRACK_IDS.baroun,
@@ -106,6 +109,9 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     albumId: SAMPLE_ALBUM_IDS.bidad,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
+    lyrics: null,
+    sheetMusicUri: null,
+    versionName: null,
   },
   {
     id: SAMPLE_TRACK_IDS.khaneh,
@@ -115,6 +121,9 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
+    lyrics: null,
+    sheetMusicUri: null,
+    versionName: null,
   },
   {
     id: SAMPLE_TRACK_IDS.shabSokoutKavir,
@@ -124,6 +133,9 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
     audioUri: null,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
+    lyrics: null,
+    sheetMusicUri: null,
+    versionName: null,
   },
 ];
 
@@ -238,15 +250,19 @@ export async function injectSampleData(): Promise<SeedResult> {
 
   for (const track of SAMPLE_TRACKS) {
     await database.runAsync(
-      `INSERT INTO Tracks (id, title, duration, artistId, albumId, audioUri, coverImage)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO Tracks
+         (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          duration = excluded.duration,
          artistId = excluded.artistId,
          albumId = excluded.albumId,
          audioUri = excluded.audioUri,
-         coverImage = excluded.coverImage`,
+         coverImage = excluded.coverImage,
+         lyrics = excluded.lyrics,
+         sheetMusicUri = excluded.sheetMusicUri,
+         versionName = excluded.versionName`,
       [
         track.id,
         track.title,
@@ -255,6 +271,9 @@ export async function injectSampleData(): Promise<SeedResult> {
         track.albumId,
         track.audioUri,
         track.coverImage,
+        track.lyrics,
+        track.sheetMusicUri,
+        track.versionName,
       ],
     );
   }

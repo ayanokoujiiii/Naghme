@@ -1,0 +1,31 @@
+MASTER PROMPT: NAGHME - PHASE 9 (PRO REVISION: ADVANCED SEARCH, LYRICS, SHEET MUSIC & VERSIONS)
+
+You are an Expert React Native & Expo Software Architect. Phase 8.7 successfully stabilized the UI and relational data. 
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Use safe SQLite migrations (e.g., check if a column exists before adding it, or use safe try/catch for `ALTER TABLE`).
+
+PHASE 9 OBJECTIVES:
+1. Database Migration for Documents & Versions (`src/db/database.ts`):
+- Add a new column `lyrics` (TEXT) to the `Tracks` table.
+- Add a new column `sheetMusicUri` (TEXT) to the `Tracks` table to store an image/document URI for classical sheet music.
+- Add a new column `versionName` (TEXT) to the `Tracks` table to distinguish different live performances or editions (e.g., "اجرای جشن هنر شیراز").
+
+2. Lyrics & Sheet Music UI (`app/track/[id].tsx` & `add-track.tsx`):
+- Update the Add/Edit Track form: 
+  * Add a text input for `versionName` (نسخه / اجرا).
+  * Add a large text area for `lyrics` (متن ترانه/تصنیف).
+  * Add an image picker button (use `expo-image-picker` or `expo-document-picker`) to attach `sheetMusicUri` (تصویر نت موسیقی).
+- Update the Track Detail screen (`app/track/[id].tsx`):
+  * Display the `versionName` elegantly under the track title if it exists.
+  * Add a beautifully typography-focused section or a full-screen Modal for reading the `lyrics` (like Spotify's lyrics view, but with classic Persian elegance).
+  * Add a section to view the attached `sheetMusicUri` (Sheet Music) if it exists, allowing the user to tap it to view it in full size.
+
+3. Deep Emotion, Lyrics & Filtered Search (`app/(tabs)/search.tsx` & DAL):
+- Update the DAL search function to query across: Tracks (title), Albums (title), Artists (name), `Tracks.lyrics`, `JournalEntries.note`, and `JournalEntries.mood`.
+- Implement a **Search Filter Selector** (e.g., a horizontal scrolling list of chips or a dropdown) in the Search UI with the following options: "همه" (All), "نام قطعه" (Track Name), "هنرمند" (Artist), "آلبوم" (Album), "متن ترانه" (Lyrics), and "دفترچه خاطرات" (Journal/Mood).
+- Ensure the search query respoects the selected filter.
+- Group and display results elegantly, distinguishing matches found in lyrics or journals.
+
+ACTION: Execute Phase 9 step-by-step. 1. Safely alter the Tracks table. 2. Build the UI for lyrics, sheet music, and versions. 3. Upgrade the search UI with filters and deep querying. Test thoroughly and wait for my instruction.

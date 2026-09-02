@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -70,6 +71,8 @@ export default function TrackDetailScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
+  const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
+  const [sheetMusicModalVisible, setSheetMusicModalVisible] = useState<boolean>(false);
   const [editingJournalEntryId, setEditingJournalEntryId] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState<string>('');
   const [journalNote, setJournalNote] = useState<string>('');
@@ -312,6 +315,7 @@ export default function TrackDetailScreen() {
     <DetailShell
       eyebrow="جزئیات قطعه"
       title={track.title}
+      subtitle={track.versionName ? `نسخه / اجرا: ${track.versionName}` : undefined}
       icon="music"
       onEdit={() => router.push(`/add-track?id=${track.id}`)}
       onDelete={confirmDelete}
@@ -333,6 +337,44 @@ export default function TrackDetailScreen() {
           value={track.duration === null ? 'ثبت نشده' : formatDuration(track.duration)}
         />
       </DetailCard>
+
+      {track.lyrics ? (
+        <>
+          <SectionHeading title="متن ترانه / تصنیف" caption="متن کامل و خوانا" />
+          <DetailCard>
+            <Text style={styles.lyricsPreview} numberOfLines={5}>{track.lyrics}</Text>
+            <Pressable
+              testID="track-open-lyrics"
+              accessibilityRole="button"
+              onPress={() => setLyricsModalVisible(true)}
+              style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+            >
+              <Feather name="book-open" size={17} color={colors.primary} />
+              <Text style={styles.secondaryActionText}>نمایش متن کامل</Text>
+            </Pressable>
+          </DetailCard>
+        </>
+      ) : null}
+
+      {track.sheetMusicUri ? (
+        <>
+          <SectionHeading title="نت موسیقی" caption="تصویر ذخیره‌شده روی دستگاه" />
+          <DetailCard>
+            <Pressable
+              testID="track-open-sheet-music"
+              accessibilityRole="button"
+              onPress={() => setSheetMusicModalVisible(true)}
+              style={({ pressed }) => [styles.sheetPreviewButton, pressed && styles.pressed]}
+            >
+              <Image source={{ uri: track.sheetMusicUri }} style={styles.sheetPreview} resizeMode="cover" />
+              <View style={styles.sheetPreviewOverlay}>
+                <Feather name="maximize-2" size={18} color="#FFFFFF" />
+                <Text style={styles.sheetPreviewText}>بازکردن در اندازه‌ی کامل</Text>
+              </View>
+            </Pressable>
+          </DetailCard>
+        </>
+      ) : null}
 
       {track.audioUri ? (
         <AudioPlayer
@@ -512,6 +554,22 @@ export default function TrackDetailScreen() {
         onNoteChange={setJournalNote}
         onSubmit={() => void submitJournalEntry()}
       />
+      <LyricsModal
+        visible={lyricsModalVisible}
+        lyrics={track.lyrics ?? ''}
+        title={track.title}
+        colors={colors}
+        styles={styles}
+        onClose={() => setLyricsModalVisible(false)}
+      />
+      <SheetMusicModal
+        visible={sheetMusicModalVisible}
+        uri={track.sheetMusicUri}
+        title={track.title}
+        colors={colors}
+        styles={styles}
+        onClose={() => setSheetMusicModalVisible(false)}
+      />
     </DetailShell>
   );
 }
@@ -647,6 +705,100 @@ function JournalTimelineEntry({
         <Text style={styles.timelineNote}>{entry.note}</Text>
       </View>
     </View>
+  );
+}
+
+function LyricsModal({
+  visible,
+  lyrics,
+  title,
+  colors,
+  styles,
+  onClose,
+}: {
+  visible: boolean;
+  lyrics: string;
+  title: string;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.fullModalBackdrop}>
+        <View style={styles.fullModalCard}>
+          <View style={styles.fullModalHeader}>
+            <Pressable
+              testID="track-lyrics-close"
+              accessibilityRole="button"
+              accessibilityLabel="بستن متن ترانه"
+              onPress={onClose}
+              style={({ pressed }) => [styles.modalClose, pressed && styles.pressed]}
+            >
+              <Feather name="x" size={20} color={colors.foreground} />
+            </Pressable>
+            <View style={styles.fullModalTitleCopy}>
+              <Text style={styles.modalEyebrow}>متن ترانه / تصنیف</Text>
+              <Text style={styles.fullModalTitle} numberOfLines={2}>{title}</Text>
+            </View>
+            <View style={styles.modalIcon}>
+              <Feather name="book-open" size={19} color={colors.primary} />
+            </View>
+          </View>
+          <KeyboardAwareScrollViewCompat
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.lyricsContent}
+          >
+            <Text style={styles.lyricsText}>{lyrics}</Text>
+          </KeyboardAwareScrollViewCompat>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SheetMusicModal({
+  visible,
+  uri,
+  title,
+  colors,
+  styles,
+  onClose,
+}: {
+  visible: boolean;
+  uri: string | null;
+  title: string;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+  onClose: () => void;
+}) {
+  if (!uri) return null;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.sheetModalBackdrop}>
+        <View style={styles.sheetModalCard}>
+          <View style={styles.fullModalHeader}>
+            <Pressable
+              testID="track-sheet-music-close"
+              accessibilityRole="button"
+              accessibilityLabel="بستن تصویر نت"
+              onPress={onClose}
+              style={({ pressed }) => [styles.modalClose, pressed && styles.pressed]}
+            >
+              <Feather name="x" size={20} color={colors.foreground} />
+            </Pressable>
+            <View style={styles.fullModalTitleCopy}>
+              <Text style={styles.modalEyebrow}>نت موسیقی</Text>
+              <Text style={styles.fullModalTitle} numberOfLines={2}>{title}</Text>
+            </View>
+            <View style={styles.modalIcon}>
+              <Feather name="image" size={19} color={colors.primary} />
+            </View>
+          </View>
+          <Image source={{ uri }} style={styles.sheetFullImage} resizeMode="contain" />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1085,6 +1237,60 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginBottom: 23,
       paddingHorizontal: 3,
     },
+    lyricsPreview: {
+      color: colors.foreground,
+      fontSize: 15,
+      lineHeight: 29,
+      textAlign: 'right',
+      backgroundColor: colors.secondary,
+      borderRadius: 15,
+      paddingHorizontal: 15,
+      paddingVertical: 14,
+    },
+    secondaryAction: {
+      minHeight: 46,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 10,
+    },
+    secondaryActionText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    sheetPreviewButton: {
+      minHeight: 190,
+      borderRadius: 16,
+      overflow: 'hidden',
+      backgroundColor: colors.secondary,
+      position: 'relative',
+    },
+    sheetPreview: {
+      width: '100%',
+      height: 190,
+    },
+    sheetPreviewOverlay: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      minHeight: 46,
+      backgroundColor: 'rgba(0, 0, 0, 0.58)',
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    sheetPreviewText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '700',
+    },
     modalBackdrop: {
       flex: 1,
       justifyContent: 'flex-end',
@@ -1210,6 +1416,71 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.primaryForeground,
       fontSize: 13,
       fontWeight: '700',
+    },
+    fullModalBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    },
+    fullModalCard: {
+      maxHeight: '90%',
+      minHeight: '70%',
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 20,
+      paddingTop: 18,
+      paddingBottom: 24,
+    },
+    fullModalHeader: {
+      flexDirection: 'row-reverse',
+      alignItems: 'flex-start',
+      marginBottom: 18,
+    },
+    fullModalTitleCopy: { flex: 1, alignItems: 'flex-end' },
+    fullModalTitle: {
+      color: colors.foreground,
+      fontSize: 19,
+      lineHeight: 27,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
+    lyricsContent: {
+      flexGrow: 1,
+      paddingVertical: 10,
+    },
+    lyricsText: {
+      color: colors.foreground,
+      fontSize: 17,
+      lineHeight: 34,
+      textAlign: 'right',
+      writingDirection: 'rtl',
+      paddingHorizontal: 4,
+      paddingBottom: 20,
+    },
+    sheetModalBackdrop: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: 16,
+      backgroundColor: 'rgba(0, 0, 0, 0.82)',
+    },
+    sheetModalCard: {
+      maxHeight: '92%',
+      minHeight: '70%',
+      backgroundColor: colors.card,
+      borderRadius: 24,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sheetFullImage: {
+      flex: 1,
+      width: '100%',
+      minHeight: 320,
+      backgroundColor: colors.secondary,
+      borderRadius: 15,
     },
     pressed: { opacity: 0.72 },
   });

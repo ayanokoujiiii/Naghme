@@ -12,7 +12,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { SearchResult, SearchResultType, searchLibrary } from '@/src/db/queries';
+import {
+  SearchFilter,
+  SearchResult,
+  SearchResultType,
+  searchLibraryByFilter,
+} from '@/src/db/queries';
 
 const labels: Record<SearchResultType, string> = {
   track: 'قطعه‌ها',
@@ -26,16 +31,32 @@ const icons: Record<SearchResultType, 'music' | 'disc' | 'mic'> = {
   artist: 'mic',
 };
 
+const filterOptions: Array<{ value: SearchFilter; label: string }> = [
+  { value: 'all', label: 'همه' },
+  { value: 'track', label: 'نام قطعه' },
+  { value: 'artist', label: 'هنرمند' },
+  { value: 'album', label: 'آلبوم' },
+  { value: 'lyrics', label: 'متن ترانه' },
+  { value: 'journal', label: 'دفترچه خاطرات' },
+];
+
+const matchLabels = {
+  title: 'نام',
+  lyrics: 'متن ترانه',
+  journal: 'دفترچه خاطرات',
+} as const;
+
 export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState<string>('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [filter, setFilter] = useState<SearchFilter>('all');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  const runSearch = useCallback(async (value: string) => {
+  const runSearch = useCallback(async (value: string, selectedFilter: SearchFilter) => {
     const normalizedValue = value.trim();
     if (!normalizedValue) {
       setResults([]);
@@ -46,7 +67,7 @@ export default function SearchScreen() {
     setLoading(true);
     setError('');
     try {
-      setResults(await searchLibrary(normalizedValue));
+      setResults(await searchLibraryByFilter(normalizedValue, selectedFilter));
     } catch (searchError: unknown) {
       setError(searchError instanceof Error ? searchError.message : 'جست‌وجو انجام نشد.');
       setResults([]);
@@ -57,8 +78,8 @@ export default function SearchScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (query.trim()) void runSearch(query);
-    }, [query, runSearch]),
+      if (query.trim()) void runSearch(query, filter);
+    }, [query, filter, runSearch]),
   );
 
   const groupedResults = useMemo(
@@ -74,6 +95,11 @@ export default function SearchScreen() {
     if (result.type === 'track') router.push(`/track/${result.id}`);
     if (result.type === 'album') router.push(`/album/${result.id}`);
     if (result.type === 'artist') router.push(`/artist/${result.id}`);
+  };
+
+  const selectFilter = (nextFilter: SearchFilter) => {
+    setFilter(nextFilter);
+    if (query.trim()) void runSearch(query, nextFilter);
   };
 
   return (
@@ -100,7 +126,7 @@ export default function SearchScreen() {
           value={query}
           onChangeText={(value) => {
             setQuery(value);
-            void runSearch(value);
+            void runSearch(value, filter);
           }}
           placeholder="نام قطعه، آلبوم یا هنرمند"
           placeholderTextColor={colors.mutedForeground}
@@ -125,6 +151,34 @@ export default function SearchScreen() {
         ) : null}
       </View>
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {filterOptions.map((option) => {
+          const selected = option.value === filter;
+          return (
+            <Pressable
+              key={option.value}
+              testID={`search-filter-${option.value}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => selectFilter(option.value)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                selected && styles.filterChipSelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       {loading ? (
         <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
       ) : error ? (
@@ -136,7 +190,7 @@ export default function SearchScreen() {
         <View style={styles.emptyState}>
           <Feather name="search" size={26} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>نتیجه‌ای پیدا نشد</Text>
-          <Text style={styles.emptyCopy}>نام دیگری را امتحان کن یا داده‌های نمونه را از خانه تزریق کن.</Text>
+          <Text style={styles.emptyCopy}>نام دیگری را امتحان کن یا فیلتر جست‌وجو را تغییر بده.</Text>
         </View>
       ) : query.trim() ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.results}>
@@ -150,7 +204,7 @@ export default function SearchScreen() {
                 <View style={styles.resultList}>
                   {group.items.map((result) => (
                     <Pressable
-                      key={`${result.type}-${result.id}`}
+                      key={`${result.type}-${result.id}-${result.matchSource}`}
                       testID={`search-result-${result.type}-${result.id}`}
                       accessibilityRole="button"
                       onPress={() => navigateToResult(result)}
@@ -162,6 +216,7 @@ export default function SearchScreen() {
                       <View style={styles.resultCopy}>
                         <Text style={styles.resultTitle}>{result.title}</Text>
                         {result.subtitle ? <Text style={styles.resultSubtitle}>{result.subtitle}</Text> : null}
+                        <Text style={styles.matchSource}>{matchLabels[result.matchSource]}</Text>
                       </View>
                       <Feather name="chevron-left" size={19} color={colors.mutedForeground} />
                     </Pressable>
@@ -175,7 +230,7 @@ export default function SearchScreen() {
         <View style={styles.emptyState}>
           <Feather name="layers" size={26} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>جست‌وجو آماده است</Text>
-          <Text style={styles.emptyCopy}>نام یک قطعه، آلبوم یا هنرمند را بنویس تا نغمه در آرشیوت بگردد.</Text>
+          <Text style={styles.emptyCopy}>نام یک قطعه، آلبوم، هنرمند، بخشی از ترانه یا یک خاطره را بنویس.</Text>
         </View>
       )}
     </View>
@@ -191,6 +246,20 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     headerIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
     searchBox: { minHeight: 60, flexDirection: 'row-reverse', alignItems: 'center', gap: 11, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary, borderRadius: 18, paddingHorizontal: 16 },
     input: { flex: 1, color: colors.foreground, fontSize: 15, minHeight: 58 },
+    filterRow: { gap: 8, paddingVertical: 14, paddingHorizontal: 2, alignItems: 'center' },
+    filterChip: {
+      minHeight: 38,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 14,
+    },
+    filterChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    filterChipText: { color: colors.mutedForeground, fontSize: 12, fontWeight: '600' },
+    filterChipTextSelected: { color: colors.primaryForeground },
     status: { minHeight: 260, alignItems: 'center', justifyContent: 'center' },
     results: { paddingTop: 24, paddingBottom: 24, gap: 24 },
     group: { gap: 10 },
@@ -203,6 +272,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     resultCopy: { flex: 1 },
     resultTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     resultSubtitle: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
+    matchSource: { color: colors.primary, fontSize: 10, fontWeight: '700', textAlign: 'right', marginTop: 6 },
     emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, paddingBottom: 80 },
     emptyTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', textAlign: 'center', marginTop: 14, marginBottom: 8 },
     emptyCopy: { color: colors.mutedForeground, fontSize: 14, lineHeight: 24, textAlign: 'center' },
