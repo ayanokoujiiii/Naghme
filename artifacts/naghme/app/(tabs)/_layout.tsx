@@ -27,6 +27,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'magnifyingglass', selected: 'magnifyingglass' }} />
         <Label>جست‌وجو</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="graph">
+        <Icon sf={{ default: 'point.3.connected.trianglepath.dotted', selected: 'point.3.connected.trianglepath.dotted' }} />
+        <Label>نقشه</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -100,6 +104,18 @@ function ClassicTabLayout() {
               <SymbolView name="magnifyingglass" tintColor={color} size={24} />
             ) : (
               <Feather name="search" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="graph"
+        options={{
+          title: 'نقشه',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="point.3.connected.trianglepath.dotted" tintColor={color} size={24} />
+            ) : (
+              <Feather name="git-branch" size={22} color={color} />
             ),
         }}
       />

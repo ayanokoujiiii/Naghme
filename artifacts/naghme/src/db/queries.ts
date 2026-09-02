@@ -34,6 +34,16 @@ export interface PersonalRelationshipRecord {
   listeningCount: number;
 }
 
+export interface LibraryStats {
+  tracks: number;
+  albums: number;
+  artists: number;
+}
+
+export interface HomeTrackRecord extends TrackRecord {
+  albumTitle: string | null;
+}
+
 export type NewArtist = Omit<ArtistRecord, 'id'>;
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
 export type NewTrack = Omit<TrackRecord, 'id'>;
@@ -219,6 +229,51 @@ export async function getTracks(): Promise<TrackRecord[]> {
   return database.getAllAsync<TrackRecord>(
     'SELECT id, title, duration, albumId, audioUri, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
     [],
+  );
+}
+
+export async function getLibraryStats(): Promise<LibraryStats> {
+  const database = await requireDatabase();
+  const row = await database.getFirstAsync<LibraryStats>(
+    `SELECT
+       (SELECT COUNT(*) FROM Tracks) AS tracks,
+       (SELECT COUNT(*) FROM Albums) AS albums,
+       (SELECT COUNT(*) FROM Artists) AS artists`,
+    [],
+  );
+  return row ?? { tracks: 0, albums: 0, artists: 0 };
+}
+
+export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord[]> {
+  const database = await requireDatabase();
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 20));
+  return database.getAllAsync<HomeTrackRecord>(
+    `SELECT
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
+     FROM Tracks
+     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     ORDER BY Tracks.rowid DESC
+     LIMIT ?`,
+    [safeLimit],
+  );
+}
+
+export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
+  const database = await requireDatabase();
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 20));
+  return database.getAllAsync<HomeTrackRecord>(
+    `SELECT
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Albums.title AS albumTitle
+     FROM Tracks
+     INNER JOIN PersonalRelationships
+       ON PersonalRelationships.trackId = Tracks.id
+     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     WHERE PersonalRelationships.favorite = 1
+     ORDER BY Tracks.rowid DESC
+     LIMIT ?`,
+    [safeLimit],
   );
 }
 

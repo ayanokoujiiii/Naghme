@@ -1,1 +1,2 @@
 - [Expo first-build compatibility](expo-first-build-compatibility.md) — keep SDK-native modules aligned and guard native-only UI paths in the web preview.
+- [Music graph schema boundary](music-graph-schema-boundary.md) — seeded artist–album links stay outside SQLite until an explicit schema migration is planned.
