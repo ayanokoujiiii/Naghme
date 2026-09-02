@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { I18nManager, Platform } from 'react-native';
+import { I18nManager, Platform, View } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -18,6 +18,7 @@ import { StatusBar } from 'expo-status-bar';
 import { initializeDatabase } from '@/src/db/database';
 import { configureBackgroundAudio } from '@/src/audio/audioManager';
 import colors from '@/constants/colors';
+import { MiniPlayer } from '@/components/MiniPlayer';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -29,24 +30,34 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack
-      screenOptions={{
-        headerBackTitle: 'بازگشت',
-        headerTintColor: colors.light.foreground,
-        headerStyle: { backgroundColor: colors.light.background },
-        contentStyle: { backgroundColor: colors.light.background },
-      }}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="add-artist" options={{ headerShown: false }} />
-      <Stack.Screen name="add-album" options={{ headerShown: false }} />
-      <Stack.Screen name="add-track" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ headerShown: false }} />
-      <Stack.Screen name="recommendation" options={{ headerShown: false }} />
-      <Stack.Screen name="track/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="album/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="artist/[id]" options={{ headerShown: false }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack
+        screenOptions={{
+          headerBackTitle: 'بازگشت',
+          headerTintColor: colors.light.foreground,
+          headerStyle: { backgroundColor: colors.light.background },
+          contentStyle: { backgroundColor: colors.light.background },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="add-artist" options={{ headerShown: false }} />
+        <Stack.Screen name="add-album" options={{ headerShown: false }} />
+        <Stack.Screen name="add-track" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="recommendation" options={{ headerShown: false }} />
+        <Stack.Screen name="track/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="album/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="artist/[id]" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="player"
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
+      </Stack>
+      <MiniPlayer />
+    </View>
   );
 }
 

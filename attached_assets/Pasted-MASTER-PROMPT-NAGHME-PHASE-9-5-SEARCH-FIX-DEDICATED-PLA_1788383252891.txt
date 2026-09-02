@@ -1,0 +1,36 @@
+MASTER PROMPT: NAGHME - PHASE 9.5 (SEARCH FIX, DEDICATED PLAYER & RICH SEED DATA)
+
+You are an Expert React Native & Expo Software Architect. The user requested a specific intermediate phase (9.5) to fix the Search UI, implement a real dedicated music player, and heavily update the sample data to test these new visuals.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Focus strictly on functional UI/UX for the player and search. Do not alter the database schema.
+
+PHASE 9.5 OBJECTIVES:
+
+1. Search UI Fix (`app/(tabs)/search.tsx`):
+- The user noted that the Search Filters take up too much space at the bottom. 
+- Move the horizontal filter selector to the VERY TOP of the screen (right below the search input field).
+- Ensure the `FlatList` of search results takes up the remaining vertical space without being blocked by the filters.
+
+2. Global Mini-Player & Audio State:
+- Ensure your audio manager and global state (e.g., Zustand store) can track the currently playing `Track` globally.
+- Create a "Mini-Player" component that docks at the bottom of the screen (just above the bottom tab bar) whenever a track is currently active/loaded.
+- The Mini-Player should show: a small thumbnail (cover image), Track Title, and a Play/Pause button. Tapping the Mini-Player itself should open the Full-Screen Player.
+
+3. Dedicated Full-Screen Player (`app/player.tsx` or `app/(modals)/player.tsx`):
+- Create a dedicated "Now Playing" screen. Register it in Expo Router as a modal (`presentation: 'modal'`).
+- When the user taps a track in the Track Detail screen to play it, or taps the Mini-Player, open this Player screen.
+- Layout Design (Top to Bottom):
+  * **Header:** A close/down button to dismiss the modal (back to the app).
+  * **Visual Poster:** A large display of the album/track `coverImage` (with elegant border radius).
+  * **Metadata:** Track Title, Version Name (if any), and Artist Name.
+  * **Playback Controls:** A progress bar showing current time and total duration (hook into `expo-av` playbackStatus updates). Add large, elegant Play/Pause buttons.
+  * **Lyrics Section (`lyrics`):** Below the controls, add a scrollable text section displaying the lyrics of the track, so the user can read along while listening.
+
+4. Rich Sample Data Seeding (CRITICAL):
+- The user noticed the new fields are empty in tests. Update `src/db/seed.ts` immediately.
+- For the existing sample tracks, add REALISTIC Persian `lyrics` (متن ترانه) (at least 2-3 stanzas), valid `coverImage` URLs (posters), and `versionName`s.
+- Ensure the "Inject Sample Data" function uses `INSERT OR REPLACE` or updates existing records so the user instantly sees posters and lyrics in the new Player without adding tracks manually.
+
+ACTION: Execute Phase 9.5 step-by-step. 1. Fix Search layout. 2. Build the Global Mini-Player. 3. Build the Dedicated Player Modal. 4. UPDATE THE SEED DATA with lyrics and cover images. Test thoroughly and wait for my instruction.

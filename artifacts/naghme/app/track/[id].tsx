@@ -380,6 +380,8 @@ export default function TrackDetailScreen() {
         <AudioPlayer
           trackId={track.id}
           uri={track.audioUri}
+          track={track}
+          artistName={artistName}
           colors={colors}
           styles={styles}
           onPlayStarted={handlePlayStarted}
@@ -577,12 +579,16 @@ export default function TrackDetailScreen() {
 function AudioPlayer({
   trackId,
   uri,
+  track,
+  artistName,
   colors,
   styles,
   onPlayStarted,
 }: {
   trackId: string;
   uri: string;
+  track: TrackRecord;
+  artistName: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
   onPlayStarted?: () => void;
@@ -593,9 +599,16 @@ function AudioPlayer({
   useEffect(() => {
     const unsubscribe = subscribeToAudio(setAudio);
     setInteractionError('');
-    void loadAudio(uri, trackId).catch(() => undefined);
+    void loadAudio(uri, trackId, {
+      title: track.title,
+      coverImage: track.coverImage,
+      versionName: track.versionName,
+      artistName,
+      lyrics: track.lyrics,
+      durationSeconds: track.duration,
+    }).catch(() => undefined);
     return unsubscribe;
-  }, [trackId, uri]);
+  }, [artistName, track, trackId, uri]);
 
   const isCurrentTrack = audio.trackId === trackId && audio.uri === uri;
   const ready = isCurrentTrack && audio.isLoaded;
@@ -616,7 +629,13 @@ function AudioPlayer({
   };
 
   return (
-    <View style={styles.audioPlayerCard}>
+    <Pressable
+      testID="track-open-player"
+      accessibilityRole="button"
+      accessibilityLabel="بازکردن پخش‌کننده"
+      onPress={() => router.push('/player')}
+      style={({ pressed }) => [styles.audioPlayerCard, pressed && styles.pressed]}
+    >
       <View style={styles.audioPlayerIcon}>
         <Feather name="headphones" size={19} color={colors.primary} />
       </View>
@@ -648,7 +667,7 @@ function AudioPlayer({
           />
         )}
       </Pressable>
-    </View>
+    </Pressable>
   );
 }
 

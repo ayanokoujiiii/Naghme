@@ -3,11 +3,23 @@ import { Audio, AVPlaybackStatus } from 'expo-av';
 export interface AudioPlaybackSnapshot {
   trackId: string | null;
   uri: string | null;
+  track: AudioTrackMetadata | null;
   isLoaded: boolean;
   isLoading: boolean;
   isPlaying: boolean;
   isBuffering: boolean;
   error: string | null;
+  positionMillis: number;
+  durationMillis: number;
+}
+
+export interface AudioTrackMetadata {
+  title: string;
+  coverImage: string | null;
+  versionName: string | null;
+  artistName: string | null;
+  lyrics: string | null;
+  durationSeconds: number | null;
 }
 
 type AudioListener = (snapshot: AudioPlaybackSnapshot) => void;
@@ -15,11 +27,14 @@ type AudioListener = (snapshot: AudioPlaybackSnapshot) => void;
 const initialSnapshot: AudioPlaybackSnapshot = {
   trackId: null,
   uri: null,
+  track: null,
   isLoaded: false,
   isLoading: false,
   isPlaying: false,
   isBuffering: false,
   error: null,
+  positionMillis: 0,
+  durationMillis: 0,
 };
 
 let snapshot = initialSnapshot;
@@ -43,6 +58,8 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
       isPlaying: status.isPlaying,
       isBuffering: status.isBuffering,
       error: null,
+      positionMillis: status.positionMillis,
+      durationMillis: status.durationMillis,
     });
     return;
   }
@@ -53,6 +70,7 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
     isPlaying: false,
     isBuffering: false,
     error: status.error ? 'پخش این فایل صوتی ممکن نیست.' : snapshot.error,
+    positionMillis: 0,
   });
 }
 
@@ -88,8 +106,13 @@ function getFileExtension(uri: string): string | undefined {
   return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : undefined;
 }
 
-export async function loadAudio(uri: string, trackId: string): Promise<void> {
+export async function loadAudio(
+  uri: string,
+  trackId: string,
+  track: AudioTrackMetadata,
+): Promise<void> {
   if (sound && loadedUri === uri && loadedTrackId === trackId) {
+    updateSnapshot({ trackId, uri, track });
     return;
   }
   if (loadRequest) {
@@ -103,11 +126,14 @@ export async function loadAudio(uri: string, trackId: string): Promise<void> {
     updateSnapshot({
       trackId,
       uri,
+      track,
       isLoaded: false,
       isLoading: true,
       isPlaying: false,
       isBuffering: false,
       error: null,
+      positionMillis: 0,
+      durationMillis: track.durationSeconds ? track.durationSeconds * 1000 : 0,
     });
     await configureBackgroundAudio();
 
@@ -139,10 +165,17 @@ export async function loadAudio(uri: string, trackId: string): Promise<void> {
     updateSnapshot({
       trackId,
       uri,
+      track,
       isLoaded: created.status.isLoaded,
       isLoading: false,
       isPlaying: created.status.isLoaded ? created.status.isPlaying : false,
       isBuffering: created.status.isLoaded ? created.status.isBuffering : false,
+      positionMillis: created.status.isLoaded ? created.status.positionMillis : 0,
+      durationMillis: created.status.isLoaded
+        ? created.status.durationMillis
+        : track.durationSeconds
+          ? track.durationSeconds * 1000
+          : 0,
       error: created.status.isLoaded
         ? null
         : created.status.error

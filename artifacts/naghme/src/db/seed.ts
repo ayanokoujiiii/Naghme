@@ -88,6 +88,8 @@ const SAMPLE_ALBUMS: Array<AlbumRecord> = [
   },
 ];
 
+const SAMPLE_AUDIO_URI = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+
 const SAMPLE_TRACKS: Array<TrackRecord> = [
   {
     id: SAMPLE_TRACK_IDS.tasnifBidad,
@@ -95,11 +97,17 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     duration: 356,
     artistId: SAMPLE_ARTIST_IDS.shajarian,
     albumId: SAMPLE_ALBUM_IDS.bidad,
-    audioUri: null,
+    audioUri: SAMPLE_AUDIO_URI,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
-    lyrics: null,
+    lyrics:
+      'در کوچه‌های خاموش شب، آواز دوری مانده است\n' +
+      'بر شانه‌های خسته‌ام، عطر عبوری مانده است\n\n' +
+      'ای پنجره، ای صبح روشن، از قصه‌هایم کم نکن\n' +
+      'این دل اگر بیدار مانده، با یاد او آرام کن\n\n' +
+      'هر جا که باران می‌زند، نام تو در من تازه است\n' +
+      'بیداد اگرچه تلخ بود، پایان این آواز نیست',
     sheetMusicUri: null,
-    versionName: null,
+    versionName: 'اجرای نمونهٔ استودیویی',
   },
   {
     id: SAMPLE_TRACK_IDS.baroun,
@@ -107,11 +115,17 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     duration: 287,
     artistId: SAMPLE_ARTIST_IDS.shajarian,
     albumId: SAMPLE_ALBUM_IDS.bidad,
-    audioUri: null,
+    audioUri: SAMPLE_AUDIO_URI,
     coverImage: SAMPLE_ALBUMS[0].coverImage,
-    lyrics: null,
+    lyrics:
+      'باران که می‌گیرد، خیابان بوی تو را می‌دهد\n' +
+      'هر قطره روی شیشه، از رفتنت خبر می‌دهد\n\n' +
+      'من مانده‌ام با چتری از خاطره‌های خیس و دور\n' +
+      'با یک ترانه در گلو، با یک نگاه از پشت نور\n\n' +
+      'باران ببار آرام‌تر، این خانه خوابش می‌برد\n' +
+      'شاید دل دیوانه‌ام امشب تو را باور کند',
     sheetMusicUri: null,
-    versionName: null,
+    versionName: 'بازخوانی آرام',
   },
   {
     id: SAMPLE_TRACK_IDS.khaneh,
@@ -119,11 +133,17 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     duration: 318,
     artistId: SAMPLE_ARTIST_IDS.alizadeh,
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
-    audioUri: null,
+    audioUri: SAMPLE_AUDIO_URI,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
-    lyrics: null,
+    lyrics:
+      'خانه‌ام ابری‌ست اما پنجره رو به سحر دارد\n' +
+      'در اتاقی دور و خاموش، شعله‌ای از سفر دارد\n\n' +
+      'می‌روم تا پشت این دیوار، جایی از باران بگذرم\n' +
+      'از میان کوچه‌های خیس، سمت یک رؤیا بگذرم\n\n' +
+      'ابرها می‌گذرند آخر، آسمان سهم من است\n' +
+      'خانه گر ابری‌ست، در من روشنای دیگری‌ست',
     sheetMusicUri: null,
-    versionName: null,
+    versionName: 'تنظیم مجلسی',
   },
   {
     id: SAMPLE_TRACK_IDS.shabSokoutKavir,
@@ -131,11 +151,17 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     duration: 402,
     artistId: SAMPLE_ARTIST_IDS.kalhor,
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
-    audioUri: null,
+    audioUri: SAMPLE_AUDIO_URI,
     coverImage: SAMPLE_ALBUMS[1].coverImage,
-    lyrics: null,
+    lyrics:
+      'شب سکوت کویر است و ستاره نزدیک‌تر\n' +
+      'باد از کنار شن‌ها می‌گذرد آهسته‌تر\n\n' +
+      'در دوردست این جاده، صدای ساز می‌آید\n' +
+      'هر نت میان این شب، به قلب راز می‌آید\n\n' +
+      'ای ماه، نگاهت کن، این خلوت بی‌انتها را\n' +
+      'تا صبح با من بنشین، تا بشنوی سکوت ما را',
     sheetMusicUri: null,
-    versionName: null,
+    versionName: 'اجرای زنده در کویر',
   },
 ];
 

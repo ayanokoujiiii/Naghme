@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -89,6 +90,10 @@ export default function SearchScreen() {
         items: results.filter((result) => result.type === type),
       })),
     [results],
+  );
+  const displayResults = useMemo(
+    () => groupedResults.flatMap((group) => group.items),
+    [groupedResults],
   );
 
   const navigateToResult = (result: SearchResult) => {
@@ -193,39 +198,43 @@ export default function SearchScreen() {
           <Text style={styles.emptyCopy}>نام دیگری را امتحان کن یا فیلتر جست‌وجو را تغییر بده.</Text>
         </View>
       ) : query.trim() ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.results}>
-          {groupedResults.map((group) =>
-            group.items.length > 0 ? (
-              <View key={group.type} style={styles.group}>
-                <View style={styles.groupHeader}>
-                  <Text style={styles.groupTitle}>{labels[group.type]}</Text>
-                  <Text style={styles.groupCount}>{group.items.length}</Text>
-                </View>
-                <View style={styles.resultList}>
-                  {group.items.map((result) => (
-                    <Pressable
-                      key={`${result.type}-${result.id}-${result.matchSource}`}
-                      testID={`search-result-${result.type}-${result.id}`}
-                      accessibilityRole="button"
-                      onPress={() => navigateToResult(result)}
-                      style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}
-                    >
-                      <View style={styles.resultIcon}>
-                        <Feather name={icons[result.type]} size={18} color={colors.primary} />
-                      </View>
-                      <View style={styles.resultCopy}>
-                        <Text style={styles.resultTitle}>{result.title}</Text>
-                        {result.subtitle ? <Text style={styles.resultSubtitle}>{result.subtitle}</Text> : null}
-                        <Text style={styles.matchSource}>{matchLabels[result.matchSource]}</Text>
-                      </View>
-                      <Feather name="chevron-left" size={19} color={colors.mutedForeground} />
-                    </Pressable>
-                  ))}
-                </View>
+        <FlatList
+          data={displayResults}
+          keyExtractor={(result) => `${result.type}-${result.id}-${result.matchSource}`}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.results, { paddingBottom: insets.bottom + 120 }]}
+          renderItem={({ item: result, index }) => {
+            const previousResult = displayResults[index - 1];
+            const showGroupHeader = !previousResult || previousResult.type !== result.type;
+            const groupCount = groupedResults.find((group) => group.type === result.type)?.items.length ?? 0;
+            return (
+              <View>
+                {showGroupHeader ? (
+                  <View style={styles.groupHeader}>
+                    <Text style={styles.groupTitle}>{labels[result.type]}</Text>
+                    <Text style={styles.groupCount}>{groupCount}</Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  testID={`search-result-${result.type}-${result.id}`}
+                  accessibilityRole="button"
+                  onPress={() => navigateToResult(result)}
+                  style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}
+                >
+                  <View style={styles.resultIcon}>
+                    <Feather name={icons[result.type]} size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.resultCopy}>
+                    <Text style={styles.resultTitle}>{result.title}</Text>
+                    {result.subtitle ? <Text style={styles.resultSubtitle}>{result.subtitle}</Text> : null}
+                    <Text style={styles.matchSource}>{matchLabels[result.matchSource]}</Text>
+                  </View>
+                  <Feather name="chevron-left" size={19} color={colors.mutedForeground} />
+                </Pressable>
               </View>
-            ) : null,
-          )}
-        </ScrollView>
+            );
+          }}
+        />
       ) : (
         <View style={styles.emptyState}>
           <Feather name="layers" size={26} color={colors.mutedForeground} />
@@ -261,9 +270,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     filterChipText: { color: colors.mutedForeground, fontSize: 12, fontWeight: '600' },
     filterChipTextSelected: { color: colors.primaryForeground },
     status: { minHeight: 260, alignItems: 'center', justifyContent: 'center' },
-    results: { paddingTop: 24, paddingBottom: 24, gap: 24 },
+     results: { flexGrow: 1, paddingTop: 18, gap: 10 },
     group: { gap: 10 },
-    groupHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+     groupHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, paddingBottom: 2 },
     groupTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', textAlign: 'right' },
     groupCount: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     resultList: { gap: 8 },
