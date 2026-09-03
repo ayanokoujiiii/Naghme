@@ -35,7 +35,13 @@
       "expo-sqlite",
       "expo-av",
       "expo-document-picker",
-      "expo-media-library"
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "نغمه برای ذخیره عکس‌نوشته‌ها به این دسترسی نیاز دارد.",
+          "savePhotosPermission": "نغمه برای ذخیره عکس‌نوشته‌ها به این دسترسی نیاز دارد."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

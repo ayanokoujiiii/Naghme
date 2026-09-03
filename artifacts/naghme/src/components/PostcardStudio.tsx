@@ -6,8 +6,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  GestureResponderEvent,
   Image,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -120,7 +122,6 @@ const menuOptions: Array<{
   { value: 'filters', label: 'فیلترها', icon: 'layers' },
 ];
 
-const hueColors = ['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000'] as const;
 const elegantPalette = [
   '#F6F0E8',
   '#E5A35D',
@@ -137,7 +138,7 @@ const elegantPalette = [
   '#151A24',
 ] as const;
 type PickerTarget = 'text' | 'background' | null;
-type TextSubMenu = 'color' | 'font' | 'alignment';
+type TextSubMenu = 'color' | 'font' | 'alignment' | 'size';
 type BackgroundSubMenu = 'type' | 'colors' | 'settings';
 
 export function PostcardStudio({
@@ -169,18 +170,17 @@ export function PostcardStudio({
   const [blurRadius, setBlurRadius] = useState<number>(28);
   const [fontChoice, setFontChoice] = useState<PersianFont>('Vazirmatn');
   const [alignment, setAlignment] = useState<TextAlignment>('center');
-  const [hue, setHue] = useState<number>(30);
-  const [saturation, setSaturation] = useState<number>(0.42);
-  const [brightness, setBrightness] = useState<number>(0.96);
-  const [textColor, setTextColor] = useState<string>(hsvToHex(30, 0.42, 0.96));
+  const [textColor, setTextColor] = useState<string>('#F6F0E8');
+  const [textSize, setTextSize] = useState<number>(18);
   const [customStickers, setCustomStickers] = useState<CustomSticker[]>([]);
   const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
+  const [pickerHex, setPickerHex] = useState<string>('#F6F0E8');
+  const [pickerError, setPickerError] = useState<string>('');
   const [activeFilters, setActiveFilters] = useState<FilterName[]>([]);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('jpg');
   const [saving, setSaving] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
-  const pickerValues = useRef({ hue: 30, saturation: 0.42, brightness: 0.96 });
   const toastProgress = useSharedValue(0);
   const postcardWidth = Math.min(Math.max(width - 32, 280), 360);
   const customWidthNumber = Math.min(4096, Math.max(120, Number.parseInt(customWidth, 10) || 1080));
@@ -215,14 +215,13 @@ export function PostcardStudio({
     setBlurRadius(28);
     setFontChoice('Vazirmatn');
     setAlignment('center');
-    setHue(30);
-    setSaturation(0.42);
-    setBrightness(0.96);
-    setTextColor(hsvToHex(30, 0.42, 0.96));
-    pickerValues.current = { hue: 30, saturation: 0.42, brightness: 0.96 };
+    setTextColor('#F6F0E8');
+    setTextSize(18);
     setCustomStickers([]);
     setActiveStickerId(null);
     setPickerTarget(null);
+    setPickerHex('#F6F0E8');
+    setPickerError('');
     setActiveFilters([]);
     setExportFormat('jpg');
   }, [lyrics, visible]);
@@ -303,22 +302,25 @@ export function PostcardStudio({
 
   const openColorPicker = (target: Exclude<PickerTarget, null>) => {
     const currentColor = target === 'text' ? textColor : solidBackground;
-    const next = hexToHsv(currentColor);
-    pickerValues.current = next;
-    setHue(next.hue);
-    setSaturation(next.saturation);
-    setBrightness(next.brightness);
+    setPickerHex(currentColor);
+    setPickerError('');
     setPickerTarget(target);
   };
 
-  const applyPickerColor = (nextHue = hue, nextSaturation = saturation, nextBrightness = brightness) => {
-    const hex = hsvToHex(nextHue, nextSaturation, nextBrightness);
+  const applyPickerColor = () => {
+    const hex = normalizeHex(pickerHex);
+    if (!hex) {
+      setPickerError('کد رنگ باید به شکل #FFFFFF باشد.');
+      return;
+    }
     if (pickerTarget === 'text') {
       setTextColor(hex);
     } else if (pickerTarget === 'background') {
       setSolidBackground(hex);
       setBackgroundKind('solid');
     }
+    setPickerError('');
+    setPickerTarget(null);
   };
 
   const applyCustomDimensions = () => {
@@ -345,7 +347,7 @@ export function PostcardStudio({
     setSaving(true);
     try {
       console.error('[Naghme postcard export] requesting media-library permission');
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true);
       if (status !== 'granted') {
         showToast(
           'برای ذخیره، اجازه‌ی دسترسی به گالری لازم است.',
@@ -506,6 +508,7 @@ export function PostcardStudio({
                     artistName={artistName}
                     lyrics={selectedLyrics}
                     textColor={textColor}
+                    textSize={textSize}
                     textStyle={textStyle}
                     alignment={alignment}
                     width={postcardWidth - 68}
@@ -684,6 +687,7 @@ export function PostcardStudio({
                           { value: 'color', label: 'رنگ' },
                           { value: 'font', label: 'فونت' },
                           { value: 'alignment', label: 'چینش' },
+                          { value: 'size', label: 'اندازه' },
                         ]}
                         value={textSubMenu}
                         onChange={setTextSubMenu}
@@ -699,10 +703,6 @@ export function PostcardStudio({
                               accessibilityRole="button"
                               accessibilityLabel="انتخاب رنگ متن"
                               onPress={() => {
-                                const next = hexToHsv(color);
-                                setHue(next.hue);
-                                setSaturation(next.saturation);
-                                setBrightness(next.brightness);
                                 setTextColor(color);
                               }}
                               style={[styles.colorOption, { backgroundColor: color }]}
@@ -756,6 +756,20 @@ export function PostcardStudio({
                             </Pressable>
                           ))}
                         </ScrollView>
+                      ) : null}
+                      {textSubMenu === 'size' ? (
+                        <StudioSlider
+                          value={textSize}
+                          min={10}
+                          max={100}
+                          step={1}
+                          onChange={setTextSize}
+                          title="اندازه متن"
+                          caption="شعر را کوچک یا بزرگ کن"
+                          valueLabel={`${textSize}px`}
+                          colors={colors}
+                          styles={styles}
+                        />
                       ) : null}
                     </View>
                   ) : null}
@@ -956,36 +970,17 @@ export function PostcardStudio({
             <Text style={styles.toastText}>{toastMessage}</Text>
           </Animated.View>
         ) : null}
-        <ColorWheelModal
+        <HexColorModal
           visible={pickerTarget !== null}
           title={pickerTarget === 'background' ? 'رنگ سفارشی پس‌زمینه' : 'رنگ سفارشی متن'}
-          hue={hue}
-          saturation={saturation}
-          brightness={brightness}
-          onHueChange={(next) => {
-            pickerValues.current.hue = next;
-            setHue(next);
-            applyPickerColor(next, pickerValues.current.saturation, pickerValues.current.brightness);
-          }}
-          onSaturationChange={(next) => {
-            pickerValues.current.saturation = next;
-            setSaturation(next);
-            applyPickerColor(pickerValues.current.hue, next, pickerValues.current.brightness);
-          }}
-          onBrightnessChange={(next) => {
-            pickerValues.current.brightness = next;
-            setBrightness(next);
-            applyPickerColor(pickerValues.current.hue, pickerValues.current.saturation, next);
+          value={pickerHex}
+          onChangeText={(value) => {
+            setPickerHex(value);
+            setPickerError('');
           }}
           onClose={() => setPickerTarget(null)}
-          onApply={() => {
-            applyPickerColor(
-              pickerValues.current.hue,
-              pickerValues.current.saturation,
-              pickerValues.current.brightness,
-            );
-            setPickerTarget(null);
-          }}
+          onApply={applyPickerColor}
+          error={pickerError}
           colors={colors}
           styles={styles}
         />
@@ -1000,6 +995,7 @@ function DraggableLyrics({
   artistName,
   lyrics,
   textColor,
+  textSize,
   textStyle,
   alignment,
   width,
@@ -1010,6 +1006,7 @@ function DraggableLyrics({
   artistName?: string;
   lyrics: string;
   textColor: string;
+  textSize: number;
   textStyle: { fontFamily: string; fontWeight?: '700' | '500' };
   alignment: TextAlignment;
   width: number;
@@ -1056,7 +1053,13 @@ function DraggableLyrics({
           <Text style={[styles.postcardArtist, textStyle, { color: textColor }]}>{artistName}</Text>
         ) : null}
         <View style={[styles.divider, { backgroundColor: textColor }]} />
-        <Text style={[styles.poetryText, textStyle, { color: textColor, textAlign: alignment }]}>
+        <Text
+          style={[
+            styles.poetryText,
+            textStyle,
+            { color: textColor, textAlign: alignment, fontSize: textSize, lineHeight: Math.round(textSize * 1.75) },
+          ]}
+        >
           {lyrics.trim()}
         </Text>
       </Animated.View>
@@ -1124,16 +1127,23 @@ function DraggableSticker({
         testID="postcard-draggable-sticker"
         style={[
           styles.stickerLayer,
-          { top: 0, left: '50%', opacity, borderRadius },
-          selected && styles.stickerLayerSelected,
+          { top: 0, left: '50%' },
           animatedStyle,
         ]}
       >
-        <Animated.Image
-          source={{ uri }}
-          style={[styles.customStickerImage, { opacity, borderRadius }]}
-          resizeMode="contain"
-        />
+        <View
+          style={[
+            styles.stickerVisual,
+            { opacity, borderRadius },
+            selected && styles.stickerLayerSelected,
+          ]}
+        >
+          <Image
+            source={{ uri }}
+            style={[styles.customStickerImage, { borderRadius }]}
+            resizeMode="contain"
+          />
+        </View>
       </Animated.View>
     </GestureDetector>
   );
@@ -1197,26 +1207,21 @@ function StudioSlider({
   styles: ReturnType<typeof createStyles>;
 }) {
   const [trackWidth, setTrackWidth] = useState<number>(1);
-  const position = useSharedValue((value - min) / Math.max(max - min, 1));
-  const startPosition = useSharedValue((value - min) / Math.max(max - min, 1));
-  useEffect(() => {
-    position.value = (value - min) / Math.max(max - min, 1);
-  }, [max, min, position, value]);
-  const knobStyle = useAnimatedStyle(() => ({
-    left: `${position.value * 100}%`,
-  }));
-  const gesture = Gesture.Pan()
-    .onBegin((event) => {
-      const next = Math.min(1, Math.max(0, event.x / Math.max(trackWidth, 1)));
-      position.value = next;
-      startPosition.value = next;
-      runOnJS(onChange)(roundToStep(min + next * (max - min), step));
-    })
-    .onUpdate((event) => {
-      const next = Math.min(1, Math.max(0, startPosition.value + event.translationX / Math.max(trackWidth, 1)));
-      position.value = next;
-      runOnJS(onChange)(roundToStep(min + next * (max - min), step));
-    });
+  const updateValue = (event: GestureResponderEvent) => {
+    const position = Math.min(1, Math.max(0, event.nativeEvent.locationX / Math.max(trackWidth, 1)));
+    onChange(roundToStep(min + position * (max - min), step));
+  };
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: updateValue,
+        onPanResponderMove: updateValue,
+      }),
+    [max, min, onChange, step, trackWidth],
+  );
+  const position = Math.min(1, Math.max(0, (value - min) / Math.max(max - min, 1)));
 
   return (
     <View style={styles.sliderRow}>
@@ -1225,112 +1230,14 @@ function StudioSlider({
         <Text style={styles.sliderTitle}>{title}</Text>
         <Text style={styles.sliderCaption}>{caption}</Text>
       </View>
-      <GestureDetector gesture={gesture}>
-        <View
-          style={styles.sliderTrack}
-          onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-        >
-          <View style={[styles.sliderFill, { width: `${((value - min) / Math.max(max - min, 1)) * 100}%` }]} />
-          <Animated.View style={[styles.sliderKnob, knobStyle, { backgroundColor: colors.primary }]} />
-        </View>
-      </GestureDetector>
-    </View>
-  );
-}
-
-function ColorPicker({
-  hue,
-  saturation,
-  brightness,
-  onHueChange,
-  onSaturationChange,
-  onBrightnessChange,
-  colors,
-  styles,
-}: {
-  hue: number;
-  saturation: number;
-  brightness: number;
-  onHueChange: (value: number) => void;
-  onSaturationChange: (value: number) => void;
-  onBrightnessChange: (value: number) => void;
-  colors: ReturnType<typeof useColors>;
-  styles: ReturnType<typeof createStyles>;
-}) {
-  const [squareSize, setSquareSize] = useState<number>(1);
-  const [hueWidth, setHueWidth] = useState<number>(1);
-  const squareX = useSharedValue(saturation);
-  const squareY = useSharedValue(1 - brightness);
-  const huePosition = useSharedValue(hue / 360);
-  useEffect(() => {
-    squareX.value = saturation;
-    squareY.value = 1 - brightness;
-    huePosition.value = hue / 360;
-  }, [brightness, hue, huePosition, saturation, squareX, squareY]);
-
-  const cursorStyle = useAnimatedStyle(() => ({
-    left: squareX.value * squareSize - 9,
-    top: squareY.value * squareSize - 9,
-  }));
-  const hueCursorStyle = useAnimatedStyle(() => ({
-    left: huePosition.value * hueWidth - 8,
-  }));
-  const hueColor = hsvToHex(hue, 1, 1);
-
-  const squareGesture = Gesture.Pan()
-    .onBegin((event) => {
-      const x = Math.min(1, Math.max(0, event.x / Math.max(squareSize, 1)));
-      const y = Math.min(1, Math.max(0, event.y / Math.max(squareSize, 1)));
-      squareX.value = x;
-      squareY.value = y;
-      runOnJS(onSaturationChange)(x);
-      runOnJS(onBrightnessChange)(1 - y);
-    })
-    .onChange((event) => {
-      const x = Math.min(1, Math.max(0, event.x / Math.max(squareSize, 1)));
-      const y = Math.min(1, Math.max(0, event.y / Math.max(squareSize, 1)));
-      squareX.value = x;
-      squareY.value = y;
-      runOnJS(onSaturationChange)(x);
-      runOnJS(onBrightnessChange)(1 - y);
-    });
-  const hueGesture = Gesture.Pan()
-    .onBegin((event) => {
-      const next = Math.min(1, Math.max(0, event.x / Math.max(hueWidth, 1)));
-      huePosition.value = next;
-      runOnJS(onHueChange)(next * 360);
-    })
-    .onChange((event) => {
-      const next = Math.min(1, Math.max(0, huePosition.value + event.changeX / Math.max(hueWidth, 1)));
-      huePosition.value = next;
-      runOnJS(onHueChange)(next * 360);
-    });
-
-  return (
-    <View style={styles.colorPicker}>
-      <View style={styles.colorPickerHeader}>
-        <View style={[styles.colorPreview, { backgroundColor: hsvToHex(hue, saturation, brightness) }]} />
-        <View style={styles.colorPickerCopy}>
-          <Text style={styles.colorPickerTitle}>رنگ کامل متن</Text>
-          <Text style={styles.colorPickerCaption}>هر رنگی را با لمس و کشیدن انتخاب کن</Text>
-        </View>
+      <View
+        {...panResponder.panHandlers}
+        style={styles.sliderTrack}
+        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+      >
+        <View style={[styles.sliderFill, { width: `${position * 100}%` }]} />
+        <View style={[styles.sliderKnob, { left: `${position * 100}%`, backgroundColor: colors.primary }]} />
       </View>
-      <GestureDetector gesture={squareGesture}>
-        <View
-          style={[styles.saturationSquare, { backgroundColor: hueColor }]}
-          onLayout={(event) => setSquareSize(event.nativeEvent.layout.width)}
-        >
-          <LinearGradient colors={['#FFFFFF', 'rgba(255,255,255,0)']} style={StyleSheet.absoluteFill} />
-          <LinearGradient colors={['rgba(0,0,0,0)', '#000000']} style={StyleSheet.absoluteFill} />
-          <Animated.View style={[styles.colorCursor, cursorStyle, { borderColor: colors.foreground }]} />
-        </View>
-      </GestureDetector>
-      <GestureDetector gesture={hueGesture}>
-        <View style={styles.hueTrack} onLayout={(event) => setHueWidth(event.nativeEvent.layout.width)}>
-          <LinearGradient colors={hueColors} style={StyleSheet.absoluteFill} />
-          <Animated.View style={[styles.hueCursor, hueCursorStyle, { borderColor: colors.foreground }]} />
-        </View>
-      </GestureDetector>
     </View>
   );
 }
@@ -1372,33 +1279,29 @@ function SubMenuTabs<T extends string>({
   );
 }
 
-function ColorWheelModal({
+function HexColorModal({
   visible,
   title,
-  hue,
-  saturation,
-  brightness,
-  onHueChange,
-  onSaturationChange,
-  onBrightnessChange,
+  value,
+  onChangeText,
   onClose,
   onApply,
+  error,
   colors,
   styles,
 }: {
   visible: boolean;
   title: string;
-  hue: number;
-  saturation: number;
-  brightness: number;
-  onHueChange: (value: number) => void;
-  onSaturationChange: (value: number) => void;
-  onBrightnessChange: (value: number) => void;
+  value: string;
+  onChangeText: (value: string) => void;
   onClose: () => void;
   onApply: () => void;
+  error: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
+  const previewColor = normalizeHex(value) ?? colors.secondary;
+
   return (
     <Modal
       visible={visible}
@@ -1420,23 +1323,31 @@ function ColorWheelModal({
             </Pressable>
             <Text style={styles.colorModalTitle}>{title}</Text>
           </View>
-          <ColorPicker
-            hue={hue}
-            saturation={saturation}
-            brightness={brightness}
-            onHueChange={onHueChange}
-            onSaturationChange={onSaturationChange}
-            onBrightnessChange={onBrightnessChange}
-            colors={colors}
-            styles={styles}
-          />
+          <View style={styles.hexInputRow}>
+            <View style={[styles.hexPreview, { backgroundColor: previewColor }]} />
+            <TextInput
+              testID="postcard-color-hex-input"
+              value={value}
+              onChangeText={onChangeText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={7}
+              keyboardType="default"
+              placeholder="#FFFFFF"
+              placeholderTextColor={colors.mutedForeground}
+              selectionColor={colors.primary}
+              style={styles.hexInput}
+            />
+          </View>
+          {error ? <Text style={styles.hexError}>{error}</Text> : null}
+          <Text style={styles.hexHint}>کد رنگ شش‌رقمی را وارد کن.</Text>
           <Pressable
-            testID="postcard-color-wheel-apply"
+            testID="postcard-color-hex-apply"
             accessibilityRole="button"
             onPress={onApply}
             style={({ pressed }) => [styles.colorModalApply, pressed && styles.pressed]}
           >
-            <Text style={styles.colorModalApplyText}>اعمال رنگ</Text>
+            <Text style={styles.colorModalApplyText}>اعمال</Text>
           </Pressable>
         </View>
       </View>
@@ -1452,27 +1363,6 @@ function roundToStep(value: number, step: number) {
   return Math.round(value / step) * step;
 }
 
-function hexToHsv(hex: string) {
-  const normalized = hex.replace('#', '');
-  const red = Number.parseInt(normalized.slice(0, 2), 16) / 255;
-  const green = Number.parseInt(normalized.slice(2, 4), 16) / 255;
-  const blue = Number.parseInt(normalized.slice(4, 6), 16) / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const delta = max - min;
-  let hue = 0;
-  if (delta) {
-    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
-    else if (max === green) hue = 60 * ((blue - red) / delta + 2);
-    else hue = 60 * ((red - green) / delta + 4);
-  }
-  return {
-    hue: hue < 0 ? hue + 360 : hue,
-    saturation: max === 0 ? 0 : delta / max,
-    brightness: max,
-  };
-}
-
 function filterOverlayColor(filter: FilterName) {
   if (filter === 'grayscale') return 'rgba(34, 34, 34, 0.28)';
   if (filter === 'vintage') return 'rgba(166, 117, 66, 0.24)';
@@ -1484,25 +1374,9 @@ function filterOverlayColor(filter: FilterName) {
   return 'rgba(0, 0, 0, 0.3)';
 }
 
-function hsvToHex(hue: number, saturation: number, value: number) {
-  const chroma = value * saturation;
-  const segment = hue / 60;
-  const x = chroma * (1 - Math.abs((segment % 2) - 1));
-  const [red, green, blue] =
-    segment < 1
-      ? [chroma, x, 0]
-      : segment < 2
-        ? [x, chroma, 0]
-        : segment < 3
-          ? [0, chroma, x]
-          : segment < 4
-            ? [0, x, chroma]
-            : segment < 5
-              ? [x, 0, chroma]
-              : [chroma, 0, x];
-  const match = value - chroma;
-  const channel = (component: number) => Math.round((component + match) * 255).toString(16).padStart(2, '0');
-  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+function normalizeHex(value: string) {
+  const normalized = value.startsWith('#') ? value : `#${value}`;
+  return /^#[0-9A-Fa-f]{6}$/.test(normalized) ? normalized.toUpperCase() : null;
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {
@@ -1594,6 +1468,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     divider: { width: 42, height: 2, borderRadius: 2, alignSelf: 'center', marginVertical: 16 },
     poetryText: { fontSize: 18, lineHeight: 34, writingDirection: 'rtl' },
     stickerLayer: { position: 'absolute', width: 78, height: 78, marginLeft: -39, zIndex: 3, overflow: 'hidden' },
+    stickerVisual: { width: '100%', height: '100%', overflow: 'hidden' },
     stickerLayerSelected: { borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' },
     customStickerImage: { width: '100%', height: '100%' },
     menuShell: { width: '100%', borderRadius: 19, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
@@ -1634,16 +1509,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     sliderTrack: { flex: 1, height: 25, justifyContent: 'center', position: 'relative', borderRadius: 12 },
     sliderFill: { position: 'absolute', left: 0, height: 5, borderRadius: 5, backgroundColor: colors.primary },
     sliderKnob: { position: 'absolute', top: 5, width: 15, height: 15, borderRadius: 8, marginLeft: -7, borderWidth: 2, borderColor: colors.primaryForeground },
-    colorPicker: { paddingHorizontal: 12, gap: 8 },
-    colorPickerHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 9 },
-    colorPreview: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.border },
-    colorPickerCopy: { flex: 1, alignItems: 'flex-end' },
-    colorPickerTitle: { color: colors.foreground, fontSize: 11, fontWeight: '700', textAlign: 'right' },
-    colorPickerCaption: { color: colors.mutedForeground, fontSize: 9, textAlign: 'right', marginTop: 2 },
-    saturationSquare: { width: '100%', height: 128, borderRadius: 13, overflow: 'hidden', position: 'relative' },
-    colorCursor: { position: 'absolute', width: 18, height: 18, borderRadius: 9, borderWidth: 2, backgroundColor: 'transparent' },
-    hueTrack: { width: '100%', height: 18, borderRadius: 9, overflow: 'hidden', position: 'relative' },
-    hueCursor: { position: 'absolute', top: -2, width: 22, height: 22, borderRadius: 11, borderWidth: 2, backgroundColor: 'transparent' },
+    hexInputRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+    hexPreview: { width: 48, height: 48, borderRadius: 14, borderWidth: 2, borderColor: colors.border },
+    hexInput: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary, color: colors.foreground, paddingHorizontal: 14, textAlign: 'left', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
+    hexHint: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right' },
+    hexError: { color: colors.destructive, fontSize: 10, textAlign: 'right' },
     fontOption: { minWidth: 78, minHeight: 51, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 11, paddingHorizontal: 7 },
     fontSample: { color: colors.foreground, fontSize: 17 },
     optionLabel: { color: colors.mutedForeground, fontSize: 10, textAlign: 'center' },

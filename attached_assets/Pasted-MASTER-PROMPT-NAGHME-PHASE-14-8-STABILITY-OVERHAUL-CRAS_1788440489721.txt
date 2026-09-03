@@ -1,0 +1,38 @@
+MASTER PROMPT: NAGHME - PHASE 14.8 (STABILITY OVERHAUL: CRASH FIXES, EXPORT PERMISSIONS & COLOR PICKER)
+
+You are a Senior React Native Architect. The user QA tested the Studio in Expo Go and found critical stability issues: Sliders crash the app due to Reanimated thread conflicts, the custom Color Picker is broken, and Exporting throws an exact "AUDIO permission" error on Android 13+.
+
+CRITICAL RULES:
+1. Native Android priority via Expo Go.
+2. Decouple non-layout style properties (Opacity, Blur, Radius) from Reanimated to prevent rapid-update memory crashes.
+3. Fix the ExpoMediaLibrary audio permission bug explicitly.
+
+PHASE 14.8 OBJECTIVES TO IMPLEMENT:
+
+1. EXPORT CRASH FIX (Audio Permission Bug):
+- **Bug:** `MediaLibrary.requestPermissionsAsync()` fails with "You have requested the AUDIO permission, but it is not declared...".
+- **Fix 1 (Code):** Force write-only permissions. Change the call in your export function to: 
+  `const { status } = await MediaLibrary.requestPermissionsAsync(true);` 
+  (Passing `true` requests write-only access and bypasses the audio check).
+- **Fix 2 (Config):** Open `app.json` (or `app.config.js`) and add/update the plugin exactly like this in the plugins array:
+  [
+    "expo-media-library",
+    {
+      "photosPermission": "نغمه برای ذخیره عکس‌نوشته‌ها به این دسترسی نیاز دارد.",
+      "savePhotosPermission": "نغمه برای ذخیره عکس‌نوشته‌ها به این دسترسی نیاز دارد."
+    }
+  ]
+
+2. SLIDER CRASH FIXES (Decouple from Reanimated):
+- **Bug:** Rapidly sliding Opacity, Border Radius, or Blur crashes Expo Go due to JS vs UI thread conflicts.
+- **Fix:** Remove `useSharedValue` for these specific visual properties. Use pure React `useState` for Sticker `opacity`, Sticker `borderRadius`, and Background `blurRadius`. Apply them as standard inline styles (e.g., `style={{ opacity: opacityState }}`). ONLY use Reanimated for Pan/Pinch (X, Y, Scale) movements.
+
+3. ADD TEXT SIZE CONTROL (اندازه متن):
+- In the "Text" (متن) menu, add a safe slider (or +/- buttons) to control the main Lyrics Text size.
+- Bind this to a pure `fontSize` React state (e.g., min 10, max 100) and apply it directly to the text style.
+
+4. REBUILD COLOR PICKER (Native-Safe Hex Input):
+- Delete the broken custom color picker UI/library.
+- Build a 100% native-safe custom color modal: Add a `<TextInput>` where the user types a Hex code (e.g., `#FFFFFF`), a live color preview box next to it, and an "اعمال" (Apply) button to commit the color to the state.
+
+ACTION: Execute these surgical fixes. 1. Apply the MediaLibrary fixes (app.json + code). 2. Decouple sliders to standard useState. 3. Add Text Size state. 4. Rebuild the custom Hex color picker. Test build stability.
