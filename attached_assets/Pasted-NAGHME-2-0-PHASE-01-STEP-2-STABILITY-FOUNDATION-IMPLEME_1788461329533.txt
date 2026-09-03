@@ -1,0 +1,491 @@
+NAGHME 2.0 — PHASE 01 / STEP 2
+STABILITY FOUNDATION IMPLEMENTATION
+
+You have already completed the previous ANALYSIS-ONLY audit.
+
+Now implement ONLY the Stability Foundation described below.
+
+IMPORTANT:
+Do NOT implement Work, Version, Role, Credit, Source, Artwork, Collection,
+Artist-to-Artist relationships, advanced Graph architecture, or any other
+new music-domain entities yet.
+
+This step is about making the EXISTING database architecture safe,
+versioned, predictable, and migration-ready.
+
+The existing Naghme data is valuable.
+
+NEVER delete the existing database.
+NEVER recreate the database from scratch.
+NEVER reset the user's data.
+NEVER generate a new set of IDs for existing records.
+
+--------------------------------------------------
+PRIMARY OBJECTIVE
+--------------------------------------------------
+
+Make the current SQLite database capable of safe future migrations.
+
+The implementation must preserve all existing functionality and data.
+
+The application should remain:
+
+- Expo React Native
+- TypeScript
+- Expo Router
+- SQLite
+- Android-first
+- offline-first
+- local-first
+
+Do not introduce a backend.
+Do not introduce authentication.
+Do not change the overall technology stack.
+
+--------------------------------------------------
+1. CREATE A REAL DATABASE VERSIONING SYSTEM
+--------------------------------------------------
+
+Implement a proper schema versioning mechanism.
+
+Use a clear, maintainable approach.
+
+PRAGMA user_version may be used as the primary schema version mechanism.
+
+If you introduce a migrations table, it must have a clear purpose and
+must not duplicate functionality unnecessarily.
+
+The system must know:
+
+- current schema version
+- target schema version
+- which migrations have already been applied
+
+Each migration must have:
+
+- unique version number
+- clear description
+- deterministic execution
+- idempotent behavior where appropriate
+- explicit failure behavior
+
+Migration errors MUST NOT be silently swallowed.
+
+--------------------------------------------------
+2. SAFE MIGRATION RUNNER
+--------------------------------------------------
+
+Create a dedicated migration mechanism rather than continuing to scatter
+ALTER TABLE statements throughout database initialization.
+
+The migration runner should:
+
+1. open the database
+2. determine current schema version
+3. execute pending migrations in order
+4. run each migration safely
+5. update schema version only after successful migration
+6. fail loudly if a required migration fails
+7. avoid running the same migration twice
+
+Where appropriate, use transactions.
+
+If SQLite transaction semantics in the existing Expo SQLite version require
+a particular API, use the API already supported by this project rather than
+introducing unnecessary dependencies.
+
+Do NOT install a migration library unless there is a compelling technical
+reason.
+
+Prefer a small native implementation.
+
+--------------------------------------------------
+3. INITIAL SCHEMA VERSION
+--------------------------------------------------
+
+Determine the actual current schema state from the existing project.
+
+Do NOT simply assume that the current schema is version 0 or version 1
+without inspecting it.
+
+Because the existing project has historically performed ad-hoc ALTER TABLE
+operations, carefully consider how an existing installation will transition
+into the new versioned system.
+
+The migration must work against the database users actually have.
+
+Do not assume a completely fresh database.
+
+A fresh installation and an existing installation must both work.
+
+--------------------------------------------------
+4. PRESERVE ALL EXISTING DATA
+--------------------------------------------------
+
+Before making schema changes, identify the current entities:
+
+- Artists
+- Albums
+- Tracks
+- PersonalRelationships
+- JournalEntries
+- ListeningHistory
+
+Preserve:
+
+- IDs
+- titles
+- artist relationships
+- album relationships
+- audioUri
+- coverImage
+- lyrics
+- sheetMusicUri
+- versionName
+- ratings
+- favorites
+- emotionalTags
+- personalNote
+- listeningCount
+- journal entries
+- journal dates
+- listening history timestamps
+
+Do not transform semantic data at this stage.
+
+--------------------------------------------------
+5. DO NOT IMPLEMENT THE NEW DOMAIN MODEL YET
+--------------------------------------------------
+
+Do NOT create:
+
+- Works
+- Versions
+- Roles
+- Credits
+- AlbumCredits
+- AlbumTracks
+- Sources
+- Artwork
+- Collections
+- ArtistRelationships
+- ListeningEvents
+
+These belong to later phases.
+
+This step must remain focused.
+
+--------------------------------------------------
+6. SQLITE INDEXES
+--------------------------------------------------
+
+Add only indexes that are justified by the existing query patterns.
+
+Inspect the actual queries before creating indexes.
+
+At minimum evaluate indexes for:
+
+Tracks.artistId
+Tracks.albumId
+Tracks.title
+
+JournalEntries.trackId
+JournalEntries.createdAt
+
+ListeningHistory.trackId
+ListeningHistory.listenedAt
+
+Do not blindly create indexes for every column.
+
+Avoid redundant indexes.
+
+If a title-search index does not materially help the actual SQLite query
+because the search uses LIKE '%term%', document that limitation instead
+of pretending the index solves it.
+
+The goal is correct indexing, not a large number of indexes.
+
+--------------------------------------------------
+7. FOREIGN KEY INTEGRITY
+--------------------------------------------------
+
+Inspect the existing foreign keys and ON DELETE behavior.
+
+Verify that the following relationships behave correctly:
+
+Track → Artist
+Track → Album
+PersonalRelationship → Track
+JournalEntry → Track
+ListeningHistory → Track
+
+Do not change delete semantics unless there is a demonstrated problem.
+
+If foreign_keys enforcement needs to be explicitly enabled for the current
+SQLite connection, implement that safely.
+
+Be careful not to introduce behavior that breaks existing valid data.
+
+--------------------------------------------------
+8. BACKUP SAFETY
+--------------------------------------------------
+
+Inspect src/db/portability.ts.
+
+Remove dangerous dependence on generic SELECT * for backup serialization.
+
+Use explicit column selection.
+
+The backup format must remain compatible with the current backup format.
+
+IMPORTANT:
+
+Do NOT redesign Backup 2.0 yet.
+
+Do NOT introduce the future Work/Version/Credit tables.
+
+Only make the CURRENT backup implementation safer against schema changes.
+
+Preserve the existing backup version if possible.
+
+If a compatibility change is unavoidable, document it clearly.
+
+--------------------------------------------------
+9. RESTORE SAFETY
+--------------------------------------------------
+
+Inspect the existing restore behavior.
+
+Do not redesign Merge/Replace yet.
+
+Do not silently change the current restore semantics.
+
+Instead:
+
+- document the actual behavior in code
+- make validation explicit
+- preserve IDs
+- preserve foreign-key relationships
+- fail clearly on invalid references
+- avoid partial corruption
+
+If the existing restore operation already runs inside a transaction,
+preserve it.
+
+If it does not, determine whether a transaction can safely be added now.
+
+Do not introduce unrelated changes.
+
+--------------------------------------------------
+10. BACKUP / RESTORE REGRESSION TESTS
+--------------------------------------------------
+
+Add practical tests or a deterministic verification mechanism for:
+
+A. Existing database → migration
+
+B. Existing database → backup
+
+C. Backup → restore
+
+D. IDs remain unchanged
+
+E. Record counts remain unchanged
+
+F. Relationships remain valid
+
+G. Journal entries remain attached to their tracks
+
+H. Listening history remains attached to tracks
+
+I. Favorites and ratings remain intact
+
+J. Migration executed a second time does not corrupt or duplicate data
+
+If the project currently lacks a testing framework, do not spend this phase
+building a huge testing infrastructure.
+
+Create the smallest maintainable verification mechanism appropriate for
+the existing project.
+
+--------------------------------------------------
+11. DATA INTEGRITY CHECK
+--------------------------------------------------
+
+Create a development/debug integrity check that can verify:
+
+- orphaned Tracks
+- orphaned PersonalRelationships
+- orphaned JournalEntries
+- orphaned ListeningHistory
+- duplicate primary IDs
+- missing required fields
+- invalid foreign-key references
+
+Do not automatically delete suspicious records.
+
+Only report them.
+
+--------------------------------------------------
+12. DEVELOPMENT LOGGING
+--------------------------------------------------
+
+During development, migration failures should provide useful information.
+
+For example:
+
+- migration version
+- migration description
+- SQLite error
+- operation that failed
+
+Do not expose sensitive data in logs.
+
+Avoid excessive production logging.
+
+--------------------------------------------------
+13. DATABASE INITIALIZATION REFACTOR
+--------------------------------------------------
+
+If database.ts currently mixes:
+
+- table creation
+- migrations
+- seed data
+- ad-hoc ALTER TABLE
+- configuration
+
+separate these responsibilities where practical.
+
+Suggested conceptual structure:
+
+database/
+├── connection
+├── schema
+├── migrations
+├── integrity
+└── portability
+
+Do not create unnecessary abstractions.
+
+Prefer a small number of clear modules.
+
+--------------------------------------------------
+14. SEED DATA
+--------------------------------------------------
+
+Inspect the existing sample/demo data mechanism.
+
+Do not delete existing development functionality.
+
+However, ensure that migration execution does NOT accidentally insert
+duplicate sample records.
+
+Do not run demo seeding as part of every migration.
+
+--------------------------------------------------
+15. NO UI REDESIGN
+--------------------------------------------------
+
+Do NOT redesign:
+
+- Home
+- Archive
+- Search
+- Artist
+- Album
+- Track
+- Player
+- Graph
+- AI Chat
+- Postcard Studio
+
+Do not change navigation.
+
+Do not change visual styling.
+
+Do not add new user-facing features.
+
+Only make the minimum UI changes required if a database error must be
+communicated more clearly.
+
+--------------------------------------------------
+16. NO DOMAIN REFACTOR YET
+--------------------------------------------------
+
+Do not refactor Track into Recording yet.
+
+Do not introduce Work/Version abstractions yet.
+
+Do not replace Artist with Person.
+
+Do not replace artistId.
+
+Do not remove versionName.
+
+Do not remove any existing columns.
+
+Backward compatibility is mandatory.
+
+--------------------------------------------------
+17. BUILD AND VERIFY
+--------------------------------------------------
+
+After implementation:
+
+1. run TypeScript checks
+2. run lint if available
+3. run existing tests if available
+4. verify Expo project integrity
+5. verify database initialization
+6. verify migration execution
+7. verify second launch
+8. verify backup
+9. verify restore
+10. verify core screens still load
+
+If something fails, fix it before considering this step complete.
+
+--------------------------------------------------
+18. IMPORTANT SAFETY RULE
+--------------------------------------------------
+
+If you discover that a safe migration cannot be implemented without
+risking existing user data:
+
+STOP.
+
+Do not make a destructive workaround.
+
+Instead, report:
+
+- what is unsafe
+- why it is unsafe
+- what additional migration strategy is required
+
+--------------------------------------------------
+19. REQUIRED FINAL REPORT
+--------------------------------------------------
+
+At the end provide a concise implementation report containing:
+
+1. FILES CREATED
+2. FILES MODIFIED
+3. DATABASE VERSION BEFORE
+4. DATABASE VERSION AFTER
+5. MIGRATIONS ADDED
+6. INDEXES ADDED
+7. FOREIGN KEY CHANGES
+8. BACKUP CHANGES
+9. RESTORE CHANGES
+10. TESTS / VERIFICATIONS PERFORMED
+11. DATA PRESERVATION RESULTS
+12. BUILD / TYPECHECK RESULTS
+13. KNOWN LIMITATIONS
+14. NEXT RECOMMENDED STEP
+
+Also explicitly state:
+
+- No existing database was deleted.
+- Existing IDs were preserved.
+- No Work/Version/Credit domain model was implemented in this step.

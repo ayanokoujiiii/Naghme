@@ -29,6 +29,16 @@ export interface RestoreSummary {
   listeningHistory: number;
 }
 
+const ARTIST_BACKUP_COLUMNS =
+  'id, name, type, biography, genres, image, profileImage, galleryImages';
+const ALBUM_BACKUP_COLUMNS = 'id, title, releaseYear, coverImage';
+const TRACK_BACKUP_COLUMNS =
+  'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName';
+const RELATIONSHIP_BACKUP_COLUMNS =
+  'trackId, rating, favorite, emotionalTags, personalNote, listeningCount';
+const JOURNAL_BACKUP_COLUMNS = 'id, trackId, note, mood, createdAt';
+const HISTORY_BACKUP_COLUMNS = 'id, trackId, listenedAt';
+
 async function requireDatabase() {
   const database = await getDatabase();
   if (!database) {
@@ -41,16 +51,29 @@ export async function createArchiveBackup(): Promise<string> {
   const database = await requireDatabase();
   const [artists, albums, tracks, personalRelationships, journalEntries, listeningHistory] =
     await Promise.all([
-    database.getAllAsync<ArtistRecord>('SELECT * FROM Artists ORDER BY rowid ASC', []),
-    database.getAllAsync<AlbumRecord>('SELECT * FROM Albums ORDER BY rowid ASC', []),
-    database.getAllAsync<TrackRecord>('SELECT * FROM Tracks ORDER BY rowid ASC', []),
-    database.getAllAsync<PersonalRelationshipRecord>(
-      'SELECT * FROM PersonalRelationships ORDER BY rowid ASC',
+    database.getAllAsync<ArtistRecord>(
+      `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
       [],
     ),
-    database.getAllAsync<JournalEntryRecord>('SELECT * FROM JournalEntries ORDER BY rowid ASC', []),
+    database.getAllAsync<AlbumRecord>(
+      `SELECT ${ALBUM_BACKUP_COLUMNS} FROM Albums ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<TrackRecord>(
+      `SELECT ${TRACK_BACKUP_COLUMNS} FROM Tracks ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<PersonalRelationshipRecord>(
+      `SELECT ${RELATIONSHIP_BACKUP_COLUMNS}
+       FROM PersonalRelationships ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<JournalEntryRecord>(
+      `SELECT ${JOURNAL_BACKUP_COLUMNS} FROM JournalEntries ORDER BY rowid ASC`,
+      [],
+    ),
     database.getAllAsync<ListeningHistoryRecord>(
-      'SELECT * FROM ListeningHistory ORDER BY rowid ASC',
+      `SELECT ${HISTORY_BACKUP_COLUMNS} FROM ListeningHistory ORDER BY rowid ASC`,
       [],
     ),
   ]);
@@ -245,6 +268,13 @@ function parseBackup(json: string): ArchiveBackup {
   const journalEntries = parseJournalEntries(parsed.journalEntries);
   const listeningHistory = parseListeningHistory(parsed.listeningHistory);
 
+  assertUniqueIds(artists, 'هنرمندان');
+  assertUniqueIds(albums, 'آلبوم‌ها');
+  assertUniqueIds(tracks, 'قطعه‌ها');
+  assertUniqueIds(personalRelationships, 'رابطه‌های شخصی', 'trackId');
+  assertUniqueIds(journalEntries, 'یادداشت‌های دفترچه');
+  assertUniqueIds(listeningHistory, 'تاریخچهٔ شنیدن');
+
   return {
     format: 'naghme-archive',
     version: 1,
@@ -256,6 +286,21 @@ function parseBackup(json: string): ArchiveBackup {
     journalEntries,
     listeningHistory,
   };
+}
+
+function assertUniqueIds(
+  records: Array<{ id?: string; trackId?: string }>,
+  label: string,
+  key: 'id' | 'trackId' = 'id',
+): void {
+  const seen = new Set<string>();
+  for (const record of records) {
+    const value = record[key];
+    if (!value || seen.has(value)) {
+      throw new Error(`${label} در فایل پشتیبان شناسهٔ تکراری دارد.`);
+    }
+    seen.add(value);
+  }
 }
 
 function parseJournalEntries(value: unknown): JournalEntryRecord[] {
