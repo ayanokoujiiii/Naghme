@@ -225,7 +225,7 @@ export type NewCredit = {
   albumId?: string | null;
   notes?: string | null;
 };
-export type UpdateCredit = Partial<Pick<CreditRecord, 'notes'>>;
+export type UpdateCredit = Partial<Pick<CreditRecord, 'artistId' | 'roleId' | 'notes'>>;
 export type NewWork = Pick<WorkRecord, 'title'> &
   Partial<Omit<WorkRecord, 'id' | 'title' | 'createdAt' | 'updatedAt'>>;
 export type UpdateWork = Partial<Omit<NewWork, 'title'>> & { title?: string };
@@ -554,16 +554,32 @@ export async function updateCredit(id: string, input: UpdateCredit): Promise<Cre
   );
   if (!current) throw new Error('مشارکت پیدا نشد.');
 
+  const target = await validateCreditInput(database, {
+    artistId: input.artistId ?? current.artistId,
+    roleId: input.roleId ?? current.roleId,
+    workId: current.workId,
+    trackId: current.trackId,
+    albumId: current.albumId,
+    notes: input.notes ?? current.notes,
+  });
   const credit: CreditRecord = {
     ...current,
+    artistId: target.artistId,
+    roleId: target.roleId,
     notes: input.notes === undefined ? current.notes : trimNullable(input.notes),
     updatedAt: new Date().toISOString(),
   };
-  await database.runAsync('UPDATE Credits SET notes = ?, updatedAt = ? WHERE id = ?', [
-    credit.notes,
-    credit.updatedAt,
-    id,
-  ]);
+  await ensureCreditIsUnique(database, target, id);
+  await database.runAsync(
+    'UPDATE Credits SET artistId = ?, roleId = ?, notes = ?, updatedAt = ? WHERE id = ?',
+    [
+      credit.artistId,
+      credit.roleId,
+      credit.notes,
+      credit.updatedAt,
+      id,
+    ],
+  );
   return credit;
 }
 
@@ -588,6 +604,7 @@ async function insertCredit(input: NewCredit): Promise<CreditRecord> {
     updatedAt: now,
   };
 
+  await ensureCreditIsUnique(database, credit);
   await database.runAsync(
     `INSERT INTO Credits
        (id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt)
@@ -659,6 +676,26 @@ async function validateCreditInput(
   }
 
   return { artistId, roleId, workId, trackId, albumId };
+}
+
+async function ensureCreditIsUnique(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  target: Pick<CreditRecord, 'artistId' | 'roleId' | 'workId' | 'trackId' | 'albumId'>,
+  excludedId?: string,
+): Promise<void> {
+  const targetColumn = target.workId ? 'workId' : target.trackId ? 'trackId' : 'albumId';
+  const targetId = target[targetColumn];
+  const duplicate = await database.getFirstAsync<{ id: string }>(
+    `SELECT id FROM Credits
+      WHERE artistId = ? AND roleId = ? AND ${targetColumn} = ?
+        ${excludedId ? 'AND id != ?' : ''}`,
+    excludedId
+      ? [target.artistId, target.roleId, targetId, excludedId]
+      : [target.artistId, target.roleId, targetId],
+  );
+  if (duplicate) {
+    throw new Error('این هنرمند و نقش قبلاً برای همین مقصد ثبت شده است.');
+  }
 }
 
 export async function createWork(input: NewWork): Promise<WorkRecord> {

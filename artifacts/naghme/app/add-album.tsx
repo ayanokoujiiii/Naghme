@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
+import { CreditsManager } from '@/components/CreditsManager';
 import { addAlbum, getAlbumById, updateAlbum } from '@/src/db/queries';
 
 export default function AddAlbumScreen() {
@@ -88,6 +89,7 @@ export default function AddAlbumScreen() {
         onChangeText={setReleaseYear}
         keyboardType="number-pad"
       />
+      <CreditsManager targetId={id} targetType="album" />
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی آلبوم'}
         saving={saving || loadingRecord}

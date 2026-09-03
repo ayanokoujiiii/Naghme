@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
+import { CreditsManager } from '@/components/CreditsManager';
 import { useColors } from '@/hooks/useColors';
 import {
   addTrack,
@@ -388,6 +389,8 @@ export default function AddTrackScreen() {
           </Text>
         </Pressable>
       </View>
+
+      <CreditsManager targetId={id} targetType="track" />
 
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی قطعه'}
