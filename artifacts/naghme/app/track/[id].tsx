@@ -368,7 +368,7 @@ export default function TrackDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="اعتبارات صریح" caption={`${credits.length} مشارکت`} />
+          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
           <DetailCard>
             {credits.map((credit) => (
               <View key={credit.id} style={styles.creditRow}>

@@ -310,7 +310,7 @@ export default function AlbumDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="اعتبارات آلبوم" caption={`${credits.length} مشارکت`} />
+          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
           <DetailCard>
             {credits.map((credit) => (
               <View key={credit.id} style={styles.creditRow}>

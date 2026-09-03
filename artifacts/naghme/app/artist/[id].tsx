@@ -531,7 +531,7 @@ export default function ArtistDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="نقش‌ها و مشارکت‌ها" caption={`${credits.length} مشارکت صریح`} />
+          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
           <DetailCard>
             {credits.map((credit) => (
               <CreditRow

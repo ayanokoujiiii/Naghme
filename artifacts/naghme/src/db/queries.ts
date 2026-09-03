@@ -105,6 +105,12 @@ export interface NewAlbumTrack {
   orderSource?: AlbumTrackOrderSource;
 }
 
+export interface PendingCreditInput {
+  artistId: string;
+  roleId: string;
+  notes?: string | null;
+}
+
 export interface PersonalRelationshipRecord {
   trackId: string;
   rating: number | null;
@@ -396,6 +402,13 @@ export async function deleteArtist(id: string): Promise<void> {
 }
 
 export async function addAlbum(input: NewAlbum): Promise<AlbumRecord> {
+  return createAlbumWithCredits(input, []);
+}
+
+export async function createAlbumWithCredits(
+  input: NewAlbum,
+  pendingCredits: PendingCreditInput[],
+): Promise<AlbumRecord> {
   const title = input.title.trim();
   if (!title) {
     throw new Error('عنوان آلبوم الزامی است.');
@@ -403,11 +416,22 @@ export async function addAlbum(input: NewAlbum): Promise<AlbumRecord> {
 
   const album: AlbumRecord = { ...input, id: createId('album'), title };
   const database = await requireDatabase();
-  await database.runAsync(
-    `INSERT INTO Albums (id, title, releaseYear, coverImage)
-     VALUES (?, ?, ?, ?)`,
-    [album.id, album.title, album.releaseYear, album.coverImage],
-  );
+  const normalizedCredits = await validatePendingCreditInputs(database, pendingCredits);
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      `INSERT INTO Albums (id, title, releaseYear, coverImage)
+       VALUES (?, ?, ?, ?)`,
+      [album.id, album.title, album.releaseYear, album.coverImage],
+    );
+    for (const pendingCredit of normalizedCredits) {
+      await insertCreditWithDatabase(database, {
+        ...pendingCredit,
+        workId: null,
+        trackId: null,
+        albumId: album.id,
+      });
+    }
+  });
   return album;
 }
 
@@ -416,6 +440,46 @@ export async function getAlbums(): Promise<AlbumRecord[]> {
   return database.getAllAsync<AlbumRecord>(
     'SELECT id, title, releaseYear, coverImage FROM Albums ORDER BY title COLLATE NOCASE ASC',
     [],
+  );
+}
+
+export async function getAlbumsForArtist(artistId: string): Promise<AlbumRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<AlbumRecord>(
+    `SELECT DISTINCT Albums.id, Albums.title, Albums.releaseYear, Albums.coverImage
+       FROM Albums
+      WHERE EXISTS (
+        SELECT 1
+          FROM Tracks
+         WHERE Tracks.albumId = Albums.id
+           AND Tracks.artistId = ?
+      )
+      OR EXISTS (
+        SELECT 1
+          FROM AlbumTracks
+          INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+         WHERE AlbumTracks.albumId = Albums.id
+           AND Tracks.artistId = ?
+      )
+      OR EXISTS (
+        SELECT 1
+          FROM Credits
+         WHERE Credits.albumId = Albums.id
+           AND Credits.artistId = ?
+      )
+      OR EXISTS (
+        SELECT 1
+          FROM Credits
+          INNER JOIN Tracks ON Tracks.id = Credits.trackId
+         WHERE Credits.artistId = ?
+           AND (Tracks.albumId = Albums.id OR EXISTS (
+             SELECT 1 FROM AlbumTracks
+              WHERE AlbumTracks.albumId = Albums.id
+                AND AlbumTracks.trackId = Tracks.id
+           ))
+      )
+      ORDER BY Albums.title COLLATE NOCASE ASC`,
+    [artistId, artistId, artistId, artistId],
   );
 }
 
@@ -590,6 +654,13 @@ export async function removeCredit(id: string): Promise<void> {
 
 async function insertCredit(input: NewCredit): Promise<CreditRecord> {
   const database = await requireDatabase();
+  return insertCreditWithDatabase(database, input);
+}
+
+async function insertCreditWithDatabase(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  input: NewCredit,
+): Promise<CreditRecord> {
   const target = await validateCreditInput(database, input);
   const now = new Date().toISOString();
   const credit: CreditRecord = {
@@ -622,6 +693,47 @@ async function insertCredit(input: NewCredit): Promise<CreditRecord> {
     ],
   );
   return credit;
+}
+
+async function validatePendingCreditInputs(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  pendingCredits: PendingCreditInput[],
+): Promise<PendingCreditInput[]> {
+  const seen = new Set<string>();
+  const normalizedCredits: PendingCreditInput[] = [];
+
+  for (const pendingCredit of pendingCredits) {
+    const artistId = pendingCredit.artistId.trim();
+    const roleId = pendingCredit.roleId.trim();
+    if (!artistId) throw new Error('هنرمند مشارکت الزامی است.');
+    if (!roleId) throw new Error('نقش مشارکت الزامی است.');
+
+    const key = `${artistId}:${roleId}`;
+    if (seen.has(key)) {
+      throw new Error('این هنرمند و نقش بیش از یک‌بار برای همین مقصد انتخاب شده است.');
+    }
+    seen.add(key);
+
+    const artist = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Artists WHERE id = ?',
+      [artistId],
+    );
+    if (!artist) throw new Error('هنرمند مشارکت پیدا نشد.');
+
+    const role = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Roles WHERE id = ?',
+      [roleId],
+    );
+    if (!role) throw new Error('نقش مشارکت پیدا نشد.');
+
+    normalizedCredits.push({
+      artistId,
+      roleId,
+      notes: trimNullable(pendingCredit.notes),
+    });
+  }
+
+  return normalizedCredits;
 }
 
 async function validateCreditInput(
@@ -1071,6 +1183,13 @@ export async function deleteAlbum(id: string): Promise<void> {
 }
 
 export async function addTrack(input: NewTrack): Promise<TrackRecord> {
+  return createTrackWithCredits(input, []);
+}
+
+export async function createTrackWithCredits(
+  input: NewTrack,
+  pendingCredits: PendingCreditInput[],
+): Promise<TrackRecord> {
   const title = input.title.trim();
   if (!title) {
     throw new Error('عنوان قطعه الزامی است.');
@@ -1088,27 +1207,38 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
   };
   const database = await requireDatabase();
   await validateTrackDomainReferences(database, track.workId, track.versionId);
-  await database.runAsync(
-    `INSERT INTO Tracks
-       (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics,
-        sheetMusicUri, versionName, workId, versionId)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      track.id,
-      track.title,
-      track.duration,
-      track.artistId,
-      track.albumId,
-      track.audioUri,
-      track.coverImage,
-      track.lyrics,
-      track.sheetMusicUri,
-      track.versionName,
-      track.workId,
-      track.versionId,
-    ],
-  );
-  await ensureLegacyAlbumMembership(database, track.albumId, track.id);
+  const normalizedCredits = await validatePendingCreditInputs(database, pendingCredits);
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      `INSERT INTO Tracks
+         (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics,
+          sheetMusicUri, versionName, workId, versionId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        track.id,
+        track.title,
+        track.duration,
+        track.artistId,
+        track.albumId,
+        track.audioUri,
+        track.coverImage,
+        track.lyrics,
+        track.sheetMusicUri,
+        track.versionName,
+        track.workId,
+        track.versionId,
+      ],
+    );
+    await ensureLegacyAlbumMembership(database, track.albumId, track.id);
+    for (const pendingCredit of normalizedCredits) {
+      await insertCreditWithDatabase(database, {
+        ...pendingCredit,
+        workId: null,
+        trackId: track.id,
+        albumId: null,
+      });
+    }
+  });
   return track;
 }
 

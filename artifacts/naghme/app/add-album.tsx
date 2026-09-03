@@ -2,8 +2,8 @@ import { router } from 'expo-router';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
-import { CreditsManager } from '@/components/CreditsManager';
-import { addAlbum, getAlbumById, updateAlbum } from '@/src/db/queries';
+import { CreditsManager, PendingCreditDraft } from '@/components/CreditsManager';
+import { createAlbumWithCredits, getAlbumById, updateAlbum } from '@/src/db/queries';
 
 export default function AddAlbumScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -14,6 +14,7 @@ export default function AddAlbumScreen() {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [loadingRecord, setLoadingRecord] = useState<boolean>(editing);
+  const [pendingCredits, setPendingCredits] = useState<PendingCreditDraft[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -57,7 +58,10 @@ export default function AddAlbumScreen() {
       if (id) {
         await updateAlbum(id, { title, releaseYear: parsedYear });
       } else {
-        await addAlbum({ title, releaseYear: parsedYear, coverImage: null });
+        await createAlbumWithCredits(
+          { title, releaseYear: parsedYear, coverImage: null },
+          pendingCredits.map(({ id: _id, ...credit }) => credit),
+        );
       }
       setSuccess(editing ? 'تغییرات آلبوم ذخیره شد.' : 'آلبوم با موفقیت به آرشیو اضافه شد.');
       setTimeout(() => router.back(), 650);
@@ -89,7 +93,12 @@ export default function AddAlbumScreen() {
         onChangeText={setReleaseYear}
         keyboardType="number-pad"
       />
-      <CreditsManager targetId={id} targetType="album" />
+      <CreditsManager
+        targetId={id}
+        targetType="album"
+        pendingCredits={pendingCredits}
+        onPendingCreditsChange={setPendingCredits}
+      />
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی آلبوم'}
         saving={saving || loadingRecord}
