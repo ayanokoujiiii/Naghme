@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +27,14 @@ import {
 } from '@/src/db/queries';
 import { SAMPLE_ARTIST_ALBUM_LINKS } from '@/src/db/seed';
 import { loadAudio, playAudio } from '@/src/audio/audioManager';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { withAlpha } from '@/src/player/coverColors';
 
 type ExpandedState = Record<string, boolean>;
 type GraphAlbum = AlbumRecord & { tracks: TrackRecord[]; artistName?: string | null };
@@ -42,6 +50,7 @@ export default function GraphScreen() {
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string>('');
 
   const loadGraph = useCallback(async () => {
     setLoading(true);
@@ -124,9 +133,15 @@ export default function GraphScreen() {
     setExpanded((current) => ({ ...current, [key]: !current[key] }));
   };
 
+  const showToast = (message: string) => {
+    setToastMessage('');
+    requestAnimationFrame(() => setToastMessage(message));
+  };
+
   const playGraphTrack = async (track: TrackRecord, artistName: string | null = null) => {
+    showToast('در حال پخش...');
     if (!track.audioUri) {
-      Alert.alert('فایل صوتی موجود نیست', 'برای این قطعه هنوز فایل صوتی ثبت نشده است.');
+      showToast('فایل صوتی این قطعه موجود نیست.');
       return;
     }
     try {
@@ -139,20 +154,16 @@ export default function GraphScreen() {
         durationSeconds: track.duration,
       });
       const started = await playAudio();
-      if (started) {
-        Alert.alert('پخش آغاز شد', track.title);
-      } else {
-        Alert.alert('پخش انجام نشد', 'فایل صوتی آماده‌ی پخش نیست.');
-      }
+      if (!started) showToast('فایل صوتی آماده‌ی پخش نیست.');
     } catch {
-      Alert.alert('پخش انجام نشد', 'بارگذاری فایل صوتی این قطعه ممکن نیست.');
+      showToast('بارگذاری فایل صوتی این قطعه ممکن نیست.');
     }
   };
 
   const playAlbum = async (album: GraphAlbum) => {
     const firstPlayableTrack = album.tracks.find((track) => Boolean(track.audioUri));
     if (!firstPlayableTrack) {
-      Alert.alert('فایل صوتی موجود نیست', 'هیچ قطعه‌ی قابل پخشی در این آلبوم ثبت نشده است.');
+      showToast('هیچ قطعه‌ی قابل پخشی در این آلبوم نیست.');
       return;
     }
     await playGraphTrack(firstPlayableTrack, album.artistName ?? null);
@@ -197,9 +208,8 @@ export default function GraphScreen() {
           <View style={styles.tree}>
             {artists.map((artist) => (
               <View key={artist.id} style={styles.artistBranch}>
-                <NodeHeader
-                  icon="mic"
-                  label={artist.name}
+                <ArtistNode
+                  artist={artist}
                   caption={artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
                   colors={colors}
                   styles={styles}
@@ -266,6 +276,7 @@ export default function GraphScreen() {
           </View>
         )}
       </ScrollView>
+      <GraphToast message={toastMessage} colors={colors} styles={styles} />
     </SafeAreaView>
   );
 }
@@ -283,6 +294,95 @@ function mapGraphTrack(row: MusicGraphRow): TrackRecord {
     sheetMusicUri: row.trackSheetMusicUri,
     versionName: row.trackVersionName,
   };
+}
+
+function ArtistNode({
+  artist,
+  caption,
+  expanded,
+  onToggle,
+  onPress,
+  colors,
+  styles,
+}: {
+  artist: GraphArtist;
+  caption: string;
+  expanded?: boolean;
+  onToggle?: () => void;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.artistNodeRow}>
+      {onToggle ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'بستن شاخه‌ی هنرمند' : 'باز کردن شاخه‌ی هنرمند'}
+          onPress={onToggle}
+          hitSlop={8}
+          style={styles.artistToggle}
+        >
+          <Feather
+            name={expanded ? 'chevron-down' : 'chevron-left'}
+            size={18}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`هنرمند ${artist.name}`}
+        onPress={onPress}
+        style={({ pressed }) => [styles.artistNodeContent, pressed && styles.pressed]}
+      >
+      <View style={styles.artistAvatarGlow}>
+        {artist.image ? (
+          <Image source={{ uri: artist.image }} style={styles.artistAvatar} />
+        ) : (
+          <View style={styles.artistAvatarFallback}>
+            <Feather name="mic" size={22} color={colors.primary} />
+          </View>
+        )}
+      </View>
+      <View style={styles.artistNodeCopy}>
+        <Text style={styles.artistNodeTitle} numberOfLines={2}>{artist.name}</Text>
+        <Text style={styles.nodeCaption}>{caption}</Text>
+      </View>
+      <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+      </Pressable>
+    </View>
+  );
+}
+
+function GraphToast({
+  message,
+  colors,
+  styles,
+}: {
+  message: string;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    if (!message) return;
+    progress.value = withSequence(
+      withTiming(1, { duration: 220 }),
+      withDelay(2300, withTiming(0, { duration: 260 })),
+    );
+  }, [message, progress]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 20 }],
+  }));
+  if (!message) return null;
+  return (
+    <Animated.View pointerEvents="none" style={[styles.toast, animatedStyle]}>
+      <Feather name="play-circle" size={17} color={colors.primary} />
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  );
 }
 
 function NodeHeader({
@@ -405,20 +505,125 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     emptyTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', marginTop: 13, textAlign: 'center' },
     emptyText: { color: colors.mutedForeground, fontSize: 13, lineHeight: 22, marginTop: 7, textAlign: 'center' },
     tree: { gap: 16 },
-    artistBranch: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 10 },
+    artistBranch: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 24,
+      padding: 10,
+    },
+    artistNodeRow: {
+      minHeight: 76,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 11,
+      paddingHorizontal: 7,
+    },
+    artistToggle: {
+      width: 28,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    artistNodeContent: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 11,
+    },
+    artistAvatarGlow: {
+      width: 62,
+      height: 62,
+      borderRadius: 31,
+      padding: 3,
+      backgroundColor: withAlpha(colors.primary, 0.18),
+      borderWidth: 1,
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.55,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 7,
+    },
+    artistAvatar: { width: '100%', height: '100%', borderRadius: 29 },
+    artistAvatarFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 29,
+      backgroundColor: colors.accent,
+    },
+    artistNodeCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+    artistNodeTitle: {
+      color: colors.foreground,
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
     children: { borderRightWidth: 1, borderRightColor: colors.border, marginRight: 23, paddingRight: 10, marginTop: 7, gap: 9 },
     albumBranch: { gap: 6 },
     nodeHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
     toggle: { width: 28, height: 40, alignItems: 'center', justifyContent: 'center' },
-    nodeButton: { flex: 1, minHeight: 58, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderRadius: 15, backgroundColor: colors.secondary },
-    nodeIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+    nodeButton: {
+      flex: 1,
+      minHeight: 58,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      borderRadius: 20,
+      backgroundColor: withAlpha(colors.foreground, 0.055),
+      borderWidth: 1,
+      borderColor: withAlpha(colors.foreground, 0.1),
+    },
+    nodeIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: withAlpha(colors.primary, 0.13),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     nodeCopy: { flex: 1, minWidth: 0 },
     nodeTitle: { flex: 1, flexShrink: 1, color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     nodeCaption: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
     trackChildren: { marginRight: 37, borderRightWidth: 1, borderRightColor: colors.border, paddingRight: 10, gap: 6 },
-    trackNode: { minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderRadius: 13, backgroundColor: colors.muted },
+    trackNode: {
+      minHeight: 46,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      paddingHorizontal: 13,
+      borderRadius: 20,
+      backgroundColor: withAlpha(colors.foreground, 0.04),
+      borderWidth: 1,
+      borderColor: withAlpha(colors.foreground, 0.07),
+    },
     groupLabel: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700', textAlign: 'right', marginBottom: 7 },
     unassignedBranch: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 12, gap: 7 },
+    toast: {
+      position: 'absolute',
+      left: 20,
+      right: 20,
+      bottom: 88,
+      minHeight: 50,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 15,
+      borderRadius: 20,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      shadowColor: colors.background,
+      shadowOpacity: 0.4,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 9,
+    },
+    toastText: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
     pressed: { opacity: 0.74 },
   });
 }

@@ -1,10 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Image,
   Modal,
   Platform,
@@ -14,6 +13,15 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -29,9 +37,10 @@ import {
 import { getLatestJournalMood } from '@/src/db/queries';
 import { getDominantCoverColor, withAlpha } from '@/src/player/coverColors';
 
-type SleepTimerMinutes = 15 | 30 | 45 | 60;
+type SleepTimerMinutes = 5 | 15 | 30 | 45 | 60;
 
 const sleepTimerOptions: Array<{ value: SleepTimerMinutes; label: string }> = [
+  { value: 5, label: '۵ دقیقه' },
   { value: 15, label: '۱۵ دقیقه' },
   { value: 30, label: '۳۰ دقیقه' },
   { value: 45, label: '۴۵ دقیقه' },
@@ -47,6 +56,7 @@ export default function PlayerScreen() {
   const [sleepTimerVisible, setSleepTimerVisible] = useState<boolean>(false);
   const [coverColor, setCoverColor] = useState<string>(colors.primary);
   const [latestMood, setLatestMood] = useState<string | null>(null);
+  const posterMotionStyle = useMoodPosterStyle(latestMood);
 
   useEffect(() => subscribeToAudio(setAudio), []);
 
@@ -201,7 +211,7 @@ export default function PlayerScreen() {
             colors={[withAlpha(coverColor, 0.7), withAlpha(coverColor, 0.18), colors.card]}
             style={styles.posterGlow}
           />
-          <View style={styles.posterInner}>
+          <Animated.View style={[styles.posterInner, posterMotionStyle]}>
             {audio.track.coverImage ? (
               <Image
                 source={{ uri: audio.track.coverImage }}
@@ -214,7 +224,7 @@ export default function PlayerScreen() {
               </View>
             )}
             <MoodOverlay mood={latestMood} colors={colors} styles={styles} />
-          </View>
+          </Animated.View>
         </View>
 
         <View style={styles.metadata}>
@@ -395,6 +405,29 @@ function formatSleepTimer(seconds: number): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
+function useMoodPosterStyle(mood: string | null) {
+  const progress = useSharedValue(0);
+  const energetic = mood?.trim().includes('پرانرژی') ?? false;
+
+  useEffect(() => {
+    progress.value = 0;
+    if (energetic) {
+      progress.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 450 }),
+          withTiming(0, { duration: 450 }),
+        ),
+        -1,
+        false,
+      );
+    }
+  }, [energetic, progress]);
+
+  return useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(progress.value, [0, 1], [1, 1.02]) }],
+  }));
+}
+
 function MoodOverlay({
   mood,
   colors,
@@ -404,7 +437,6 @@ function MoodOverlay({
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const progress = useRef(new Animated.Value(0)).current;
   const normalizedMood = mood?.trim() ?? '';
   const kind = normalizedMood.includes('غمگین')
     ? 'rain'
@@ -414,45 +446,15 @@ function MoodOverlay({
         ? 'calm'
         : null;
 
-  useEffect(() => {
-    if (!kind) return;
-    progress.setValue(0);
-    const animation = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: kind === 'rain' ? 2600 : kind === 'energy' ? 900 : 3200,
-        useNativeDriver: true,
-      }),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [kind, progress]);
-
   if (!kind) return null;
   if (kind === 'rain') {
     return (
       <View pointerEvents="none" style={styles.moodOverlay}>
         {Array.from({ length: 8 }).map((_, index) => (
-          <Animated.View
+          <RainParticle
             key={index}
-            style={[
-              styles.rainDrop,
-              {
-                left: `${10 + index * 11}%`,
-                opacity: progress.interpolate({
-                  inputRange: [0, 0.15, 0.8, 1],
-                  outputRange: [0, 0.52, 0.28, 0],
-                }),
-                transform: [
-                  {
-                    translateY: progress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-18 - (index % 3) * 14, 145],
-                    }),
-                  },
-                ],
-              },
-            ]}
+            index={index}
+            styles={styles}
           />
         ))}
       </View>
@@ -461,61 +463,106 @@ function MoodOverlay({
 
   if (kind === 'calm') {
     return (
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.moodOverlay,
-          styles.calmGlow,
-          {
-            backgroundColor: withAlpha(colors.primary, 0.22),
-            opacity: progress.interpolate({
-              inputRange: [0, 0.5, 1],
-              outputRange: [0.12, 0.4, 0.12],
-            }),
-            transform: [
-              {
-                scale: progress.interpolate({
-                  inputRange: [0, 0.5, 1],
-                  outputRange: [0.9, 1.08, 0.9],
-                }),
-              },
-            ],
-          },
-        ]}
-      />
+      <CalmGlow color={colors.primary} styles={styles} />
     );
   }
 
+  return (
+    <EnergyGlow color={colors.primary} styles={styles} />
+  );
+}
+
+function CalmGlow({
+  color,
+  styles,
+}: {
+  color: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withRepeat(withTiming(1, { duration: 4000 }), -1, true);
+  }, [progress]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0.3, 0.7]),
+    transform: [{ scale: interpolate(progress.value, [0, 1], [0.92, 1.08]) }],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.moodOverlay,
+        styles.calmGlow,
+        { backgroundColor: withAlpha(color, 0.22) },
+        animatedStyle,
+      ]}
+    />
+  );
+}
+
+function EnergyGlow({
+  color,
+  styles,
+}: {
+  color: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 450 }),
+        withTiming(0, { duration: 450 }),
+      ),
+      -1,
+      false,
+    );
+  }, [progress]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0.08, 0.28]),
+    transform: [{ scale: interpolate(progress.value, [0, 1], [0.96, 1.04]) }],
+  }));
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         styles.moodOverlay,
         styles.energyGlow,
-        {
-          backgroundColor: withAlpha(colors.primary, 0.18),
-          opacity: progress.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [0.08, 0.28, 0.08],
-          }),
-          transform: [
-            {
-              scale: progress.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [0.96, 1.04, 0.96],
-              }),
-            },
-            {
-              rotate: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['-2deg', '2deg'],
-              }),
-            },
-          ],
-        },
+        { backgroundColor: withAlpha(color, 0.18) },
+        animatedStyle,
       ]}
     />
   );
+}
+
+function RainParticle({
+  index,
+  styles,
+}: {
+  index: number;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withDelay(
+      index * 150,
+      withRepeat(withTiming(1, { duration: 2500 + index * 120 }), -1, false),
+    );
+  }, [index, progress]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    left: `${10 + index * 11}%`,
+    opacity: interpolate(progress.value, [0, 0.15, 0.8, 1], [0, 0.52, 0.28, 0]),
+    transform: [
+      {
+        translateY: interpolate(
+          progress.value,
+          [0, 1],
+          [-18 - (index % 3) * 14, 145],
+        ),
+      },
+    ],
+  }));
+  return <Animated.View style={[styles.rainDrop, animatedStyle]} />;
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {

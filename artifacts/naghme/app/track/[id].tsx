@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { PostcardStudio } from '@/src/components/PostcardStudio';
 import { useColors } from '@/hooks/useColors';
 import {
   AudioPlaybackSnapshot,
@@ -76,6 +77,7 @@ export default function TrackDetailScreen() {
   const [otherVersions, setOtherVersions] = useState<VersionTrackRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
   const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
+  const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
   const [sheetMusicModalVisible, setSheetMusicModalVisible] = useState<boolean>(false);
   const [editingJournalEntryId, setEditingJournalEntryId] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState<string>('');
@@ -419,6 +421,15 @@ export default function TrackDetailScreen() {
               <Feather name="book-open" size={17} color={colors.primary} />
               <Text style={styles.secondaryActionText}>نمایش متن کامل</Text>
             </Pressable>
+            <Pressable
+              testID="track-open-postcard"
+              accessibilityRole="button"
+              onPress={() => setPostcardVisible(true)}
+              style={({ pressed }) => [styles.postcardAction, pressed && styles.pressed]}
+            >
+              <Feather name="image" size={17} color={colors.primaryForeground} />
+              <Text style={styles.postcardActionText}>ساخت عکس‌نوشته</Text>
+            </Pressable>
           </DetailCard>
         </>
       ) : null}
@@ -630,6 +641,14 @@ export default function TrackDetailScreen() {
         colors={colors}
         styles={styles}
         onClose={() => setLyricsModalVisible(false)}
+      />
+      <PostcardStudio
+        visible={postcardVisible}
+        title={track.title}
+        lyrics={track.lyrics ?? ''}
+        coverImage={track.coverImage}
+        artistName={artistName}
+        onClose={() => setPostcardVisible(false)}
       />
       <SheetMusicModal
         visible={sheetMusicModalVisible}
@@ -1384,6 +1403,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     secondaryActionText: {
       color: colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    postcardAction: {
+      minHeight: 46,
+      borderRadius: 14,
+      backgroundColor: colors.primary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 9,
+    },
+    postcardActionText: {
+      color: colors.primaryForeground,
       fontSize: 13,
       fontWeight: '700',
     },

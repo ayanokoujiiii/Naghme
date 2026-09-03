@@ -290,7 +290,7 @@ async function tickSleepTimer(): Promise<void> {
   }
 }
 
-export function setSleepTimer(minutes: 15 | 30 | 45 | 60 | null): void {
+export function setSleepTimer(minutes: 5 | 15 | 30 | 45 | 60 | null): void {
   clearSleepTimerInterval();
   if (minutes === null) {
     updateSnapshot({ sleepTimerRemainingSeconds: 0 });
