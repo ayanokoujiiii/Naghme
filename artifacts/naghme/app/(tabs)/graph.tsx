@@ -390,6 +390,7 @@ function GraphToast({
 
 function NodeHeader({
   icon,
+  imageUri,
   label,
   caption,
   expanded,
@@ -400,6 +401,7 @@ function NodeHeader({
   styles,
 }: {
   icon: 'mic' | 'disc';
+  imageUri?: string | null;
   label: string;
   caption: string;
   expanded?: boolean;
@@ -428,7 +430,16 @@ function NodeHeader({
         onLongPress={onLongPress}
         style={({ pressed }) => [styles.nodeButton, pressed && styles.pressed]}
       >
-        <View style={styles.nodeIcon}><Feather name={icon} size={18} color={colors.primary} /></View>
+        {imageUri ? (
+          <Image
+            testID={`graph-node-cover-${label}`}
+            source={{ uri: imageUri }}
+            style={styles.nodeArtwork}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.nodeIcon}><Feather name={icon} size={18} color={colors.primary} /></View>
+        )}
         <View style={styles.nodeCopy}>
           <Text style={styles.nodeTitle} numberOfLines={2}>{label}</Text>
           <Text style={styles.nodeCaption}>{caption}</Text>
@@ -462,6 +473,7 @@ function AlbumBranch({
     <View style={styles.albumBranch}>
       <NodeHeader
         icon="disc"
+        imageUri={album.coverImage}
         label={album.title}
         caption={album.tracks.length ? `${album.tracks.length} قطعه` : 'بدون قطعه'}
         expanded={expanded}
@@ -587,6 +599,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: withAlpha(colors.primary, 0.13),
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    nodeArtwork: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     nodeCopy: { flex: 1, minWidth: 0 },
     nodeTitle: { flex: 1, flexShrink: 1, color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },

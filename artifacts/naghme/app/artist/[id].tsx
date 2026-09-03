@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -39,11 +40,20 @@ export default function ArtistDetailScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [savingGallery, setSavingGallery] = useState<boolean>(false);
+  const [galleryActionLoading, setGalleryActionLoading] = useState<boolean>(false);
   const [galleryMessage, setGalleryMessage] = useState<string>('');
+  const [galleryToast, setGalleryToast] = useState<string>('');
   const [selectedGalleryUri, setSelectedGalleryUri] = useState<string | null>(null);
   const [gridGalleryVisible, setGridGalleryVisible] = useState<boolean>(false);
   const [savingProfile, setSavingProfile] = useState<boolean>(false);
   const [profileMessage, setProfileMessage] = useState<string>('');
+  const galleryToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (galleryToastTimer.current) clearTimeout(galleryToastTimer.current);
+    };
+  }, []);
 
   const loadArtist = useCallback(async () => {
     if (!artistId) {
@@ -200,6 +210,76 @@ export default function ArtistDetailScreen() {
       );
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const showGalleryToast = (message: string) => {
+    if (galleryToastTimer.current) clearTimeout(galleryToastTimer.current);
+    setGalleryToast(message);
+    galleryToastTimer.current = setTimeout(() => {
+      setGalleryToast('');
+      galleryToastTimer.current = null;
+    }, 2800);
+  };
+
+  const removeGalleryImage = () => {
+    if (!artist || !selectedGalleryUri || galleryActionLoading) return;
+    const uriToRemove = selectedGalleryUri;
+    Alert.alert(
+      'حذف از آرشیو',
+      'این تصویر از گالری هنرمند حذف شود؟',
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setGalleryActionLoading(true);
+              try {
+                const nextUris = galleryUris.filter((uri) => uri !== uriToRemove);
+                const savedArtist = await updateArtist(artist.id, {
+                  galleryImages: nextUris.length ? JSON.stringify(nextUris) : null,
+                });
+                setArtist(savedArtist);
+                setSelectedGalleryUri(null);
+                setGalleryMessage('تصویر از آرشیو حذف شد.');
+              } catch (removeError: unknown) {
+                showGalleryToast(
+                  removeError instanceof Error ? removeError.message : 'حذف تصویر انجام نشد.',
+                );
+              } finally {
+                setGalleryActionLoading(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const saveGalleryImage = async () => {
+    if (!selectedGalleryUri || galleryActionLoading) return;
+    if (Platform.OS === 'web') {
+      showGalleryToast('ذخیره‌ی تصویر در گوشی روی نسخه‌ی وب در دسترس نیست.');
+      return;
+    }
+
+    setGalleryActionLoading(true);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync(true);
+      if (status !== 'granted') {
+        showGalleryToast('برای ذخیره، اجازه‌ی دسترسی به گالری لازم است.');
+        return;
+      }
+      await MediaLibrary.saveToLibraryAsync(selectedGalleryUri);
+      console.log('[Naghme artist gallery] saved to library', selectedGalleryUri);
+      showGalleryToast('تصویر در گوشی ذخیره شد.');
+    } catch (saveError: unknown) {
+      console.error('[Naghme artist gallery] save failed', saveError);
+      showGalleryToast('ذخیره‌ی تصویر انجام نشد.');
+    } finally {
+      setGalleryActionLoading(false);
     }
   };
 
@@ -501,7 +581,7 @@ export default function ArtistDetailScreen() {
         animationType="fade"
         onRequestClose={() => setSelectedGalleryUri(null)}
       >
-        <View style={styles.galleryModalBackdrop}>
+        <View style={[styles.galleryModalBackdrop, { paddingBottom: insets.bottom + 20 }]}>
           <Pressable
             testID="artist-gallery-close"
             accessibilityRole="button"
@@ -517,6 +597,51 @@ export default function ArtistDetailScreen() {
               style={styles.galleryFullImage}
               resizeMode="contain"
             />
+          ) : null}
+          <View style={styles.galleryToolbar}>
+            <Pressable
+              testID="artist-gallery-delete"
+              accessibilityRole="button"
+              accessibilityLabel="حذف از آرشیو"
+              disabled={galleryActionLoading}
+              onPress={removeGalleryImage}
+              style={({ pressed }) => [
+                styles.galleryToolbarButton,
+                styles.galleryToolbarDelete,
+                (pressed || galleryActionLoading) && styles.pressed,
+              ]}
+            >
+              {galleryActionLoading ? (
+                <ActivityIndicator size="small" color={colors.destructive} />
+              ) : (
+                <Feather name="trash-2" size={18} color={colors.destructive} />
+              )}
+              <Text style={styles.galleryToolbarDeleteText}>حذف از آرشیو</Text>
+            </Pressable>
+            <Pressable
+              testID="artist-gallery-save"
+              accessibilityRole="button"
+              accessibilityLabel="ذخیره در گوشی"
+              disabled={galleryActionLoading}
+              onPress={() => void saveGalleryImage()}
+              style={({ pressed }) => [
+                styles.galleryToolbarButton,
+                styles.galleryToolbarSave,
+                (pressed || galleryActionLoading) && styles.pressed,
+              ]}
+            >
+              <Feather name="download" size={18} color={colors.primaryForeground} />
+              <Text style={styles.galleryToolbarSaveText}>ذخیره در گوشی</Text>
+            </Pressable>
+          </View>
+          {galleryToast ? (
+            <View
+              style={[styles.galleryToast, { bottom: insets.bottom + 88 }]}
+              pointerEvents="none"
+            >
+              <Feather name="check-circle" size={16} color={colors.primary} />
+              <Text style={styles.galleryToastText}>{galleryToast}</Text>
+            </View>
           ) : null}
         </View>
       </Modal>
@@ -781,5 +906,47 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'center',
     },
     galleryFullImage: { width: '100%', height: '82%' },
+    galleryToolbar: {
+      width: '100%',
+      maxWidth: 420,
+      flexDirection: 'row-reverse',
+      gap: 10,
+      marginTop: 18,
+    },
+    galleryToolbarButton: {
+      flex: 1,
+      minHeight: 50,
+      borderRadius: 16,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 10,
+    },
+    galleryToolbarDelete: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.destructive,
+    },
+    galleryToolbarSave: { backgroundColor: colors.primary },
+    galleryToolbarDeleteText: { color: colors.destructive, fontSize: 12, fontWeight: '700' },
+    galleryToolbarSaveText: { color: colors.primaryForeground, fontSize: 12, fontWeight: '700' },
+    galleryToast: {
+      position: 'absolute',
+      left: 18,
+      right: 18,
+      bottom: 88,
+      minHeight: 46,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 14,
+      borderRadius: 15,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    galleryToastText: { color: colors.foreground, fontSize: 12, fontWeight: '600', textAlign: 'right' },
   });
 }
