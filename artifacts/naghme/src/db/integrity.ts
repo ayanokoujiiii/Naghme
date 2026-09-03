@@ -18,6 +18,9 @@ export const REQUIRED_INDEXES = [
   'idx_album_tracks_album_order',
   'idx_album_tracks_track',
   'idx_album_tracks_album_position',
+  'idx_tracks_work',
+  'idx_tracks_version',
+  'idx_versions_work',
   'idx_journal_track_created',
   'idx_journal_created',
   'idx_history_track_listened',
@@ -59,6 +62,40 @@ export async function runDatabaseIntegrityCheck(
        FROM AlbumTracks
        LEFT JOIN Tracks ON Tracks.id = AlbumTracks.trackId
        WHERE Tracks.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_track_work',
+      `SELECT COUNT(*) AS count
+       FROM Tracks
+       LEFT JOIN Works ON Works.id = Tracks.workId
+       WHERE Tracks.workId IS NOT NULL AND Works.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_track_version',
+      `SELECT COUNT(*) AS count
+       FROM Tracks
+       LEFT JOIN Versions ON Versions.id = Tracks.versionId
+       WHERE Tracks.versionId IS NOT NULL AND Versions.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_version_work',
+      `SELECT COUNT(*) AS count
+       FROM Versions
+       LEFT JOIN Works ON Works.id = Versions.workId
+       WHERE Versions.workId IS NULL OR Works.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'invalid_track_version_work',
+      `SELECT COUNT(*) AS count
+       FROM Tracks
+       INNER JOIN Versions ON Versions.id = Tracks.versionId
+       WHERE Tracks.versionId IS NOT NULL
+         AND Tracks.workId IS NOT NULL
+         AND Versions.workId != Tracks.workId`,
     ),
     countIssue(
       database,
@@ -121,6 +158,16 @@ export async function runDatabaseIntegrityCheck(
     ),
     countIssue(
       database,
+      'duplicate_work_id',
+      'SELECT COUNT(*) AS count FROM (SELECT id FROM Works GROUP BY id HAVING COUNT(*) > 1)',
+    ),
+    countIssue(
+      database,
+      'duplicate_version_id',
+      'SELECT COUNT(*) AS count FROM (SELECT id FROM Versions GROUP BY id HAVING COUNT(*) > 1)',
+    ),
+    countIssue(
+      database,
       'duplicate_personal_relationship_track_id',
       `SELECT COUNT(*) AS count
        FROM (
@@ -157,6 +204,25 @@ export async function runDatabaseIntegrityCheck(
       'missing_track_title',
       `SELECT COUNT(*) AS count FROM Tracks
        WHERE title IS NULL OR trim(title) = ''`,
+    ),
+    countIssue(
+      database,
+      'missing_work_required_fields',
+      `SELECT COUNT(*) AS count FROM Works
+       WHERE id IS NULL OR trim(id) = ''
+          OR title IS NULL OR trim(title) = ''
+          OR createdAt IS NULL OR trim(createdAt) = ''
+          OR updatedAt IS NULL OR trim(updatedAt) = ''`,
+    ),
+    countIssue(
+      database,
+      'missing_version_required_fields',
+      `SELECT COUNT(*) AS count FROM Versions
+       WHERE id IS NULL OR trim(id) = ''
+          OR workId IS NULL OR trim(workId) = ''
+          OR name IS NULL OR trim(name) = ''
+          OR createdAt IS NULL OR trim(createdAt) = ''
+          OR updatedAt IS NULL OR trim(updatedAt) = ''`,
     ),
     countIssue(
       database,

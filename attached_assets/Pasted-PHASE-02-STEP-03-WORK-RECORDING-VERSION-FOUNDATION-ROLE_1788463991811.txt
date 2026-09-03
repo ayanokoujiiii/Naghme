@@ -1,0 +1,860 @@
+PHASE 02 — STEP 03
+WORK / RECORDING / VERSION FOUNDATION
+
+ROLE
+You are the implementation agent for the Naghme project.
+
+You must work directly on the existing Naghme codebase.
+
+IMPORTANT:
+Do NOT rebuild the application from scratch.
+Do NOT reset or recreate the database.
+Do NOT delete existing user data.
+Do NOT redesign the UI.
+Do NOT implement unrelated features.
+Do NOT move into Roles/Credits yet.
+Do NOT implement a full music genealogy system yet.
+
+This step has one purpose:
+
+Establish a correct domain foundation that separates:
+
+Work
+Recording
+Version
+Album
+Track
+
+The goal is to prevent the current Track entity from continuing to represent several different musical concepts at the same time.
+
+--------------------------------------------------
+1. PROJECT CONTEXT
+--------------------------------------------------
+
+Naghme is a personal Persian-first music archive built with:
+
+- Expo React Native
+- TypeScript
+- Expo Router
+- SQLite
+- Zustand where already used
+- Android-first
+- Offline-first
+- Persian / RTL
+- Dark primary theme
+- No mandatory backend
+- No mandatory account
+- Local user data
+
+The application is a personal music archive, not a Spotify clone.
+
+The long-term domain model must support:
+
+- Iranian traditional music
+- Iranian classical music
+- Iranian popular/classic music
+- Western classical music
+- songs
+- tasnifs
+- compositions
+- instrumental works
+- multiple performances of the same work
+- different recordings
+- different arrangements
+- different editions/releases
+- albums containing recordings
+
+--------------------------------------------------
+2. CURRENT STATE
+--------------------------------------------------
+
+Phase 01 established:
+
+- database migrations
+- database versioning
+- foreign keys
+- indexes
+- integrity checking
+- safer backup/restore
+
+Phase 02 Step 01 established:
+
+- ListeningHistory is the canonical source for listening counts.
+- PersonalRelationships.listeningCount is no longer treated as the source of truth.
+
+Phase 02 Step 02 established:
+
+- AlbumTracks junction table
+- explicit album membership
+- discNumber
+- trackNumber
+- titleOverride
+- notes
+- orderSource
+- multi-album membership
+- stable album ordering
+- legacy membership preservation
+
+Current database version is 3.
+
+Do NOT break the existing AlbumTracks implementation.
+
+--------------------------------------------------
+3. CORE DOMAIN PROBLEM
+--------------------------------------------------
+
+The current Tracks table is overloaded.
+
+A Track currently represents something similar to a recording, while also being used as the user's main musical item.
+
+This is insufficient for a serious music archive.
+
+We need to establish the following conceptual distinction:
+
+WORK
+The underlying musical/literary creation.
+
+Examples:
+
+- "بهار دلنشین"
+- a specific classical composition
+- a tasnif
+- an instrumental composition
+
+A Work is the composition/creation itself.
+
+RECORDING
+A particular recorded performance of a Work.
+
+Example:
+
+The same tasnif may have been recorded by different singers, in different years, with different orchestras or arrangements.
+
+VERSION
+A distinct version/arrangement/edit of a Work or Recording where this distinction is meaningful.
+
+Examples may include:
+
+- studio version
+- live version
+- alternate arrangement
+- remastered version
+- mono/stereo edition
+- extended version
+
+Do not assume that every Track must have a Version.
+
+ALBUM
+A release/container that contains one or more recordings.
+
+TRACK
+For this step, DO NOT attempt to completely rename or replace the existing Tracks table.
+
+Treat the existing Track entity as the application's current recording-level item.
+
+The architectural goal is to gradually evolve Track toward Recording without breaking the current application.
+
+--------------------------------------------------
+4. IMPORTANT DOMAIN RULES
+--------------------------------------------------
+
+These distinctions are critical:
+
+Work != Recording
+
+Recording != Album
+
+Album != Work
+
+Track != automatically Work
+
+Track != automatically Album
+
+A Work may have many Recordings.
+
+A Recording may appear on multiple Albums.
+
+An Album may contain multiple Recordings.
+
+A Work may exist without any Recording.
+
+A Recording may exist without being assigned to an Album.
+
+An Album may exist without Tracks.
+
+Do NOT assume that an album title represents a Work.
+
+Do NOT assume that two tracks with the same title are the same Work.
+
+Do NOT automatically merge records based on title.
+
+Do NOT invent historical information.
+
+Unknown relationships must remain unknown.
+
+--------------------------------------------------
+5. REQUIRED IMPLEMENTATION
+--------------------------------------------------
+
+Inspect the current database, queries, models, seed data, album logic, track logic, graph logic, backup/restore, and all usages of Tracks.
+
+Then introduce the smallest safe schema needed to establish Work and Version as first-class domain concepts.
+
+At minimum introduce:
+
+WORKS
+
+Suggested fields:
+
+- id
+- title
+- alternateTitles
+- description
+- language
+- genre
+- notes
+- createdAt
+- updatedAt
+
+VERSIONS
+
+Suggested fields:
+
+- id
+- workId
+- name
+- kind
+- description
+- notes
+- createdAt
+- updatedAt
+
+Do not add unnecessary fields simply because they might be useful someday.
+
+Use the existing project conventions for IDs, timestamps, serialization, and database access.
+
+--------------------------------------------------
+6. TRACK / RECORDING COMPATIBILITY
+--------------------------------------------------
+
+Do NOT rename or delete the Tracks table in this step.
+
+Do NOT migrate all existing Tracks into a new Recording table.
+
+That would create unnecessary migration risk.
+
+Instead, extend the current Track model safely.
+
+Add nullable references where appropriate:
+
+Tracks.workId
+Tracks.versionId
+
+The references must be nullable.
+
+Existing tracks must continue to work exactly as before.
+
+Existing Track IDs must not change.
+
+Existing Album IDs must not change.
+
+Existing AlbumTracks relationships must not change.
+
+Existing audioUri values must not change.
+
+Existing personal relationships must not change.
+
+Existing journal entries must not change.
+
+Existing listening history must not change.
+
+Existing artwork paths must not change.
+
+--------------------------------------------------
+7. FOREIGN KEYS
+--------------------------------------------------
+
+Use proper foreign keys.
+
+Tracks.workId -> Works.id
+Tracks.versionId -> Versions.id
+Versions.workId -> Works.id
+
+Use safe delete behavior.
+
+Do NOT allow deleting a Work to silently destroy existing Track data.
+
+Prefer SET NULL behavior where appropriate for optional references.
+
+Deleting a Work must not delete Tracks.
+
+Deleting a Version must not delete Tracks.
+
+Deleting a Work must not cascade into AlbumTracks.
+
+--------------------------------------------------
+8. VERSION RELATIONSHIP
+--------------------------------------------------
+
+A Version belongs to a Work.
+
+Therefore:
+
+Version.workId is required.
+
+A Version cannot exist without a Work.
+
+A Track may optionally reference:
+
+- a Work
+- a Version
+
+If a Track references a Version, the Version must belong to the same Work referenced by the Track when both are present.
+
+Do not create a complicated trigger system unless genuinely required.
+
+If SQLite constraints cannot easily enforce this cross-reference, enforce it in the query/data-access layer and document the invariant.
+
+--------------------------------------------------
+9. MIGRATION
+--------------------------------------------------
+
+Create the next migration using the existing migration architecture.
+
+Current DB version:
+
+3
+
+New DB version:
+
+4
+
+Migration must:
+
+1. Create Works.
+2. Create Versions.
+3. Add nullable workId to Tracks.
+4. Add nullable versionId to Tracks.
+5. Add required indexes.
+6. Preserve all existing data.
+7. Preserve all existing IDs.
+8. Run safely inside the existing migration system.
+9. Be idempotent according to the project's migration architecture.
+
+DO NOT:
+
+- reset the database
+- recreate the whole database
+- delete tables
+- delete records
+- regenerate IDs
+- fabricate Work records for existing tracks
+- fabricate Version records for existing tracks
+
+Existing Tracks should initially have:
+
+workId = NULL
+versionId = NULL
+
+unless the existing database already contains explicit information that allows a relationship to be preserved safely.
+
+Do not infer relationships from titles.
+
+--------------------------------------------------
+10. QUERY LAYER
+--------------------------------------------------
+
+Inspect src/db/queries.ts and all relevant callers.
+
+Add minimal domain operations such as:
+
+- createWork
+- getWorkById
+- updateWork
+- deleteWork safely
+- createVersion
+- getVersionById
+- updateVersion
+- deleteVersion safely
+- getVersionsByWorkId
+- optionally assignTrackToWork
+- optionally assignTrackToVersion
+
+Use the project's existing naming and return-type conventions.
+
+Do not create an unnecessary abstraction layer.
+
+Existing Track queries must continue to work.
+
+Existing Album queries must continue to work.
+
+Existing AlbumTracks queries must continue to work.
+
+--------------------------------------------------
+11. WORK DATA MODEL
+--------------------------------------------------
+
+Work should be capable of representing a musical creation without requiring a recording.
+
+Examples:
+
+Work:
+"بهار دلنشین"
+
+Possible future recordings:
+
+Recording/Track A:
+performed by Singer A
+
+Recording/Track B:
+performed by Singer B
+
+Recording/Track C:
+live performance
+
+The Work itself should not contain recording-specific fields such as:
+
+- audioUri
+- duration of a specific recording
+- recording date
+- specific album membership
+
+Those belong to the recording/Track layer.
+
+--------------------------------------------------
+12. VERSION DATA MODEL
+--------------------------------------------------
+
+Version must remain lightweight.
+
+Do not over-model Version in this step.
+
+The purpose is simply to create a safe place for distinctions such as:
+
+- studio
+- live
+- alternate
+- remastered
+- arrangement
+- edit
+
+Use a flexible kind/kind-like field according to the project's existing conventions.
+
+Do not hard-code a huge enum of historical music concepts.
+
+Unknown or unusual versions must remain representable.
+
+--------------------------------------------------
+13. EXISTING DATA
+--------------------------------------------------
+
+This is a data-preservation task.
+
+Before changing anything, inspect:
+
+- Tracks
+- Albums
+- AlbumTracks
+- Artists
+- PersonalRelationships
+- JournalEntries
+- ListeningHistory
+- existing seed data
+- backup/restore format
+
+Do not assume the database only contains seed data.
+
+The user's real database may contain personal records.
+
+Never overwrite personal data with seed data.
+
+Never create fake Works for personal Tracks merely to make the new columns non-null.
+
+NULL is valid and expected.
+
+--------------------------------------------------
+14. ALBUM RELATIONSHIP
+--------------------------------------------------
+
+Do NOT change AlbumTracks architecture.
+
+AlbumTracks remains the canonical Album ↔ Track membership relationship established in Step 02.
+
+Do not replace it with Work ↔ Album.
+
+Do not make Albums directly represent Works.
+
+A future structure may eventually look like:
+
+Work
+ ↓
+Recording/Track
+ ↓
+AlbumTracks
+ ↓
+Album
+
+For now, implement only the necessary Work/Version foundation.
+
+--------------------------------------------------
+15. ARTISTS
+--------------------------------------------------
+
+Do NOT implement Roles & Credits in this step.
+
+Do NOT create the final artist-credit system yet.
+
+Existing artist relationships must remain untouched.
+
+Do not assume that the current Track.artistId is the final music-domain model.
+
+Do not attempt to solve:
+
+- vocalist credits
+- composer credits
+- lyricist credits
+- arranger credits
+- musician credits
+- conductor credits
+
+Those belong to Phase 02 Step 04.
+
+--------------------------------------------------
+16. GRAPH
+--------------------------------------------------
+
+Do NOT redesign the graph.
+
+Do not add Work/Version visualization yet unless an extremely small query/model adjustment is required to prevent breakage.
+
+The current graph should continue working.
+
+Do not introduce a new visual graph system.
+
+Do not spend time on graph UI.
+
+--------------------------------------------------
+17. SEARCH
+--------------------------------------------------
+
+Do not redesign search.
+
+Existing search must continue working.
+
+Do not add complex Work/Version search UI in this step unless required for compatibility.
+
+If the query layer naturally exposes Work/Version titles, keep the implementation minimal.
+
+--------------------------------------------------
+18. UI
+--------------------------------------------------
+
+This step is primarily a data-model foundation.
+
+Do NOT redesign the application.
+
+Do NOT create a large new Work page.
+
+Do NOT create a large Version management interface.
+
+Do NOT change the navigation structure.
+
+Only make minimal UI changes if necessary to prove that:
+
+- a Work can be created
+- a Version can be created
+- a Track can optionally reference them
+
+If implementing UI would significantly expand scope, keep the domain/query layer ready and document the UI limitation.
+
+The goal is a stable foundation, not a polished Work editor.
+
+--------------------------------------------------
+19. BACKUP / RESTORE
+--------------------------------------------------
+
+Inspect the current backup format.
+
+Do NOT create Backup v2 unless absolutely necessary.
+
+Do not break existing Backup v1 files.
+
+The existing backup format must remain readable.
+
+If safely possible, extend the existing backup representation with optional:
+
+- works
+- versions
+- track workId
+- track versionId
+
+Old backups without these fields must remain restorable.
+
+When restoring an old backup:
+
+- existing Work/Version data in destination must not be deleted
+- existing Tracks must remain valid
+- missing optional fields must be treated as NULL
+- existing AlbumTracks behavior must remain intact
+
+Preserve the project's current merge/upsert semantics.
+
+Do not silently convert restore into overwrite.
+
+--------------------------------------------------
+20. INTEGRITY CHECKER
+--------------------------------------------------
+
+Update the existing integrity checker.
+
+It should detect at minimum:
+
+- orphan Tracks.workId
+- orphan Tracks.versionId
+- orphan Versions.workId
+- invalid Track → Version → Work consistency where detectable
+- duplicate Work IDs
+- duplicate Version IDs
+- missing required Work fields
+- missing required Version fields
+- missing indexes
+- foreign-key violations
+
+The integrity checker should REPORT problems.
+
+Do not automatically delete or repair user data.
+
+--------------------------------------------------
+21. SEED DATA
+--------------------------------------------------
+
+Inspect seed.ts.
+
+Do NOT create fake Work/Version relationships for existing sample tracks unless the sample data explicitly supports them.
+
+If you choose to add demonstration Work/Version data, it must be clearly intentional and must not interfere with user data.
+
+Do not modify seed behavior unnecessarily.
+
+--------------------------------------------------
+22. INDEXES
+--------------------------------------------------
+
+Add justified indexes for:
+
+- Tracks.workId
+- Tracks.versionId
+- Versions.workId
+
+Follow existing project naming conventions.
+
+Do not create dozens of speculative indexes.
+
+--------------------------------------------------
+23. TYPESCRIPT
+--------------------------------------------------
+
+Update TypeScript domain types and database types consistently.
+
+Avoid:
+
+- any
+- unsafe casts
+- duplicated incompatible types
+- nullable-field confusion
+
+Explicitly represent nullable Work/Version relationships.
+
+Existing callers must continue compiling.
+
+--------------------------------------------------
+24. TESTING
+--------------------------------------------------
+
+Run representative SQLite tests.
+
+At minimum verify:
+
+1. Fresh database creates Works and Versions correctly.
+
+2. Migration from DB version 3 to version 4 succeeds.
+
+3. Existing Tracks remain intact.
+
+4. Existing Albums remain intact.
+
+5. Existing AlbumTracks remain intact.
+
+6. Existing PersonalRelationships remain intact.
+
+7. Existing JournalEntries remain intact.
+
+8. Existing ListeningHistory remains intact.
+
+9. Existing Track IDs remain unchanged.
+
+10. Existing Album IDs remain unchanged.
+
+11. A Work can exist without a Track.
+
+12. A Track can exist without a Work.
+
+13. A Version must belong to a Work.
+
+14. A Track can reference a Work.
+
+15. A Track can reference a Version.
+
+16. Invalid Work references are rejected.
+
+17. Invalid Version references are rejected.
+
+18. Deleting a Work does not delete its Tracks.
+
+19. Deleting a Version does not delete its Tracks.
+
+20. Existing AlbumTracks remain valid after Work/Version changes.
+
+21. Backup/restore preserves Work/Version relationships if the extended format is implemented.
+
+22. Old Backup v1 files remain readable.
+
+23. Integrity checker detects intentionally broken Work/Version references in a test database.
+
+24. No existing data is fabricated during migration.
+
+--------------------------------------------------
+25. VERIFICATION
+--------------------------------------------------
+
+Run:
+
+- Naghme TypeScript typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency check
+- Expo Doctor if practical
+- representative SQLite tests
+- Metro startup
+- Web Preview startup/routes if practical
+
+Do not claim Android-native testing unless an actual Android environment/device/emulator was used.
+
+If Android-native testing is unavailable, state that clearly.
+
+--------------------------------------------------
+26. SCOPE CONTROL
+--------------------------------------------------
+
+This step MUST NOT implement:
+
+- Roles
+- Credits
+- Composer relationships
+- Lyricist relationships
+- Arranger relationships
+- Musician relationships
+- Conductor relationships
+- advanced genealogy
+- geographic music maps
+- historical timelines
+- advanced recommendation algorithms
+- new AI features
+- cloud synchronization
+- authentication
+- full Work editor
+- full Version editor
+- new graph visualization
+- major UI redesign
+
+Those are outside this step.
+
+--------------------------------------------------
+27. IMPORTANT DESIGN PRINCIPLE
+--------------------------------------------------
+
+Do not try to make the entire future Naghme domain model now.
+
+The purpose of this step is only to establish a clean foundation:
+
+WORK
+↓
+VERSION
+↓
+TRACK / RECORDING
+↓
+ALBUMTRACKS
+↓
+ALBUM
+
+while keeping the current application fully functional.
+
+The system must tolerate incomplete knowledge.
+
+NULL is preferable to fabricated information.
+
+Do not infer identity from:
+
+- identical titles
+- identical artists
+- identical album names
+- identical durations
+
+unless the database already contains an explicit relationship.
+
+--------------------------------------------------
+28. FINAL REPORT
+--------------------------------------------------
+
+After implementation, provide a precise final report using exactly these sections:
+
+1. Current domain problem
+2. Existing implementation inspected
+3. New Work model
+4. New Version model
+5. Track changes
+6. Migration
+7. Existing data preservation
+8. Relationship rules
+9. Query changes
+10. UI changes
+11. Backup/Restore
+12. Integrity checker
+13. Graph/Search impact
+14. Tests
+15. Verification
+16. Remaining limitations
+17. Next step recommendation
+
+For every claim about testing, distinguish clearly between:
+
+- actually executed
+- source-level verified
+- unavailable in the current environment
+
+Do not claim tests that were not actually executed.
+
+--------------------------------------------------
+29. DEFINITION OF DONE
+--------------------------------------------------
+
+This step is DONE only when:
+
+- Works exist as a first-class database entity.
+- Versions exist as a first-class database entity.
+- Tracks can optionally reference Works.
+- Tracks can optionally reference Versions.
+- Versions belong to Works.
+- Existing data is preserved.
+- Existing AlbumTracks relationships are preserved.
+- Existing listening/journal/personal data is preserved.
+- Migration is non-destructive.
+- Backup compatibility is preserved.
+- Integrity checks cover the new relationships.
+- Representative SQLite tests pass.
+- TypeScript checks pass.
+- No unrelated domain system has been introduced.
+
+Do not continue into Phase 02 Step 04.
+
+Stop after completing this step and provide the final report.

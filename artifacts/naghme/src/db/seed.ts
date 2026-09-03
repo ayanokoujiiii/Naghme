@@ -114,6 +114,8 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
       'بیداد اگرچه تلخ بود، پایان این آواز نیست',
     sheetMusicUri: null,
     versionName: 'اجرای نمونهٔ استودیویی',
+    workId: null,
+    versionId: null,
   },
   {
     id: SAMPLE_TRACK_IDS.baroun,
@@ -132,6 +134,8 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
       'شاید دل دیوانه‌ام امشب تو را باور کند',
     sheetMusicUri: null,
     versionName: 'بازخوانی آرام',
+    workId: null,
+    versionId: null,
   },
   {
     id: SAMPLE_TRACK_IDS.khaneh,
@@ -150,6 +154,8 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
       'خانه گر ابری‌ست، در من روشنای دیگری‌ست',
     sheetMusicUri: null,
     versionName: 'تنظیم مجلسی',
+    workId: null,
+    versionId: null,
   },
   {
     id: SAMPLE_TRACK_IDS.shabSokoutKavir,
@@ -168,6 +174,8 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
       'تا صبح با من بنشین، تا بشنوی سکوت ما را',
     sheetMusicUri: null,
     versionName: 'اجرای زنده در کویر',
+    workId: null,
+    versionId: null,
   },
 ];
 

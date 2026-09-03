@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export interface AppliedMigration {
   version: number;
@@ -94,6 +94,11 @@ const migrations: readonly Migration[] = [
     version: 3,
     description: 'افزودن رابطهٔ پایدار و مرتب‌شدهٔ آلبوم و قطعه',
     migrate: addAlbumTracksRelationship,
+  },
+  {
+    version: 4,
+    description: 'افزودن پایهٔ Work و Version بدون تغییر داده‌های موجود',
+    migrate: addWorkVersionFoundation,
   },
 ];
 
@@ -245,4 +250,58 @@ async function addAlbumTracksRelationship(database: SQLiteDatabase): Promise<voi
      FROM Tracks
      WHERE albumId IS NOT NULL`,
   );
+}
+
+async function addWorkVersionFoundation(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS Works (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      alternateTitles TEXT,
+      description TEXT,
+      language TEXT,
+      genre TEXT,
+      notes TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS Versions (
+      id TEXT PRIMARY KEY NOT NULL,
+      workId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT,
+      description TEXT,
+      notes TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (workId) REFERENCES Works(id) ON DELETE RESTRICT
+    );
+  `);
+
+  const trackColumns = await database.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(Tracks)',
+  );
+  const existingTrackColumns = new Set(trackColumns.map((column) => column.name));
+  if (!existingTrackColumns.has('workId')) {
+    await database.execAsync(
+      'ALTER TABLE Tracks ADD COLUMN workId TEXT REFERENCES Works(id) ON DELETE SET NULL;',
+    );
+  }
+  if (!existingTrackColumns.has('versionId')) {
+    await database.execAsync(
+      'ALTER TABLE Tracks ADD COLUMN versionId TEXT REFERENCES Versions(id) ON DELETE SET NULL;',
+    );
+  }
+
+  await database.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_tracks_work
+      ON Tracks (workId);
+
+    CREATE INDEX IF NOT EXISTS idx_tracks_version
+      ON Tracks (versionId);
+
+    CREATE INDEX IF NOT EXISTS idx_versions_work
+      ON Versions (workId);
+  `);
 }

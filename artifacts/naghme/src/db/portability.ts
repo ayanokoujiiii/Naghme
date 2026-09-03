@@ -7,6 +7,8 @@ import type {
   ListeningHistoryRecord,
   PersonalRelationshipRecord,
   TrackRecord,
+  VersionRecord,
+  WorkRecord,
 } from '@/src/db/queries';
 
 export interface ArchiveBackup {
@@ -21,6 +23,10 @@ export interface ArchiveBackup {
   listeningHistory: ListeningHistoryRecord[];
   /** Optional extension to Version 1; absent in older backups. */
   albumTracks?: AlbumTrackRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  works?: WorkRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  versions?: VersionRecord[];
 }
 
 export interface RestoreSummary {
@@ -31,13 +37,19 @@ export interface RestoreSummary {
   journalEntries: number;
   listeningHistory: number;
   albumTracks: number;
+  works: number;
+  versions: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
   'id, name, type, biography, genres, image, profileImage, galleryImages';
 const ALBUM_BACKUP_COLUMNS = 'id, title, releaseYear, coverImage';
 const TRACK_BACKUP_COLUMNS =
-  'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName';
+  'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName, workId, versionId';
+const WORK_BACKUP_COLUMNS =
+  'id, title, alternateTitles, description, language, genre, notes, createdAt, updatedAt';
+const VERSION_BACKUP_COLUMNS =
+  'id, workId, name, kind, description, notes, createdAt, updatedAt';
 const RELATIONSHIP_BACKUP_COLUMNS = `
   trackId, rating, favorite, emotionalTags, personalNote,
   (
@@ -50,6 +62,7 @@ const HISTORY_BACKUP_COLUMNS = 'id, trackId, listenedAt';
 const ALBUM_TRACK_BACKUP_COLUMNS =
   'Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId, ' +
   'Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri, Tracks.versionName, ' +
+  'Tracks.workId, Tracks.versionId, ' +
   'AlbumTracks.albumId AS albumTrackAlbumId, AlbumTracks.discNumber, AlbumTracks.trackNumber, ' +
   'AlbumTracks.titleOverride, AlbumTracks.notes, AlbumTracks.orderSource';
 
@@ -63,8 +76,17 @@ async function requireDatabase() {
 
 export async function createArchiveBackup(): Promise<string> {
   const database = await requireDatabase();
-  const [artists, albums, tracks, personalRelationships, journalEntries, listeningHistory, albumTracks] =
-    await Promise.all([
+  const [
+    artists,
+    albums,
+    tracks,
+    personalRelationships,
+    journalEntries,
+    listeningHistory,
+    albumTracks,
+    works,
+    versions,
+  ] = await Promise.all([
     database.getAllAsync<ArtistRecord>(
       `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
       [],
@@ -98,6 +120,14 @@ export async function createArchiveBackup(): Promise<string> {
          Tracks.title COLLATE NOCASE ASC`,
       [],
     ),
+    database.getAllAsync<WorkRecord>(
+      `SELECT ${WORK_BACKUP_COLUMNS} FROM Works ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<VersionRecord>(
+      `SELECT ${VERSION_BACKUP_COLUMNS} FROM Versions ORDER BY rowid ASC`,
+      [],
+    ),
   ]);
 
   const backup: ArchiveBackup = {
@@ -111,6 +141,8 @@ export async function createArchiveBackup(): Promise<string> {
     journalEntries,
     listeningHistory,
     albumTracks,
+    works,
+    versions,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -122,6 +154,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   const artistIds = new Set(backup.artists.map((artist) => artist.id));
   const albumIds = new Set(backup.albums.map((album) => album.id));
   const trackIds = new Set(backup.tracks.map((track) => track.id));
+  const workIds = new Set((backup.works ?? []).map((work) => work.id));
+  const versionIds = new Set((backup.versions ?? []).map((version) => version.id));
+  const versionsById = new Map((backup.versions ?? []).map((version) => [version.id, version]));
 
   for (const track of backup.tracks) {
     if (track.artistId && !artistIds.has(track.artistId)) {
@@ -129,6 +164,21 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     }
     if (track.albumId && !albumIds.has(track.albumId)) {
       throw new Error(`آلبوم مرتبط با قطعه‌ی «${track.title}» در فایل پیدا نشد.`);
+    }
+    if (track.workId && !workIds.has(track.workId)) {
+      throw new Error(`اثر مرتبط با قطعه‌ی «${track.title}» در فایل پیدا نشد.`);
+    }
+    if (track.versionId && !versionIds.has(track.versionId)) {
+      throw new Error(`نسخهٔ مرتبط با قطعه‌ی «${track.title}» در فایل پیدا نشد.`);
+    }
+    const version = track.versionId ? versionsById.get(track.versionId) : undefined;
+    if (version && track.workId && version.workId !== track.workId) {
+      throw new Error(`اثر و نسخهٔ قطعه‌ی «${track.title}» با هم سازگار نیستند.`);
+    }
+  }
+  for (const version of backup.versions ?? []) {
+    if (!workIds.has(version.workId)) {
+      throw new Error(`اثر مرتبط با نسخهٔ «${version.name}» در فایل پیدا نشد.`);
     }
   }
   for (const relationship of backup.personalRelationships) {
@@ -195,11 +245,64 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
       );
     }
 
+    for (const work of backup.works ?? []) {
+      await database.runAsync(
+        `INSERT INTO Works
+           (id, title, alternateTitles, description, language, genre, notes, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           alternateTitles = excluded.alternateTitles,
+           description = excluded.description,
+           language = excluded.language,
+           genre = excluded.genre,
+           notes = excluded.notes,
+           updatedAt = excluded.updatedAt`,
+        [
+          work.id,
+          work.title,
+          work.alternateTitles,
+          work.description,
+          work.language,
+          work.genre,
+          work.notes,
+          work.createdAt,
+          work.updatedAt,
+        ],
+      );
+    }
+
+    for (const version of backup.versions ?? []) {
+      await database.runAsync(
+        `INSERT INTO Versions
+           (id, workId, name, kind, description, notes, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workId = excluded.workId,
+           name = excluded.name,
+           kind = excluded.kind,
+           description = excluded.description,
+           notes = excluded.notes,
+           updatedAt = excluded.updatedAt`,
+        [
+          version.id,
+          version.workId,
+          version.name,
+          version.kind,
+          version.description,
+          version.notes,
+          version.createdAt,
+          version.updatedAt,
+        ],
+      );
+    }
+
     for (const track of backup.tracks) {
       await database.runAsync(
         `INSERT INTO Tracks
-           (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics,
+            sheetMusicUri, versionName, workId, versionId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            duration = excluded.duration,
@@ -209,7 +312,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
             coverImage = excluded.coverImage,
             lyrics = excluded.lyrics,
             sheetMusicUri = excluded.sheetMusicUri,
-            versionName = excluded.versionName`,
+            versionName = excluded.versionName,
+            workId = excluded.workId,
+            versionId = excluded.versionId`,
         [
           track.id,
           track.title,
@@ -221,6 +326,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
            track.lyrics,
            track.sheetMusicUri,
            track.versionName,
+           track.workId,
+           track.versionId,
         ],
       );
       if (track.albumId) {
@@ -309,6 +416,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     journalEntries: backup.journalEntries.length,
     listeningHistory: backup.listeningHistory.length,
     albumTracks: backup.albumTracks?.length ?? 0,
+    works: backup.works?.length ?? 0,
+    versions: backup.versions?.length ?? 0,
   };
 }
 
@@ -326,6 +435,8 @@ function parseBackup(json: string): ArchiveBackup {
 
   const artists = parseArtists(parsed.artists);
   const albums = parseAlbums(parsed.albums);
+  const works = parseWorks(parsed.works);
+  const versions = parseVersions(parsed.versions);
   const tracks = parseTracks(parsed.tracks);
   const personalRelationships = parseRelationships(parsed.personalRelationships);
   const journalEntries = parseJournalEntries(parsed.journalEntries);
@@ -334,6 +445,8 @@ function parseBackup(json: string): ArchiveBackup {
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
+  assertUniqueIds(works, 'آثار');
+  assertUniqueIds(versions, 'نسخه‌ها');
   assertUniqueIds(tracks, 'قطعه‌ها');
   assertUniqueIds(personalRelationships, 'رابطه‌های شخصی', 'trackId');
   assertUniqueIds(journalEntries, 'یادداشت‌های دفترچه');
@@ -346,12 +459,49 @@ function parseBackup(json: string): ArchiveBackup {
     exportedAt: requiredString(parsed.exportedAt, 'تاریخ خروجی'),
     artists,
     albums,
+    works,
+    versions,
     tracks,
     personalRelationships,
     journalEntries,
     listeningHistory,
     albumTracks,
   };
+}
+
+function parseWorks(value: unknown): WorkRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'آثار').map((item, index) => {
+    const record = recordValue(item, `اثر شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ اثر'),
+      title: requiredString(record.title, 'عنوان اثر'),
+      alternateTitles: nullableString(record.alternateTitles, 'عنوان‌های دیگر اثر'),
+      description: nullableString(record.description, 'توضیح اثر'),
+      language: nullableString(record.language, 'زبان اثر'),
+      genre: nullableString(record.genre, 'گونهٔ اثر'),
+      notes: nullableString(record.notes, 'یادداشت اثر'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد اثر'),
+      updatedAt: requiredString(record.updatedAt, 'زمان ویرایش اثر'),
+    };
+  });
+}
+
+function parseVersions(value: unknown): VersionRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'نسخه‌ها').map((item, index) => {
+    const record = recordValue(item, `نسخهٔ شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ نسخه'),
+      workId: requiredString(record.workId, 'شناسهٔ اثر نسخه'),
+      name: requiredString(record.name, 'نام نسخه'),
+      kind: nullableString(record.kind, 'نوع نسخه'),
+      description: nullableString(record.description, 'توضیح نسخه'),
+      notes: nullableString(record.notes, 'یادداشت نسخه'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد نسخه'),
+      updatedAt: requiredString(record.updatedAt, 'زمان ویرایش نسخه'),
+    };
+  });
 }
 
 function parseAlbumTracks(value: unknown): AlbumTrackRecord[] {
@@ -393,6 +543,8 @@ function parseAlbumTracks(value: unknown): AlbumTrackRecord[] {
       lyrics: nullableString(record.lyrics, 'متن قطعه در رابطهٔ آلبوم'),
       sheetMusicUri: nullableString(record.sheetMusicUri, 'نت قطعه در رابطهٔ آلبوم'),
       versionName: nullableString(record.versionName, 'نسخهٔ قطعه در رابطهٔ آلبوم'),
+      workId: nullableString(record.workId, 'شناسهٔ اثر قطعه در رابطهٔ آلبوم'),
+      versionId: nullableString(record.versionId, 'شناسهٔ نسخهٔ قطعه در رابطهٔ آلبوم'),
       albumTrackAlbumId: requiredString(record.albumTrackAlbumId, 'شناسهٔ آلبوم در رابطه'),
       discNumber,
       trackNumber,
@@ -496,7 +648,9 @@ function parseTracks(value: unknown): TrackRecord[] {
       coverImage: nullableString(record.coverImage, 'تصویر قطعه'),
       lyrics: nullableString(record.lyrics, 'متن ترانه'),
       sheetMusicUri: nullableString(record.sheetMusicUri, 'نت موسیقی'),
-      versionName: nullableString(record.versionName, 'نسخه یا اجرا'),
+       versionName: nullableString(record.versionName, 'نسخه یا اجرا'),
+       workId: nullableString(record.workId, 'شناسهٔ اثر قطعه'),
+       versionId: nullableString(record.versionId, 'شناسهٔ نسخهٔ قطعه'),
     };
   });
 }

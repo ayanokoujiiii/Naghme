@@ -293,6 +293,8 @@ function mapGraphTrack(row: MusicGraphRow): TrackRecord {
     lyrics: row.trackLyrics,
     sheetMusicUri: row.trackSheetMusicUri,
     versionName: row.trackVersionName,
+    workId: row.trackWorkId,
+    versionId: row.trackVersionId,
   };
 }
 
