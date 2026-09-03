@@ -124,6 +124,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     }
   }
 
+  // Restore intentionally remains a merge/upsert: destination-only records
+  // are preserved, while backup records are inserted or updated by stable ID.
   await database.withTransactionAsync(async () => {
     for (const artist of backup.artists) {
       await database.runAsync(

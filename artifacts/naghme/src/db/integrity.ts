@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { CURRENT_SCHEMA_VERSION } from '@/src/db/migrations';
 
 export interface IntegrityIssue {
   code: string;
@@ -9,6 +10,16 @@ export interface DatabaseIntegrityReport {
   ok: boolean;
   issues: IntegrityIssue[];
 }
+
+export const REQUIRED_INDEXES = [
+  'idx_tracks_artist_title',
+  'idx_tracks_album_title',
+  'idx_tracks_title_nocase',
+  'idx_journal_track_created',
+  'idx_journal_created',
+  'idx_history_track_listened',
+  'idx_history_listened',
+] as const;
 
 export async function runDatabaseIntegrityCheck(
   database: SQLiteDatabase,
@@ -71,6 +82,17 @@ export async function runDatabaseIntegrityCheck(
     ),
     countIssue(
       database,
+      'duplicate_personal_relationship_track_id',
+      `SELECT COUNT(*) AS count
+       FROM (
+         SELECT trackId
+         FROM PersonalRelationships
+         GROUP BY trackId
+         HAVING COUNT(*) > 1
+       )`,
+    ),
+    countIssue(
+      database,
       'duplicate_journal_id',
       'SELECT COUNT(*) AS count FROM (SELECT id FROM JournalEntries GROUP BY id HAVING COUNT(*) > 1)',
     ),
@@ -99,6 +121,12 @@ export async function runDatabaseIntegrityCheck(
     ),
     countIssue(
       database,
+      'missing_personal_relationship_track_id',
+      `SELECT COUNT(*) AS count FROM PersonalRelationships
+       WHERE trackId IS NULL OR trim(trackId) = ''`,
+    ),
+    countIssue(
+      database,
       'missing_journal_required_fields',
       `SELECT COUNT(*) AS count FROM JournalEntries
        WHERE trackId IS NULL OR trim(trackId) = ''
@@ -124,6 +152,31 @@ export async function runDatabaseIntegrityCheck(
       code: 'foreign_key_check',
       count: foreignKeyViolations.length,
     });
+  }
+
+  const foreignKeyState = await database.getFirstAsync<{ foreign_keys: number }>(
+    'PRAGMA foreign_keys',
+  );
+  if (foreignKeyState?.foreign_keys !== 1) {
+    issues.push({ code: 'foreign_keys_disabled', count: 1 });
+  }
+
+  const schemaVersion = await database.getFirstAsync<{ user_version: number }>(
+    'PRAGMA user_version',
+  );
+  if (schemaVersion?.user_version !== CURRENT_SCHEMA_VERSION) {
+    issues.push({ code: 'unexpected_schema_version', count: 1 });
+  }
+
+  const indexes = await database.getAllAsync<{ name: string }>(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'index' AND name NOT LIKE 'sqlite_%'`,
+  );
+  const indexNames = new Set(indexes.map((index) => index.name));
+  for (const index of REQUIRED_INDEXES) {
+    if (!indexNames.has(index)) {
+      issues.push({ code: `missing_index:${index}`, count: 1 });
+    }
   }
 
   return { ok: issues.length === 0, issues };

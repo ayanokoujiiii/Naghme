@@ -173,6 +173,8 @@ async function ensureBaselineSchema(database: SQLiteDatabase): Promise<void> {
 }
 
 async function addQueryIndexes(database: SQLiteDatabase): Promise<void> {
+  // These indexes support relation filters and ordered/prefix lookups.
+  // They do not make arbitrary LIKE '%term%' substring searches fast.
   await database.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_tracks_artist_title
       ON Tracks (artistId, title COLLATE NOCASE);

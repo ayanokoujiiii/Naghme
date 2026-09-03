@@ -1,16 +1,10 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { CURRENT_SCHEMA_VERSION, getSchemaVersion } from '@/src/db/migrations';
-import { runDatabaseIntegrityCheck, type DatabaseIntegrityReport } from '@/src/db/integrity';
-
-const REQUIRED_INDEXES = [
-  'idx_tracks_artist_title',
-  'idx_tracks_album_title',
-  'idx_tracks_title_nocase',
-  'idx_journal_track_created',
-  'idx_journal_created',
-  'idx_history_track_listened',
-  'idx_history_listened',
-] as const;
+import {
+  REQUIRED_INDEXES,
+  runDatabaseIntegrityCheck,
+  type DatabaseIntegrityReport,
+} from '@/src/db/integrity';
 
 export interface FoundationVerificationReport {
   ok: boolean;
