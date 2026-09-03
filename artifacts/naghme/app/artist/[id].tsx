@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { useColors } from '@/hooks/useColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArtistRecord,
   deleteArtist,
@@ -30,6 +31,7 @@ import {
 export default function ArtistDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const artistId = Array.isArray(id) ? id[0] : id;
   const [artist, setArtist] = useState<ArtistRecord | null>(null);
@@ -39,6 +41,7 @@ export default function ArtistDetailScreen() {
   const [savingGallery, setSavingGallery] = useState<boolean>(false);
   const [galleryMessage, setGalleryMessage] = useState<string>('');
   const [selectedGalleryUri, setSelectedGalleryUri] = useState<string | null>(null);
+  const [gridGalleryVisible, setGridGalleryVisible] = useState<boolean>(false);
   const [savingProfile, setSavingProfile] = useState<boolean>(false);
   const [profileMessage, setProfileMessage] = useState<string>('');
 
@@ -350,26 +353,40 @@ export default function ArtistDetailScreen() {
           title="گالری تصاویر"
           caption={galleryUris.length ? `${galleryUris.length} تصویر` : 'لحظه‌های این هنرمند'}
         />
-        <Pressable
-          testID="artist-add-gallery-images"
-          accessibilityRole="button"
-          accessibilityLabel="افزودن تصاویر به گالری"
-          disabled={savingGallery}
-          onPress={() => void pickGalleryImages()}
-          style={({ pressed }) => [
-            styles.galleryAddButton,
-            (pressed || savingGallery) && styles.pressed,
-          ]}
-        >
-          {savingGallery ? (
-            <ActivityIndicator size="small" color={colors.primaryForeground} />
-          ) : (
-            <>
-              <Feather name="image" size={16} color={colors.primaryForeground} />
-              <Text style={styles.galleryAddText}>افزودن تصویر</Text>
-            </>
-          )}
-        </Pressable>
+          <View style={styles.galleryActions}>
+            {galleryUris.length ? (
+              <Pressable
+                testID="artist-view-all-gallery"
+                accessibilityRole="button"
+                accessibilityLabel="نمایش همه‌ی تصاویر به‌صورت شبکه‌ای"
+                onPress={() => setGridGalleryVisible(true)}
+                style={({ pressed }) => [styles.galleryViewAllButton, pressed && styles.pressed]}
+              >
+                <Feather name="grid" size={15} color={colors.primary} />
+                <Text style={styles.galleryViewAllText}>نمایش همه</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              testID="artist-add-gallery-images"
+              accessibilityRole="button"
+              accessibilityLabel="افزودن تصاویر به گالری"
+              disabled={savingGallery}
+              onPress={() => void pickGalleryImages()}
+              style={({ pressed }) => [
+                styles.galleryAddButton,
+                (pressed || savingGallery) && styles.pressed,
+              ]}
+            >
+              {savingGallery ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather name="image" size={16} color={colors.primaryForeground} />
+                  <Text style={styles.galleryAddText}>افزودن تصویر</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
       </View>
       <DetailCard>
         {galleryUris.length ? (
@@ -427,6 +444,57 @@ export default function ArtistDetailScreen() {
         )}
       </DetailCard>
 
+      <Modal
+        visible={gridGalleryVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setGridGalleryVisible(false)}
+      >
+        <View style={styles.gridGalleryScreen}>
+          <View style={[styles.gridGalleryHeader, { paddingTop: insets.top + 10 }]}>
+            <Pressable
+              testID="artist-grid-gallery-close"
+              accessibilityRole="button"
+              accessibilityLabel="بستن نمای شبکه‌ای گالری"
+              onPress={() => setGridGalleryVisible(false)}
+             style={({ pressed }) => [
+               styles.galleryCloseButton,
+               { top: insets.top + 10 },
+               pressed && styles.pressed,
+             ]}
+            >
+              <Feather name="x" size={22} color={colors.foreground} />
+            </Pressable>
+            <View style={styles.gridGalleryTitleCopy}>
+              <Text style={styles.gridGalleryTitle}>همه‌ی تصاویر</Text>
+              <Text style={styles.gridGalleryCaption}>{galleryUris.length} تصویر از {artist.name}</Text>
+            </View>
+            <View style={styles.gridGalleryHeaderSpacer} />
+          </View>
+          <FlatList
+            data={galleryUris}
+            numColumns={3}
+            keyExtractor={(uri, index) => `grid-${uri}-${index}`}
+            columnWrapperStyle={styles.gridColumn}
+            contentContainerStyle={styles.gridContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item: uri, index }) => (
+              <Pressable
+                testID={`artist-grid-gallery-image-${index}`}
+                accessibilityRole="button"
+                accessibilityLabel={`نمایش تصویر ${index + 1} از گالری`}
+                onPress={() => {
+                  setGridGalleryVisible(false);
+                  setSelectedGalleryUri(uri);
+                }}
+                style={({ pressed }) => [styles.gridImageButton, pressed && styles.pressed]}
+              >
+                <Image source={{ uri }} style={styles.gridImage} resizeMode="cover" />
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
       <Modal
         visible={Boolean(selectedGalleryUri)}
         transparent
@@ -563,6 +631,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'space-between',
       gap: 10,
     },
+    galleryActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 7, marginBottom: 12 },
     galleryAddButton: {
       minHeight: 38,
       flexDirection: 'row-reverse',
@@ -572,7 +641,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderRadius: 13,
       paddingHorizontal: 11,
       backgroundColor: colors.primary,
-      marginBottom: 12,
     },
     galleryAddText: {
       color: colors.primaryForeground,
@@ -655,9 +723,54 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'center',
       padding: 16,
     },
+    galleryViewAllButton: {
+      minHeight: 38,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      borderRadius: 13,
+      paddingHorizontal: 10,
+      backgroundColor: colors.accent,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    galleryViewAllText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
+    gridGalleryScreen: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 13 },
+    gridGalleryHeader: {
+      paddingTop: 55,
+      paddingBottom: 15,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    gridGalleryTitleCopy: { flex: 1, alignItems: 'flex-end', paddingHorizontal: 12 },
+    gridGalleryTitle: { color: colors.foreground, fontSize: 20, fontWeight: '700', textAlign: 'right' },
+    gridGalleryCaption: { color: colors.mutedForeground, fontSize: 11, marginTop: 4, textAlign: 'right' },
+    gridGalleryHeaderSpacer: { width: 42, height: 42 },
+    gridContent: { paddingTop: 16, paddingBottom: 30 },
+    gridColumn: { justifyContent: 'space-between', gap: 9, marginBottom: 11 },
+    gridImageButton: {
+      width: '31.8%',
+      aspectRatio: 0.78,
+      borderRadius: 4,
+      overflow: 'hidden',
+      padding: 5,
+      backgroundColor: colors.galleryFrame,
+      borderWidth: 1,
+      borderColor: colors.galleryFrame,
+      shadowColor: '#000000',
+      shadowOpacity: 0.42,
+      shadowRadius: 7,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 5,
+    },
+    gridImage: { flex: 1, borderRadius: 1 },
     galleryCloseButton: {
       position: 'absolute',
-      top: 52,
+      top: 10,
       right: 18,
       zIndex: 2,
       width: 42,

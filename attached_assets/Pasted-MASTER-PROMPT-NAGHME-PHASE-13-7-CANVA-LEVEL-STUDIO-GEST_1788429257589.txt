@@ -1,0 +1,37 @@
+MASTER PROMPT: NAGHME - PHASE 13.7 (CANVA-LEVEL STUDIO, GESTURES, REAL FONTS & GRID GALLERY)
+
+You are a Senior React Native Architect. The user reviewed Phase 13.5 and demands a production-grade, Canva-like/Instagram-Story-like experience. The current studio is too rigid and amateurish. We need free-form gestures, real typography, contextual menus, and an expanded gallery view.
+
+CRITICAL RULES:
+1. Native Android priority. RTL & Dark Theme.
+2. MUST use `react-native-gesture-handler` (GestureDetector) and `react-native-reanimated` for ALL drag/drop and pinch/scale interactions. No basic React state for movement.
+3. DO NOT clutter the UI. Use contextual bottom menus.
+
+PHASE 13.7 OBJECTIVES TO IMPLEMENT:
+
+1. Full-Screen Grid Gallery (`app/artist/[id].tsx`):
+- The horizontal gallery is hard to navigate for 500+ photos.
+- Add a "نمایش همه" (View All / Grid) button next to the horizontal gallery.
+- Clicking it opens a Full-Screen Modal containing a `FlatList` with `numColumns={3}` or `4`. Keep the elegant frame aesthetics but scaled down for the grid. Tapping a grid item still opens the full-screen photo viewer.
+
+2. Contextual Studio Toolbar (Clean UI):
+- Remove the cluttered all-in-one toolbar in the Postcard Studio.
+- Create a bottom tab/menu system: [ابعاد (Ratio), پس‌زمینه (Background), متن (Text), تزئینات (Decorations), فیلترها (Filters)].
+- Tapping a category opens ONLY its specific options.
+
+3. Canvas Aspect Ratio & Blur Control:
+- **Ratios:** Add a selector for canvas sizes: 1:1 (Square), 4:5 (Portrait), 16:9 (Landscape), 9:16 (Story). Dynamically update the ViewShot container's aspect ratio.
+- **Blur Control:** Uploaded custom backgrounds are currently forced to be blurry. Add a slider or toggle in the Background menu to adjust/disable blur (`blurRadius` from 0 to 50) so custom templates remain sharp.
+
+4. Free-form Gestures (Drag, Drop, Scale) for Text & Stickers:
+- **Text:** The lyrics text MUST be freely movable (PanGesture) and resizable (PinchGesture) anywhere on the canvas.
+- **Custom Stickers:** Remove the basic fixed emojis. In the "Decorations" menu, add an `expo-image-picker` button so users can upload custom PNGs/Icons from their phone. These custom stickers MUST also be freely movable and resizable on the canvas.
+
+5. Real Persian Fonts & Full Color Wheel:
+- **Fonts:** The user noticed "Nasta'liq" was fake. You MUST load actual custom font files using `expo-font`. If local TTF files aren't available, configure the UI to accept real Persian font families (e.g., IranNastaliq, Thuluth, Lalezar, Titr). Do not just use generic serif. Give at least 5 distinct real font options.
+- **Colors:** In the Text menu, replace the limited colors with a full Color Wheel / Color Picker (e.g., using `reanimated-color-picker` or a custom hue/saturation slider) so the user can pick ANY color.
+
+6. Expanded Filters:
+- Add a robust list of filters (Grayscale, Vintage, Sepia, Cool, Warm, Invert, Noise, High Contrast). Use absolute overlay views with blend modes or semi-transparent colors to achieve this elegantly.
+
+ACTION: Execute sequentially. 1. Build Grid Gallery Modal. 2. Implement Contextual Menus & Blur/Ratio controls. 3. Implement Gesture Handler for Text/Stickers. 4. Add Color Wheel, Custom Sticker upload, Real Fonts, and Expanded Filters. Test gesture performance and wait for my instruction.
