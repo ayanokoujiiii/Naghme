@@ -1,6 +1,7 @@
 import { getDatabase } from '@/src/db/database';
 import type {
   AlbumRecord,
+  AlbumTrackRecord,
   ArtistRecord,
   JournalEntryRecord,
   ListeningHistoryRecord,
@@ -18,6 +19,8 @@ export interface ArchiveBackup {
   personalRelationships: PersonalRelationshipRecord[];
   journalEntries: JournalEntryRecord[];
   listeningHistory: ListeningHistoryRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  albumTracks?: AlbumTrackRecord[];
 }
 
 export interface RestoreSummary {
@@ -27,6 +30,7 @@ export interface RestoreSummary {
   personalRelationships: number;
   journalEntries: number;
   listeningHistory: number;
+  albumTracks: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
@@ -43,6 +47,11 @@ const RELATIONSHIP_BACKUP_COLUMNS = `
   ) AS listeningCount`;
 const JOURNAL_BACKUP_COLUMNS = 'id, trackId, note, mood, createdAt';
 const HISTORY_BACKUP_COLUMNS = 'id, trackId, listenedAt';
+const ALBUM_TRACK_BACKUP_COLUMNS =
+  'Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId, ' +
+  'Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri, Tracks.versionName, ' +
+  'AlbumTracks.albumId AS albumTrackAlbumId, AlbumTracks.discNumber, AlbumTracks.trackNumber, ' +
+  'AlbumTracks.titleOverride, AlbumTracks.notes, AlbumTracks.orderSource';
 
 async function requireDatabase() {
   const database = await getDatabase();
@@ -54,7 +63,7 @@ async function requireDatabase() {
 
 export async function createArchiveBackup(): Promise<string> {
   const database = await requireDatabase();
-  const [artists, albums, tracks, personalRelationships, journalEntries, listeningHistory] =
+  const [artists, albums, tracks, personalRelationships, journalEntries, listeningHistory, albumTracks] =
     await Promise.all([
     database.getAllAsync<ArtistRecord>(
       `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
@@ -81,6 +90,14 @@ export async function createArchiveBackup(): Promise<string> {
       `SELECT ${HISTORY_BACKUP_COLUMNS} FROM ListeningHistory ORDER BY rowid ASC`,
       [],
     ),
+    database.getAllAsync<AlbumTrackRecord>(
+      `SELECT ${ALBUM_TRACK_BACKUP_COLUMNS}
+       FROM AlbumTracks
+       INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+       ORDER BY AlbumTracks.albumId, AlbumTracks.discNumber, AlbumTracks.trackNumber,
+         Tracks.title COLLATE NOCASE ASC`,
+      [],
+    ),
   ]);
 
   const backup: ArchiveBackup = {
@@ -93,6 +110,7 @@ export async function createArchiveBackup(): Promise<string> {
     personalRelationships,
     journalEntries,
     listeningHistory,
+    albumTracks,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -126,6 +144,14 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   for (const entry of backup.listeningHistory) {
     if (!trackIds.has(entry.trackId)) {
       throw new Error('یکی از رکوردهای تاریخچه به قطعه‌ای نامعتبر اشاره می‌کند.');
+    }
+  }
+  for (const relationship of backup.albumTracks ?? []) {
+    if (!albumIds.has(relationship.albumTrackAlbumId)) {
+      throw new Error('یکی از رابطه‌های آلبوم و قطعه به آلبوم نامعتبر اشاره می‌کند.');
+    }
+    if (!trackIds.has(relationship.id)) {
+      throw new Error('یکی از رابطه‌های آلبوم و قطعه به قطعهٔ نامعتبر اشاره می‌کند.');
     }
   }
 
@@ -197,6 +223,37 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
            track.versionName,
         ],
       );
+      if (track.albumId) {
+        await database.runAsync(
+          `INSERT OR IGNORE INTO AlbumTracks
+             (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+           VALUES (?, ?, NULL, NULL, NULL, NULL, 'legacy')`,
+          [track.albumId, track.id],
+        );
+      }
+    }
+
+    for (const relationship of backup.albumTracks ?? []) {
+      await database.runAsync(
+        `INSERT INTO AlbumTracks
+           (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(albumId, trackId) DO UPDATE SET
+           discNumber = excluded.discNumber,
+           trackNumber = excluded.trackNumber,
+           titleOverride = excluded.titleOverride,
+           notes = excluded.notes,
+           orderSource = excluded.orderSource`,
+        [
+          relationship.albumTrackAlbumId,
+          relationship.id,
+          relationship.discNumber,
+          relationship.trackNumber,
+          relationship.titleOverride,
+          relationship.notes,
+          relationship.orderSource,
+        ],
+      );
     }
 
     for (const relationship of backup.personalRelationships) {
@@ -251,6 +308,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     personalRelationships: backup.personalRelationships.length,
     journalEntries: backup.journalEntries.length,
     listeningHistory: backup.listeningHistory.length,
+    albumTracks: backup.albumTracks?.length ?? 0,
   };
 }
 
@@ -272,6 +330,7 @@ function parseBackup(json: string): ArchiveBackup {
   const personalRelationships = parseRelationships(parsed.personalRelationships);
   const journalEntries = parseJournalEntries(parsed.journalEntries);
   const listeningHistory = parseListeningHistory(parsed.listeningHistory);
+  const albumTracks = parseAlbumTracks(parsed.albumTracks);
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
@@ -279,6 +338,7 @@ function parseBackup(json: string): ArchiveBackup {
   assertUniqueIds(personalRelationships, 'رابطه‌های شخصی', 'trackId');
   assertUniqueIds(journalEntries, 'یادداشت‌های دفترچه');
   assertUniqueIds(listeningHistory, 'تاریخچهٔ شنیدن');
+  assertUniqueAlbumTrackMemberships(albumTracks);
 
   return {
     format: 'naghme-archive',
@@ -290,7 +350,57 @@ function parseBackup(json: string): ArchiveBackup {
     personalRelationships,
     journalEntries,
     listeningHistory,
+    albumTracks,
   };
+}
+
+function parseAlbumTracks(value: unknown): AlbumTrackRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'رابطه‌های آلبوم و قطعه').map((item, index) => {
+    const record = recordValue(item, `رابطهٔ آلبوم و قطعهٔ شمارهٔ ${index + 1}`);
+    const discNumber = nullableInteger(record.discNumber, 'شمارهٔ دیسک');
+    const trackNumber = nullableInteger(record.trackNumber, 'شمارهٔ قطعه');
+    const hasDiscNumber = discNumber !== null;
+    const hasTrackNumber = trackNumber !== null;
+    if (hasDiscNumber !== hasTrackNumber) {
+      throw new Error('شمارهٔ دیسک و قطعه در رابطهٔ آلبوم باید هر دو ثبت شوند یا هر دو خالی باشند.');
+    }
+    if (
+      (discNumber !== null && discNumber < 1) ||
+      (trackNumber !== null && trackNumber < 1)
+    ) {
+      throw new Error('شمارهٔ دیسک و قطعه باید عدد صحیح مثبت باشند.');
+    }
+    const orderSourceValue = record.orderSource;
+    const orderSource: AlbumTrackRecord['orderSource'] =
+      orderSourceValue === undefined ? (hasDiscNumber ? 'explicit' : 'unknown') :
+      orderSourceValue === 'explicit' || orderSourceValue === 'legacy' || orderSourceValue === 'unknown'
+        ? orderSourceValue
+        : (() => {
+            throw new Error('منبع ترتیب رابطهٔ آلبوم معتبر نیست.');
+          })();
+    if ((orderSource === 'explicit') !== hasDiscNumber) {
+      throw new Error('منبع ترتیب رابطهٔ آلبوم با شماره‌های ثبت‌شده سازگار نیست.');
+    }
+    return {
+      id: requiredString(record.id, 'شناسهٔ قطعه در رابطهٔ آلبوم'),
+      title: requiredString(record.title, 'عنوان قطعه در رابطهٔ آلبوم'),
+      duration: nullableInteger(record.duration, 'مدت‌زمان قطعه در رابطهٔ آلبوم'),
+      artistId: nullableString(record.artistId, 'شناسهٔ هنرمند قطعه در رابطهٔ آلبوم'),
+      albumId: nullableString(record.albumId, 'شناسهٔ آلبوم قطعه در رابطهٔ آلبوم'),
+      audioUri: nullableString(record.audioUri, 'مسیر فایل صوتی رابطهٔ آلبوم'),
+      coverImage: nullableString(record.coverImage, 'تصویر قطعه در رابطهٔ آلبوم'),
+      lyrics: nullableString(record.lyrics, 'متن قطعه در رابطهٔ آلبوم'),
+      sheetMusicUri: nullableString(record.sheetMusicUri, 'نت قطعه در رابطهٔ آلبوم'),
+      versionName: nullableString(record.versionName, 'نسخهٔ قطعه در رابطهٔ آلبوم'),
+      albumTrackAlbumId: requiredString(record.albumTrackAlbumId, 'شناسهٔ آلبوم در رابطه'),
+      discNumber,
+      trackNumber,
+      titleOverride: nullableString(record.titleOverride, 'عنوان جایگزین قطعه'),
+      notes: nullableString(record.notes, 'یادداشت رابطهٔ آلبوم'),
+      orderSource,
+    };
+  });
 }
 
 function assertUniqueIds(
@@ -305,6 +415,17 @@ function assertUniqueIds(
       throw new Error(`${label} در فایل پشتیبان شناسهٔ تکراری دارد.`);
     }
     seen.add(value);
+  }
+}
+
+function assertUniqueAlbumTrackMemberships(records: AlbumTrackRecord[]): void {
+  const seen = new Set<string>();
+  for (const record of records) {
+    const key = `${record.albumTrackAlbumId}:${record.id}`;
+    if (seen.has(key)) {
+      throw new Error('رابطه‌های آلبوم و قطعه در فایل پشتیبان تکراری هستند.');
+    }
+    seen.add(key);
   }
 }
 

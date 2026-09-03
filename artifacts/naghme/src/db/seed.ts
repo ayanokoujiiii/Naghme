@@ -316,6 +316,15 @@ export async function injectSampleData(): Promise<SeedResult> {
        WHERE id = ?`,
       [track.lyrics, track.coverImage, track.versionName, track.id],
     );
+    if (track.albumId) {
+      // Sample data carries membership, but no source-backed official order.
+      await database.runAsync(
+        `INSERT OR IGNORE INTO AlbumTracks
+           (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+         VALUES (?, ?, NULL, NULL, NULL, NULL, 'legacy')`,
+        [track.albumId, track.id],
+      );
+    }
   }
 
   // Keep personal edits intact when the sample button is pressed again.

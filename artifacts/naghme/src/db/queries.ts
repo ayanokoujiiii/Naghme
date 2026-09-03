@@ -31,6 +31,27 @@ export interface TrackRecord {
   versionName: string | null;
 }
 
+export type AlbumTrackOrderSource = 'explicit' | 'legacy' | 'unknown';
+
+export interface AlbumTrackRecord extends TrackRecord {
+  albumTrackAlbumId: string;
+  discNumber: number | null;
+  trackNumber: number | null;
+  titleOverride: string | null;
+  notes: string | null;
+  orderSource: AlbumTrackOrderSource;
+}
+
+export interface NewAlbumTrack {
+  albumId: string;
+  trackId: string;
+  discNumber?: number | null;
+  trackNumber?: number | null;
+  titleOverride?: string | null;
+  notes?: string | null;
+  orderSource?: AlbumTrackOrderSource;
+}
+
 export interface PersonalRelationshipRecord {
   trackId: string;
   rating: number | null;
@@ -301,6 +322,110 @@ export async function getAlbumById(id: string): Promise<AlbumRecord | null> {
   );
 }
 
+export async function getAlbumTracks(albumId: string): Promise<AlbumTrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<AlbumTrackRecord>(
+    `SELECT
+       Tracks.id, COALESCE(AlbumTracks.titleOverride, Tracks.title) AS title,
+       Tracks.duration, Tracks.artistId, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName,
+       AlbumTracks.albumId AS albumTrackAlbumId,
+       AlbumTracks.discNumber,
+       AlbumTracks.trackNumber,
+       AlbumTracks.titleOverride,
+       AlbumTracks.notes,
+       AlbumTracks.orderSource
+     FROM AlbumTracks
+     INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+     WHERE AlbumTracks.albumId = ?
+     ORDER BY
+       CASE
+         WHEN AlbumTracks.discNumber IS NULL OR AlbumTracks.trackNumber IS NULL THEN 1
+         ELSE 0
+       END ASC,
+       AlbumTracks.discNumber ASC,
+       AlbumTracks.trackNumber ASC,
+       Tracks.title COLLATE NOCASE ASC`,
+    [albumId],
+  );
+}
+
+export async function addAlbumTrack(input: NewAlbumTrack): Promise<AlbumTrackRecord> {
+  const database = await requireDatabase();
+  const discNumber = input.discNumber ?? null;
+  const trackNumber = input.trackNumber ?? null;
+  const hasDiscNumber = discNumber !== null;
+  const hasTrackNumber = trackNumber !== null;
+
+  if (hasDiscNumber !== hasTrackNumber) {
+    throw new Error('شمارهٔ دیسک و شمارهٔ قطعه باید هر دو ثبت شوند یا هر دو خالی باشند.');
+  }
+  if (
+    (discNumber !== null && (!Number.isInteger(discNumber) || discNumber < 1)) ||
+    (trackNumber !== null && (!Number.isInteger(trackNumber) || trackNumber < 1))
+  ) {
+    throw new Error('شمارهٔ دیسک و قطعه باید عدد صحیح مثبت باشند.');
+  }
+
+  const orderSource: AlbumTrackOrderSource =
+    input.orderSource ?? (hasDiscNumber ? 'explicit' : 'unknown');
+  if (orderSource === 'explicit' && !hasDiscNumber) {
+    throw new Error('ترتیب صریح باید شمارهٔ دیسک و قطعه داشته باشد.');
+  }
+  if (orderSource !== 'explicit' && hasDiscNumber) {
+    throw new Error('ترتیب شماره‌گذاری‌شده باید به‌عنوان ترتیب صریح ذخیره شود.');
+  }
+
+  await database.runAsync(
+    `INSERT INTO AlbumTracks
+       (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.albumId,
+      input.trackId,
+      discNumber,
+      trackNumber,
+      input.titleOverride ?? null,
+      input.notes ?? null,
+      orderSource,
+    ],
+  );
+
+  const saved = await database.getFirstAsync<AlbumTrackRecord>(
+    `SELECT
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName,
+       AlbumTracks.albumId AS albumTrackAlbumId,
+       AlbumTracks.discNumber,
+       AlbumTracks.trackNumber,
+       AlbumTracks.titleOverride,
+       AlbumTracks.notes,
+       AlbumTracks.orderSource
+     FROM AlbumTracks
+     INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+     WHERE AlbumTracks.albumId = ? AND AlbumTracks.trackId = ?`,
+    [input.albumId, input.trackId],
+  );
+  if (!saved) throw new Error('رابطهٔ آلبوم و قطعه ذخیره نشد.');
+  return saved;
+}
+
+async function ensureLegacyAlbumMembership(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  albumId: string | null,
+  trackId: string,
+): Promise<void> {
+  if (!albumId) return;
+  await database.runAsync(
+    `INSERT OR IGNORE INTO AlbumTracks
+       (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+     VALUES (?, ?, NULL, NULL, NULL, NULL, 'legacy')`,
+    [albumId, trackId],
+  );
+}
+
 export async function updateAlbum(
   id: string,
   input: UpdateAlbum,
@@ -360,6 +485,7 @@ export async function addTrack(input: NewTrack): Promise<TrackRecord> {
       track.versionName,
     ],
   );
+  await ensureLegacyAlbumMembership(database, track.albumId, track.id);
   return track;
 }
 
@@ -431,14 +557,8 @@ export async function getOtherTracksWithSameTitle(
 }
 
 export async function getTracksByAlbumId(albumId: string): Promise<TrackRecord[]> {
-  const database = await requireDatabase();
-  return database.getAllAsync<TrackRecord>(
-    `SELECT ${TRACK_COLUMNS}
-     FROM Tracks
-     WHERE albumId = ?
-     ORDER BY title COLLATE NOCASE ASC`,
-    [albumId],
-  );
+  const albumTracks = await getAlbumTracks(albumId);
+  return albumTracks.map(({ albumTrackAlbumId, discNumber, trackNumber, titleOverride, notes, orderSource, ...track }) => track);
 }
 
 export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
@@ -448,7 +568,7 @@ export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
        Artists.id AS artistId,
        Artists.name AS artistName,
        Artists.profileImage AS artistProfileImage,
-       Albums.id AS albumId,
+        Albums.id AS albumId,
        Albums.title AS albumTitle,
        Albums.releaseYear AS albumReleaseYear,
        Albums.coverImage AS albumCoverImage,
@@ -456,7 +576,7 @@ export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
        Tracks.title AS trackTitle,
        Tracks.duration AS trackDuration,
        Tracks.artistId AS trackArtistId,
-       Tracks.albumId AS trackAlbumId,
+        AlbumTracks.albumId AS trackAlbumId,
        Tracks.audioUri AS trackAudioUri,
        Tracks.coverImage AS trackCoverImage,
        Tracks.lyrics AS trackLyrics,
@@ -464,11 +584,18 @@ export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
        Tracks.versionName AS trackVersionName
      FROM Tracks
      LEFT JOIN Artists ON Artists.id = Tracks.artistId
-     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+      LEFT JOIN AlbumTracks ON AlbumTracks.trackId = Tracks.id
+      LEFT JOIN Albums ON Albums.id = AlbumTracks.albumId
      ORDER BY
        COALESCE(Artists.name, '') COLLATE NOCASE ASC,
        COALESCE(Albums.title, '') COLLATE NOCASE ASC,
-       Tracks.title COLLATE NOCASE ASC`,
+        CASE
+          WHEN AlbumTracks.discNumber IS NULL OR AlbumTracks.trackNumber IS NULL THEN 1
+          ELSE 0
+        END ASC,
+        AlbumTracks.discNumber ASC,
+        AlbumTracks.trackNumber ASC,
+        Tracks.title COLLATE NOCASE ASC`,
     [],
   );
 }
@@ -689,6 +816,7 @@ export async function updateTrack(
       id,
     ],
   );
+  await ensureLegacyAlbumMembership(database, track.albumId, track.id);
   return track;
 }
 

@@ -15,6 +15,9 @@ export const REQUIRED_INDEXES = [
   'idx_tracks_artist_title',
   'idx_tracks_album_title',
   'idx_tracks_title_nocase',
+  'idx_album_tracks_album_order',
+  'idx_album_tracks_track',
+  'idx_album_tracks_album_position',
   'idx_journal_track_created',
   'idx_journal_created',
   'idx_history_track_listened',
@@ -40,6 +43,42 @@ export async function runDatabaseIntegrityCheck(
        FROM Tracks
        LEFT JOIN Albums ON Albums.id = Tracks.albumId
        WHERE Tracks.albumId IS NOT NULL AND Albums.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_album_track_album',
+      `SELECT COUNT(*) AS count
+       FROM AlbumTracks
+       LEFT JOIN Albums ON Albums.id = AlbumTracks.albumId
+       WHERE Albums.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_album_track_track',
+      `SELECT COUNT(*) AS count
+       FROM AlbumTracks
+       LEFT JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+       WHERE Tracks.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'invalid_album_track_order',
+      `SELECT COUNT(*) AS count
+       FROM AlbumTracks
+       WHERE (discNumber IS NULL) != (trackNumber IS NULL)
+          OR (discNumber IS NOT NULL AND (discNumber <= 0 OR trackNumber <= 0))`,
+    ),
+    countIssue(
+      database,
+      'duplicate_album_track_position',
+      `SELECT COUNT(*) AS count
+       FROM (
+         SELECT albumId, discNumber, trackNumber
+         FROM AlbumTracks
+         WHERE discNumber IS NOT NULL AND trackNumber IS NOT NULL
+         GROUP BY albumId, discNumber, trackNumber
+         HAVING COUNT(*) > 1
+       )`,
     ),
     countIssue(
       database,

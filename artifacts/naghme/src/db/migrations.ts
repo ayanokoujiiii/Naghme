@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 export interface AppliedMigration {
   version: number;
@@ -89,6 +89,11 @@ const migrations: readonly Migration[] = [
     version: 2,
     description: 'افزودن indexهای موردنیاز queryهای فعلی',
     migrate: addQueryIndexes,
+  },
+  {
+    version: 3,
+    description: 'افزودن رابطهٔ پایدار و مرتب‌شدهٔ آلبوم و قطعه',
+    migrate: addAlbumTracksRelationship,
   },
 ];
 
@@ -197,4 +202,47 @@ async function addQueryIndexes(database: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_history_listened
       ON ListeningHistory (listenedAt DESC);
   `);
+}
+
+async function addAlbumTracksRelationship(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS AlbumTracks (
+      albumId TEXT NOT NULL,
+      trackId TEXT NOT NULL,
+      discNumber INTEGER,
+      trackNumber INTEGER,
+      titleOverride TEXT,
+      notes TEXT,
+      orderSource TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (orderSource IN ('explicit', 'legacy', 'unknown')),
+      PRIMARY KEY (albumId, trackId),
+      FOREIGN KEY (albumId) REFERENCES Albums(id) ON DELETE CASCADE,
+      FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE,
+      CHECK (
+        (discNumber IS NULL AND trackNumber IS NULL)
+        OR (discNumber IS NOT NULL AND trackNumber IS NOT NULL
+          AND discNumber > 0 AND trackNumber > 0)
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_album_tracks_album_order
+      ON AlbumTracks (albumId, discNumber, trackNumber);
+
+    CREATE INDEX IF NOT EXISTS idx_album_tracks_track
+      ON AlbumTracks (trackId);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_album_tracks_album_position
+      ON AlbumTracks (albumId, discNumber, trackNumber)
+      WHERE discNumber IS NOT NULL AND trackNumber IS NOT NULL;
+  `);
+
+  // The legacy Tracks.albumId column remains untouched. These rows preserve
+  // membership without pretending that an official track order was known.
+  await database.runAsync(
+    `INSERT OR IGNORE INTO AlbumTracks
+       (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+     SELECT albumId, id, NULL, NULL, NULL, NULL, 'legacy'
+     FROM Tracks
+     WHERE albumId IS NOT NULL`,
+  );
 }
