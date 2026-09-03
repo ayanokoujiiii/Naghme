@@ -31,6 +31,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'point.3.connected.trianglepath.dotted', selected: 'point.3.connected.trianglepath.dotted' }} />
         <Label>نقشه</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="ai-chat">
+        <Icon sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} />
+        <Label>گفتگو</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -116,6 +120,18 @@ function ClassicTabLayout() {
               <SymbolView name="point.3.connected.trianglepath.dotted" tintColor={color} size={24} />
             ) : (
               <Feather name="git-branch" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="ai-chat"
+        options={{
+          title: 'گفتگو',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="bubble.left.and.bubble.right" tintColor={color} size={24} />
+            ) : (
+              <Feather name="message-circle" size={22} color={color} />
             ),
         }}
       />

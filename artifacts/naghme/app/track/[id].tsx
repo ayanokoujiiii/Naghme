@@ -7,6 +7,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -31,12 +32,14 @@ import {
   deleteTrack,
   getArtistById,
   getPersonalRelationship,
+  getOtherTracksWithSameTitle,
   getTrackById,
   JournalEntryRecord,
   ListeningHistoryRecord,
   logListen,
   PersonalRelationshipRecord,
   TrackRecord,
+  VersionTrackRecord,
   updateJournalEntry,
   upsertPersonalRelationship,
 } from '@/src/db/queries';
@@ -70,6 +73,7 @@ export default function TrackDetailScreen() {
   const [generalNote, setGeneralNote] = useState<string>('');
   const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
+  const [otherVersions, setOtherVersions] = useState<VersionTrackRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
   const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
   const [sheetMusicModalVisible, setSheetMusicModalVisible] = useState<boolean>(false);
@@ -100,12 +104,14 @@ export default function TrackDetailScreen() {
       }
 
       setTrack(foundTrack);
-      const [album, artist] = await Promise.all([
+      const [album, artist, versions] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
+        getOtherTracksWithSameTitle(foundTrack.id, foundTrack.title),
       ]);
       setAlbumTitle(foundTrack.albumId ? album?.title ?? 'آلبوم پیدا نشد' : 'بدون آلبوم');
       setArtistName(foundTrack.artistId ? artist?.name ?? 'هنرمند پیدا نشد' : 'بدون هنرمند');
+      setOtherVersions(versions);
 
       const [savedRelationship, savedJournalEntries, savedListeningHistory] =
         await Promise.all([
@@ -352,6 +358,52 @@ export default function TrackDetailScreen() {
           value={track.duration === null ? 'ثبت نشده' : formatDuration(track.duration)}
         />
       </DetailCard>
+
+      {otherVersions.length ? (
+        <>
+          <SectionHeading
+            title="اجراهای دیگر این قطعه"
+            caption={`${otherVersions.length} اجرای دیگر`}
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.versionsRow}
+          >
+            {otherVersions.map((version) => (
+              <Pressable
+                key={version.id}
+                testID={`track-other-version-${version.id}`}
+                accessibilityRole="button"
+                onPress={() => router.push(`/track/${version.id}`)}
+                style={({ pressed }) => [styles.versionCard, pressed && styles.pressed]}
+              >
+                {version.coverImage ? (
+                  <Image source={{ uri: version.coverImage }} style={styles.versionArtwork} />
+                ) : (
+                  <View style={styles.versionArtworkFallback}>
+                    <Feather name="music" size={24} color={colors.primary} />
+                  </View>
+                )}
+                <View style={styles.versionCopy}>
+                  <Text style={styles.versionTitle} numberOfLines={2}>
+                    {version.versionName || 'اجرای دیگر'}
+                  </Text>
+                  <Text style={styles.versionArtist} numberOfLines={1}>
+                    {version.artistName || 'هنرمند نامشخص'}
+                  </Text>
+                  {version.albumTitle ? (
+                    <Text style={styles.versionAlbum} numberOfLines={1}>
+                      {version.albumTitle}
+                    </Text>
+                  ) : null}
+                </View>
+                <Feather name="chevron-left" size={17} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
 
       {track.lyrics ? (
         <>
@@ -1555,5 +1607,57 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderRadius: 15,
     },
     pressed: { opacity: 0.72 },
+    versionsRow: {
+      flexDirection: 'row',
+      gap: 11,
+      paddingBottom: 4,
+    },
+    versionCard: {
+      width: 178,
+      minHeight: 245,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      overflow: 'hidden',
+    },
+    versionArtwork: {
+      width: '100%',
+      height: 125,
+      backgroundColor: colors.secondary,
+    },
+    versionArtworkFallback: {
+      width: '100%',
+      height: 125,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+    },
+    versionCopy: {
+      flex: 1,
+      alignItems: 'flex-end',
+      paddingHorizontal: 12,
+      paddingTop: 11,
+      paddingBottom: 7,
+    },
+    versionTitle: {
+      color: colors.foreground,
+      fontSize: 13,
+      lineHeight: 19,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
+    versionArtist: {
+      color: colors.primary,
+      fontSize: 11,
+      textAlign: 'right',
+      marginTop: 6,
+    },
+    versionAlbum: {
+      color: colors.mutedForeground,
+      fontSize: 10,
+      textAlign: 'right',
+      marginTop: 4,
+    },
   });
 }

@@ -7,6 +7,7 @@ export interface ArtistRecord {
   biography: string | null;
   genres: string | null;
   image: string | null;
+  galleryImages: string | null;
 }
 
 export interface AlbumRecord {
@@ -50,6 +51,35 @@ export interface ListeningHistoryRecord {
   id: string;
   trackId: string;
   listenedAt: string;
+}
+
+export interface VersionTrackRecord extends TrackRecord {
+  artistName: string | null;
+  albumTitle: string | null;
+}
+
+export interface ChatArchiveContext {
+  listeningHistory: Array<{
+    trackTitle: string;
+    artistName: string | null;
+    listenedAt: string;
+  }>;
+  journalEntries: Array<{
+    trackTitle: string;
+    artistName: string | null;
+    mood: string;
+    note: string;
+    createdAt: string;
+  }>;
+  topTracks: Array<{
+    title: string;
+    artistName: string | null;
+    listeningCount: number;
+  }>;
+  topArtists: Array<{
+    name: string;
+    listeningCount: number;
+  }>;
 }
 
 export interface LibraryStats {
@@ -104,7 +134,9 @@ export interface SearchResult {
   matchSource: SearchMatchSource;
 }
 
-export type NewArtist = Omit<ArtistRecord, 'id'>;
+export type NewArtist = Omit<ArtistRecord, 'id' | 'galleryImages'> & {
+  galleryImages?: string | null;
+};
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
 export type NewTrack = Omit<
   TrackRecord,
@@ -149,11 +181,16 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
     throw new Error('نام هنرمند الزامی است.');
   }
 
-  const artist: ArtistRecord = { ...input, id: createId('artist'), name };
+  const artist: ArtistRecord = {
+    ...input,
+    id: createId('artist'),
+    name,
+    galleryImages: input.galleryImages ?? null,
+  };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO Artists (id, name, type, biography, genres, image)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Artists (id, name, type, biography, genres, image, galleryImages)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       artist.id,
       artist.name,
@@ -161,6 +198,7 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
       artist.biography,
       artist.genres,
       artist.image,
+      artist.galleryImages,
     ],
   );
   return artist;
@@ -169,7 +207,7 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
 export async function getArtists(): Promise<ArtistRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image FROM Artists ORDER BY name COLLATE NOCASE ASC',
+    'SELECT id, name, type, biography, genres, image, galleryImages FROM Artists ORDER BY name COLLATE NOCASE ASC',
     [],
   );
 }
@@ -177,7 +215,7 @@ export async function getArtists(): Promise<ArtistRecord[]> {
 export async function getArtistById(id: string): Promise<ArtistRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image FROM Artists WHERE id = ?',
+    'SELECT id, name, type, biography, genres, image, galleryImages FROM Artists WHERE id = ?',
     [id],
   );
 }
@@ -199,9 +237,17 @@ export async function updateArtist(
   const database = await requireDatabase();
   await database.runAsync(
     `UPDATE Artists
-     SET name = ?, type = ?, biography = ?, genres = ?, image = ?
+     SET name = ?, type = ?, biography = ?, genres = ?, image = ?, galleryImages = ?
      WHERE id = ?`,
-    [artist.name, artist.type, artist.biography, artist.genres, artist.image, id],
+    [
+      artist.name,
+      artist.type,
+      artist.biography,
+      artist.genres,
+      artist.image,
+      artist.galleryImages,
+      id,
+    ],
   );
   return artist;
 }
@@ -350,6 +396,26 @@ export async function getTracksByArtistId(artistId: string): Promise<TrackRecord
      WHERE artistId = ?
      ORDER BY title COLLATE NOCASE ASC`,
     [artistId],
+  );
+}
+
+export async function getOtherTracksWithSameTitle(
+  trackId: string,
+  title: string,
+): Promise<VersionTrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<VersionTrackRecord>(
+    `SELECT
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName, Artists.name AS artistName, Albums.title AS albumTitle
+     FROM Tracks
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     WHERE Tracks.id != ?
+       AND lower(trim(Tracks.title)) = lower(trim(?))
+     ORDER BY Tracks.rowid ASC`,
+    [trackId, title],
   );
 }
 
@@ -808,4 +874,63 @@ export async function getListeningHistory(trackId: string): Promise<ListeningHis
      ORDER BY datetime(listenedAt) DESC`,
     [trackId],
   );
+}
+
+export async function getChatArchiveContext(): Promise<ChatArchiveContext> {
+  const database = await requireDatabase();
+  const [listeningHistory, journalEntries, topTracks, topArtists] = await Promise.all([
+    database.getAllAsync<ChatArchiveContext['listeningHistory'][number]>(
+      `SELECT
+         Tracks.title AS trackTitle,
+         Artists.name AS artistName,
+         ListeningHistory.listenedAt
+       FROM ListeningHistory
+       INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
+       LEFT JOIN Artists ON Artists.id = Tracks.artistId
+       ORDER BY datetime(ListeningHistory.listenedAt) DESC
+       LIMIT 40`,
+      [],
+    ),
+    database.getAllAsync<ChatArchiveContext['journalEntries'][number]>(
+      `SELECT
+         Tracks.title AS trackTitle,
+         Artists.name AS artistName,
+         JournalEntries.mood,
+         JournalEntries.note,
+         JournalEntries.createdAt
+       FROM JournalEntries
+       INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
+       LEFT JOIN Artists ON Artists.id = Tracks.artistId
+       ORDER BY datetime(JournalEntries.createdAt) DESC
+       LIMIT 30`,
+      [],
+    ),
+    database.getAllAsync<ChatArchiveContext['topTracks'][number]>(
+      `SELECT
+         Tracks.title,
+         Artists.name AS artistName,
+         COUNT(ListeningHistory.id) AS listeningCount
+       FROM Tracks
+       LEFT JOIN Artists ON Artists.id = Tracks.artistId
+       LEFT JOIN ListeningHistory ON ListeningHistory.trackId = Tracks.id
+       GROUP BY Tracks.id
+       ORDER BY listeningCount DESC, Tracks.title COLLATE NOCASE ASC
+       LIMIT 12`,
+      [],
+    ),
+    database.getAllAsync<ChatArchiveContext['topArtists'][number]>(
+      `SELECT
+         Artists.name,
+         COUNT(ListeningHistory.id) AS listeningCount
+       FROM Artists
+       INNER JOIN Tracks ON Tracks.artistId = Artists.id
+       LEFT JOIN ListeningHistory ON ListeningHistory.trackId = Tracks.id
+       GROUP BY Artists.id
+       ORDER BY listeningCount DESC, Artists.name COLLATE NOCASE ASC
+       LIMIT 12`,
+      [],
+    ),
+  ]);
+
+  return { listeningHistory, journalEntries, topTracks, topArtists };
 }

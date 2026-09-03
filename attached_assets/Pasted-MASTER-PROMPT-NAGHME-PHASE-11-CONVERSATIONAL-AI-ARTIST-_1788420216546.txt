@@ -1,0 +1,31 @@
+MASTER PROMPT: NAGHME - PHASE 11 (CONVERSATIONAL AI, ARTIST GALLERY & VERSION LINKING)
+
+You are an Expert React Native & Expo Software Architect. We are expanding "Naghme" into a true digital museum by adding Conversational AI, photo galleries for artists, and linking versions of the same track.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Use SAFE SQLite migrations (e.g., `ALTER TABLE ADD COLUMN` inside try-catch to prevent crashing if the column exists).
+
+PHASE 11 OBJECTIVES TO IMPLEMENT:
+
+1. Database Migrations (Visual Museum Data):
+- Artists Table: Add a new column `galleryImages` (TEXT) to store a JSON array of image URIs.
+- Albums Table: Ensure there is a `coverImage` (TEXT) column. 
+
+2. Artist Photo Gallery (`app/artist/[id].tsx`):
+- In the Artist detail screen, add a beautifully styled "گالری تصاویر" (Photo Gallery) section.
+- Add a button (using `expo-image-picker`) to allow the user to select multiple images and save their URIs to the `galleryImages` JSON array in the SQLite database.
+- Display the images in a sleek horizontal `ScrollView` or grid. Tapping an image should show it in full screen (using a simple Modal with a close button).
+
+3. Version Linking (اجراهای دیگر این اثر):
+- In the Track Detail screen (`app/track/[id].tsx`), dynamically query the `Tracks` table for other tracks that have the EXACT SAME `title` (or very similar) but a different `id`.
+- Display a sleek horizontal list or cards titled "اجراهای دیگر این قطعه" (Other versions of this piece). Clicking them should navigate to that specific track's detail screen.
+
+4. "Chat with Archive" - Conversational AI (`app/(tabs)/ai-chat.tsx`):
+- Create a new main Tab called "گفتگو" (Chat) with a premium chat interface (similar to ChatGPT, dark theme, chat bubbles).
+- **Logic:** When the user types a message, silently gather a lightweight JSON summary of their `ListeningHistory`, `JournalEntries`, and Top `Tracks/Artists` from SQLite.
+- Send the user's message ALONG WITH this JSON context to the Gemini API using the locally stored API Key (selected model from Settings). 
+- Instruct Gemini via the system prompt: "You are Naghme, a poetic Persian musical assistant. You have access to the user's personal music archive database context. Answer their questions about their music, lyrics, history, and feelings based on the data provided. Speak in beautiful, poetic Persian."
+- Display Gemini's response elegantly in the chat.
+
+ACTION: Execute these steps sequentially. 1. Run migrations for galleries. 2. Build the Artist Gallery UI. 3. Add Version Linking to Tracks. 4. Build the AI Chat Tab. Test thoroughly and wait for my instruction.

@@ -12,7 +12,8 @@ const schema = `
     type TEXT,
     biography TEXT,
     genres TEXT,
-    image TEXT
+    image TEXT,
+    galleryImages TEXT
   );
 
   CREATE TABLE IF NOT EXISTS Albums (
@@ -73,19 +74,43 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
     databasePromise = openDatabaseAsync('naghme.db')
       .then(async (database) => {
         await database.execAsync(schema);
-        const columns = await database.getAllAsync<{ name: string }>(
-          'PRAGMA table_info(Tracks)',
-          [],
-        );
-        const migrations = [
-          ['artistId', 'TEXT'],
-          ['lyrics', 'TEXT'],
-          ['sheetMusicUri', 'TEXT'],
-          ['versionName', 'TEXT'],
+        const tables = [
+          {
+            name: 'Artists',
+            columns: [
+              ['galleryImages', 'TEXT'],
+            ],
+          },
+          {
+            name: 'Albums',
+            columns: [
+              ['coverImage', 'TEXT'],
+            ],
+          },
+          {
+            name: 'Tracks',
+            columns: [
+              ['artistId', 'TEXT'],
+              ['lyrics', 'TEXT'],
+              ['sheetMusicUri', 'TEXT'],
+              ['versionName', 'TEXT'],
+            ],
+          },
         ] as const;
-        for (const [name, type] of migrations) {
-          if (!columns.some((column) => column.name === name)) {
-            await database.execAsync(`ALTER TABLE Tracks ADD COLUMN ${name} ${type};`);
+
+        for (const table of tables) {
+          const columns = await database.getAllAsync<{ name: string }>(
+            `PRAGMA table_info(${table.name})`,
+            [],
+          );
+          for (const [name, type] of table.columns) {
+            if (!columns.some((column) => column.name === name)) {
+              try {
+                await database.execAsync(`ALTER TABLE ${table.name} ADD COLUMN ${name} ${type};`);
+              } catch {
+                // A concurrent/previous migration may have added the column already.
+              }
+            }
           }
         }
         return database;

@@ -16,6 +16,11 @@ export interface GeminiModelOption {
   description?: string;
 }
 
+export interface GeminiChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
 export async function getGeminiApiKey(): Promise<string> {
   return (await AsyncStorage.getItem(GEMINI_API_KEY_STORAGE_KEY))?.trim() ?? '';
 }
@@ -157,6 +162,85 @@ ${archiveSummary}`,
     throw new Error('پاسخ Gemini ساختار مورد انتظار را ندارد.');
   }
   return parsed;
+}
+
+export async function askGeminiChat(
+  apiKey: string,
+  message: string,
+  archiveContext: string,
+  conversation: GeminiChatMessage[] = [],
+  selectedModel = DEFAULT_GEMINI_MODEL,
+): Promise<string> {
+  const cleanKey = apiKey.trim();
+  const cleanMessage = message.trim();
+  if (!cleanKey) throw new Error('کلید Gemini تنظیم نشده است.');
+  if (!cleanMessage) throw new Error('پیام خالی است.');
+  const model = normalizeModelName(selectedModel) || DEFAULT_GEMINI_MODEL;
+  const recentConversation = conversation.slice(-10);
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cleanKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                'تو «نغمه» هستی؛ یک دستیار موسیقی فارسی، شاعرانه و صمیمی. به زمینه‌ی آرشیو شخصی کاربر دسترسی داری. درباره‌ی موسیقی، ترانه‌ها، تاریخچه‌ی شنیدن و احساسات کاربر بر اساس داده‌ی داده‌شده پاسخ بده. اگر اطلاعاتی در زمینه نیست، صادقانه بگو و چیزی را حدس نزن. پاسخ‌ها را به فارسی زیبا، روشن و نه بیش از حد طولانی بنویس.',
+            },
+          ],
+        },
+        contents: [
+          ...recentConversation.map((item) => ({
+            role: item.role,
+            parts: [{ text: item.text }],
+          })),
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `پیام تازه‌ی کاربر:
+${cleanMessage}
+
+زمینه‌ی JSON آرشیو شخصی:
+${archiveContext}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 1200,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw createGeminiApiError(response.status, body, 'پاسخ گفت‌وگوی Gemini دریافت نشد.');
+  }
+
+  const body = await response.text();
+  let payload: {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch (parseError: unknown) {
+    const detail = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    throw new Error(`پاسخ گفت‌وگوی Gemini قابل خواندن نیست: ${detail}`);
+  }
+
+  const text = payload.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!text) throw new Error('Gemini پاسخ قابل استفاده‌ای برای گفت‌وگو برنگرداند.');
+  return text;
 }
 
 function normalizeModelName(value: string): string {
