@@ -1,0 +1,401 @@
+PHASE 02 — STEP 05 — FINAL VERIFICATION
+
+Work directly on the existing Naghme codebase.
+
+This is the FINAL STEP of PHASE 02.
+
+Steps 01–04 are already completed and accepted:
+- Step 01 — Listening Data Consistency — DONE
+- Step 02 — Album Integrity — DONE
+- Step 03 — Work / Recording / Version — DONE
+- Step 04 — Roles & Credits — DONE
+
+Do NOT restart the project.
+Do NOT rebuild the architecture.
+Do NOT reset or recreate the database.
+Do NOT delete existing user data.
+Do NOT introduce a new phase.
+Do NOT continue beyond Step 05.
+
+The purpose of this step is FINAL VERIFICATION of the complete Phase 02 foundation.
+
+==================================================
+1. FINAL DATABASE VERIFICATION
+==================================================
+
+Inspect the current migration chain and verify:
+
+- current database version is correct
+- migrations 1 → 5 are ordered and coherent
+- migration 5 for Roles/Credits is correctly integrated
+- all migrations are non-destructive
+- no migration deletes or recreates existing user tables unnecessarily
+- existing IDs remain stable
+- foreign keys are enabled
+- expected indexes exist
+- no migration leaves the database in an inconsistent intermediate state
+
+Verify the current schema includes and correctly relates:
+
+Artists
+Albums
+Tracks
+AlbumTracks
+PersonalRelationships
+JournalEntries
+ListeningHistory
+Works
+Versions
+Roles
+Credits
+
+Do not modify schema unless a real Phase 02 regression is discovered.
+
+==================================================
+2. FINAL DATA-INTEGRITY VERIFICATION
+==================================================
+
+Run the existing integrity checker and inspect all important invariants.
+
+Verify:
+
+- no orphan Track → Artist references
+- no orphan Track → Album references where applicable
+- no orphan AlbumTracks
+- no orphan PersonalRelationships
+- no orphan JournalEntries
+- no orphan ListeningHistory
+- no orphan Track → Work references
+- no orphan Track → Version references
+- no invalid Version → Work references
+- no invalid Credit → Artist references
+- no invalid Credit → Role references
+- no invalid Credit → Work/Track/Album references
+- no Credit with zero targets
+- no Credit with multiple targets
+- no duplicate IDs
+- no invalid required fields
+- required indexes exist
+- foreign keys are enabled
+
+The integrity checker must remain diagnostic.
+Do not silently repair, delete, or rewrite user data.
+
+==================================================
+3. LISTENING DATA CONSISTENCY
+==================================================
+
+Reconfirm the canonical listening-count rule from Step 01:
+
+ListeningHistory is the single source of truth for listening counts.
+
+Verify that:
+
+- PersonalRelationships.listeningCount is not used as an independent source of truth
+- derived listening counts come from ListeningHistory
+- legacy listeningCount remains only for compatibility if still present
+- logging a listening event increments the canonical history
+- recommendations and displayed counts use the canonical source
+
+Do not redesign this system.
+
+==================================================
+4. ALBUM INTEGRITY
+==================================================
+
+Verify the AlbumTracks model from Step 02:
+
+- Album ↔ Track membership is correctly represented
+- explicit track order is respected
+- disc number is respected where present
+- unknown/legacy ordering does not get falsely presented as official ordering
+- multi-disc albums remain supported
+- duplicate explicit positions are rejected
+- existing AlbumTracks data remains intact
+- Track.albumId compatibility remains intact where intentionally retained
+
+Do not add a full album-track editor in this step.
+
+==================================================
+5. WORK / VERSION INTEGRITY
+==================================================
+
+Verify the Step 03 model:
+
+- Work can contain multiple Versions
+- Track may exist without Work
+- Track may exist without Version
+- Version cannot exist without Work
+- if Track has both Work and Version, Version belongs to the same Work
+- deleting Version does not delete Track
+- deleting Work does not delete Track
+- AlbumTracks are unaffected by Work/Version deletion
+- no relationships are inferred from title, duration, album, artist, etc.
+
+Do not create a Work/Version UI in this step.
+
+==================================================
+6. ROLES / CREDITS INTEGRITY
+==================================================
+
+Verify the Step 04 model:
+
+Roles are independent reusable entities.
+
+Credits support:
+
+- Artist → Role → Work
+- Artist → Role → Track
+- Artist → Role → Album
+
+Verify:
+
+- exactly one target per Credit
+- valid Artist
+- valid Role
+- valid target
+- duplicate Credit prevention
+- multiple roles for the same Artist are supported
+- the same Artist can have different roles on different targets
+- deleting a Role cannot cascade-delete musical entities
+- deleting an Artist cannot silently delete unrelated musical entities
+- Tracks.artistId retains its previous meaning
+- existing Track.artistId values are NOT automatically converted into Credits
+- no historical Credits are fabricated
+
+Do not create role-specific tables.
+
+==================================================
+7. BACKUP / RESTORE FINAL CHECK
+==================================================
+
+Verify that the current backup format remains backward-compatible.
+
+Test or inspect:
+
+- old backups without Works/Versions/Roles/Credits
+- newer backups containing Works/Versions/Roles/Credits
+- optional fields
+- stable IDs
+- merge/upsert behavior
+- foreign-key validation
+- invalid references are rejected safely
+- destination-only records are not unexpectedly deleted
+- AlbumTracks are preserved
+- ListeningHistory is preserved
+- JournalEntries are preserved
+- PersonalRelationships are preserved
+
+If native SQLite runtime prevents full backup/restore execution in the current environment, clearly mark it as source-level verification rather than pretending it was runtime-tested.
+
+Do not change backup format version unless absolutely necessary.
+
+==================================================
+8. SEARCH / QUERY REGRESSION CHECK
+==================================================
+
+Verify that existing search and query functionality still works after all Phase 02 schema changes.
+
+Check:
+
+- track search
+- artist search
+- album search
+- lyrics search
+- journal search if currently supported
+- album track retrieval
+- artist retrieval
+- work/version queries
+- role/credit queries
+
+Do not redesign Search.
+
+==================================================
+9. GRAPH REGRESSION CHECK
+==================================================
+
+Verify that the existing Graph still works after:
+
+- AlbumTracks
+- Works
+- Versions
+- Roles
+- Credits
+
+Do not redesign the Graph.
+
+The existing visualization does not need to display Credits unless already implemented.
+
+The goal here is regression safety, not new functionality.
+
+==================================================
+10. UI REGRESSION CHECK
+==================================================
+
+Verify the existing screens:
+
+- Home
+- Archive
+- Track detail
+- Album detail
+- Artist detail
+- Search
+- Graph
+- Settings
+- Backup/Restore
+
+Check for:
+
+- crashes
+- broken navigation
+- broken loading states
+- broken empty states
+- broken Persian/RTL layout
+- missing data
+- TypeScript/runtime mismatches
+- obvious visual regressions introduced during Phase 02
+
+Do not redesign any screen.
+
+Only fix real regressions caused by Phase 02.
+
+==================================================
+11. PHASE 02 USER-VISIBLE CHANGES CHECK
+==================================================
+
+Explicitly identify what a user can now see in the app after Steps 01–04.
+
+In particular verify:
+
+Artist detail:
+- Roles & Contributions section appears only when actual Credits exist.
+
+Track detail:
+- explicit Credits are displayed separately from legacy artistId information.
+
+Album detail:
+- explicit Album Credits are displayed when present.
+
+Do not fabricate sample Credits merely to make UI appear populated.
+
+If no Credits exist in current sample data, report that this is expected.
+
+==================================================
+12. TYPE / BUILD / EXPO VERIFICATION
+==================================================
+
+Run:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency check
+- Expo Doctor
+- Metro startup
+
+If possible, verify Expo Go compatibility.
+
+Do not claim Android native verification unless an actual Android device/emulator was used.
+
+==================================================
+13. DATA PRESERVATION CHECK
+==================================================
+
+Perform a final source/schema-level review confirming:
+
+- no existing Artists were deleted
+- no existing Albums were deleted
+- no existing Tracks were deleted
+- no existing AlbumTracks were deleted
+- no JournalEntries were deleted
+- no ListeningHistory was deleted
+- no PersonalRelationships were deleted
+- no existing Work/Version IDs were changed
+- no existing IDs were regenerated
+- no audioUri values were altered
+- no artwork references were altered
+- no user-created relationships were silently rewritten
+
+If a test database is used, keep it isolated from the actual project database.
+
+==================================================
+14. EXPO GO MANUAL URL — REQUIRED
+==================================================
+
+At the very end, start the actual Expo development server using the project's real Expo workflow.
+
+Obtain the REAL Expo Go connection URL from the actual running Expo/Metro process or manifest.
+
+IMPORTANT:
+
+- Do NOT invent the URL.
+- Do NOT construct it by simply replacing https:// with exp://.
+- Do NOT provide a web preview URL.
+- Do NOT provide a GitHub URL.
+- Do NOT provide a generic localhost URL.
+- The final manual Expo Go URL must be the actual connection URL generated by the running Expo development server.
+- Prefer a URL beginning with:
+
+exp://
+
+If the environment generates a different valid Expo Go deep-link format, report the exact generated value and explain briefly why it differs.
+
+The URL must correspond to the currently running Naghme project.
+
+==================================================
+15. FINAL REPORT
+==================================================
+
+Provide a concise but sufficiently detailed final report with exactly these sections:
+
+1. Phase 02 final status
+2. Database verification
+3. Data integrity
+4. Listening consistency
+5. Album integrity
+6. Work / Version integrity
+7. Roles / Credits integrity
+8. Backup / Restore
+9. Search / Graph regression
+10. UI regression
+11. Typecheck / Expo / Metro
+12. Data preservation
+13. Native Android limitation
+14. What changed visibly in Expo Go
+15. Expo Go manual URL
+16. Final conclusion
+
+For every verification, distinguish clearly between:
+
+- Actually executed
+- Source-level verified
+- Not available in current environment
+
+Do not exaggerate test coverage.
+
+==================================================
+DEFINITION OF DONE
+==================================================
+
+Step 05 is complete only if:
+
+- Phase 02 migrations 1–5 are coherent
+- database integrity passes
+- listening count remains canonical
+- AlbumTracks remains intact
+- Work/Version rules remain valid
+- Roles/Credits rules remain valid
+- backup compatibility is preserved
+- existing UI has no Phase 02 regression
+- typecheck passes
+- Expo dependency checks pass
+- Expo Doctor passes if available
+- Metro starts successfully
+- existing data is preserved
+- no unrelated feature is introduced
+- actual native Android status is clearly reported
+- and a REAL current Expo Go manual URL is provided when the environment allows it
+
+STOP after this step.
+
+Do not proceed to another implementation phase.
