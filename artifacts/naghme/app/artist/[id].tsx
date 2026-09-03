@@ -40,6 +40,7 @@ import {
   TrackRecord,
   updateArtist,
 } from '@/src/db/queries';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 export default function ArtistDetailScreen() {
   const colors = useColors();
@@ -945,28 +946,56 @@ function Discography({
             <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
           </Pressable>
           {albumTracks.map((track, index) => (
-            <Pressable
+            <View
               key={track.id}
-              onPress={() => onTrackPress(track.id)}
-              style={({ pressed }) => [styles.discographyTrack, pressed && styles.pressed]}
+              style={styles.discographyTrack}
             >
-              <Text style={styles.discographyNumber}>{index + 1}</Text>
-              <Text style={styles.discographyTrackTitle}>{track.title}</Text>
-            </Pressable>
+              <Pressable
+                onPress={() => onTrackPress(track.id)}
+                style={({ pressed }) => [styles.discographyTrackMain, pressed && styles.pressed]}
+              >
+                <Text style={styles.discographyNumber}>{index + 1}</Text>
+                <Text style={styles.discographyTrackTitle}>{track.title}</Text>
+              </Pressable>
+              {track.audioUri ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
+                  onPress={() => void playTracksInQueue(albumTracks, index)}
+                  style={({ pressed }) => [styles.discographyPlayButton, pressed && styles.pressed]}
+                >
+                  <Feather name="play" size={13} color={colors.primaryForeground} />
+                </Pressable>
+              ) : null}
+            </View>
           ))}
         </View>
       ))}
       <View style={styles.singlesSection}>
         <Text style={styles.singlesTitle}>تک‌آهنگ‌ها و قطعه‌های بدون آلبوم</Text>
-        {singles.length ? singles.map((track) => (
-          <Pressable
+        {singles.length ? singles.map((track, index) => (
+          <View
             key={track.id}
-            onPress={() => onTrackPress(track.id)}
-            style={({ pressed }) => [styles.discographyTrack, pressed && styles.pressed]}
+            style={styles.discographyTrack}
           >
-            <Feather name="music" size={15} color={colors.primary} />
-            <Text style={styles.discographyTrackTitle}>{track.title}</Text>
-          </Pressable>
+            <Pressable
+              onPress={() => onTrackPress(track.id)}
+              style={({ pressed }) => [styles.discographyTrackMain, pressed && styles.pressed]}
+            >
+              <Feather name="music" size={15} color={colors.primary} />
+              <Text style={styles.discographyTrackTitle}>{track.title}</Text>
+            </Pressable>
+            {track.audioUri ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`پخش ${track.title} و ادامه‌ی تک‌آهنگ‌ها`}
+                onPress={() => void playTracksInQueue(singles, index)}
+                style={({ pressed }) => [styles.discographyPlayButton, pressed && styles.pressed]}
+              >
+                <Feather name="play" size={13} color={colors.primaryForeground} />
+              </Pressable>
+            ) : null}
+          </View>
         )) : <Text style={styles.mutedText}>تک‌آهنگی ثبت نشده است.</Text>}
       </View>
     </View>
@@ -1173,6 +1202,22 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       paddingHorizontal: 13,
       borderTopWidth: 1,
       borderTopColor: colors.border,
+    },
+    discographyTrackMain: {
+      flex: 1,
+      minHeight: 40,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+    },
+    discographyPlayButton: {
+      width: 29,
+      height: 29,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      marginLeft: 5,
     },
     discographyNumber: { width: 22, color: colors.mutedForeground, fontSize: 11, textAlign: 'center' },
     discographyTrackTitle: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },

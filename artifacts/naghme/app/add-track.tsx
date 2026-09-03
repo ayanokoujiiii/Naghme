@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
 import { CreditsManager, PendingCreditDraft } from '@/components/CreditsManager';
 import { useColors } from '@/hooks/useColors';
@@ -190,6 +191,21 @@ export default function AddTrackScreen() {
       return;
     }
     try {
+      const permission = await MediaLibrary.requestPermissionsAsync(false);
+      if (!permission.granted) {
+        Alert.alert(
+          'دسترسی به رسانه‌ها لازم است',
+          'برای انتخاب فایل صوتی، دسترسی رسانه‌ها را از تنظیمات گوشی فعال کن.',
+          [
+            { text: 'بعداً', style: 'cancel' },
+            {
+              text: 'باز کردن تنظیمات',
+              onPress: () => void Linking.openSettings().catch(() => undefined),
+            },
+          ],
+        );
+        return;
+      }
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,

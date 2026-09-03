@@ -27,6 +27,7 @@ import {
   TrackRecord,
   updateAlbum,
 } from '@/src/db/queries';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 export default function AlbumDetailScreen() {
   const colors = useColors();
@@ -306,27 +307,51 @@ export default function AlbumDetailScreen() {
                 {group.discNumber === null ? 'ترتیب نامشخص' : `دیسک ${group.discNumber}`}
               </Text>
               {group.tracks.map((track, index) => (
-                <Pressable
-                  key={track.id}
-                  testID={`album-track-${track.id}`}
-                  onPress={() => router.push(`/track/${track.id}`)}
-                  style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
-                >
-                  <Text style={styles.trackNumber}>
-                    {track.trackNumber === null ? '—' : track.trackNumber}
-                  </Text>
-                  <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
-                  <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
-                </Pressable>
+                <View key={track.id} style={styles.trackRow}>
+                  <Pressable
+                    testID={`album-track-${track.id}`}
+                    onPress={() => router.push(`/track/${track.id}`)}
+                    style={({ pressed }) => [styles.trackMain, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.trackNumber}>
+                      {track.trackNumber === null ? '—' : track.trackNumber}
+                    </Text>
+                    <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+                    <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+                  </Pressable>
+                  {track.audioUri ? (
+                    <Pressable
+                      testID={`album-track-play-${track.id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
+                      onPress={() => void playTracksInQueue(albumTrackEntries, albumTrackEntries.findIndex((entry) => entry.id === track.id))}
+                      style={({ pressed }) => [styles.trackPlayButton, pressed && styles.pressed]}
+                    >
+                      <Feather name="play" size={14} color={colors.primaryForeground} />
+                    </Pressable>
+                  ) : null}
+                </View>
               ))}
             </View>
           ))
         ) : tracks.length > 0 ? (
-          tracks.map((track) => (
-            <Pressable key={track.id} onPress={() => router.push(`/track/${track.id}`)} style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}>
-              <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
-              <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
-            </Pressable>
+          tracks.map((track, index) => (
+            <View key={track.id} style={styles.trackRow}>
+              <Pressable onPress={() => router.push(`/track/${track.id}`)} style={({ pressed }) => [styles.trackMain, pressed && styles.pressed]}>
+                <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+                <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+              </Pressable>
+              {track.audioUri ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
+                  onPress={() => void playTracksInQueue(tracks, index)}
+                  style={({ pressed }) => [styles.trackPlayButton, pressed && styles.pressed]}
+                >
+                  <Feather name="play" size={14} color={colors.primaryForeground} />
+                </Pressable>
+              ) : null}
+            </View>
           ))
         ) : (
           <Text style={styles.mutedText}>هنوز قطعه‌ای به این آلبوم وصل نشده است.</Text>
@@ -419,12 +444,27 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     posterActionSecondaryText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600' },
     coverMessage: { color: colors.primary, fontSize: 11, lineHeight: 18, textAlign: 'right', marginBottom: 10 },
     trackRow: {
-      minHeight: 46,
       flexDirection: 'row-reverse',
       alignItems: 'center',
       gap: 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    trackMain: {
+      flex: 1,
+      minHeight: 46,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+    },
+    trackPlayButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      marginLeft: 4,
     },
     discGroup: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 3, marginBottom: 7 },
     discTitle: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right', paddingVertical: 9 },

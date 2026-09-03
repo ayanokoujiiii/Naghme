@@ -27,6 +27,7 @@ import {
   getWorks,
   TrackRecord,
 } from '@/src/db/queries';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 type ArchiveView = 'tracks' | 'albums' | 'artists' | 'works';
 type ArchiveRecord = TrackRecord | AlbumRecord | ArtistRecord | WorkRecord;
@@ -94,30 +95,43 @@ export default function ArchiveScreen() {
   );
 
   const renderTrack = ({ item }: { item: TrackRecord }) => (
-    <Pressable
-      testID={`track-${item.id}`}
-      accessibilityRole="button"
-      onPress={() => router.push(`/track/${item.id}`)}
-      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-    >
-      <View style={styles.itemIcon}>
-        {item.coverImage ? (
-          <Image source={{ uri: item.coverImage }} style={styles.itemCover} resizeMode="cover" />
-        ) : (
-          <Feather name="music" size={19} color={colors.primary} />
-        )}
-      </View>
-      <View style={styles.itemCopy}>
-        <Text style={styles.itemTitle}>{item.title}</Text>
-        <Text style={styles.itemSubtitle}>
-          {item.albumId && albumById.get(item.albumId)
-            ? albumById.get(item.albumId)
-            : 'بدون آلبوم'}
-          {item.duration !== null ? `  •  ${formatDuration(item.duration)}` : ''}
-        </Text>
-      </View>
-      <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
-    </Pressable>
+    <View style={styles.item}>
+      <Pressable
+        testID={`track-${item.id}`}
+        accessibilityRole="button"
+        onPress={() => router.push(`/track/${item.id}`)}
+        style={({ pressed }) => [styles.itemMain, pressed && styles.itemPressed]}
+      >
+        <View style={styles.itemIcon}>
+          {item.coverImage ? (
+            <Image source={{ uri: item.coverImage }} style={styles.itemCover} resizeMode="cover" />
+          ) : (
+            <Feather name="music" size={19} color={colors.primary} />
+          )}
+        </View>
+        <View style={styles.itemCopy}>
+          <Text style={styles.itemTitle}>{item.title}</Text>
+          <Text style={styles.itemSubtitle}>
+            {item.albumId && albumById.get(item.albumId)
+              ? albumById.get(item.albumId)
+              : 'بدون آلبوم'}
+            {item.duration !== null ? `  •  ${formatDuration(item.duration)}` : ''}
+          </Text>
+        </View>
+        <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
+      </Pressable>
+      {item.audioUri ? (
+        <Pressable
+          testID={`track-play-${item.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`پخش ${item.title} و ادامه‌ی صف`}
+          onPress={() => void playTracksInQueue(tracks, tracks.findIndex((track) => track.id === item.id))}
+          style={({ pressed }) => [styles.itemPlayButton, pressed && styles.pressed]}
+        >
+          <Feather name="play" size={16} color={colors.primaryForeground} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 
   const renderAlbum = ({ item }: { item: AlbumRecord }) => (
@@ -418,6 +432,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginBottom: 10,
       minHeight: 92,
       elevation: 3,
+    },
+    itemMain: {
+      flex: 1,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      minHeight: 62,
+    },
+    itemPlayButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      marginRight: 10,
     },
     itemPressed: { opacity: 0.72 },
     itemIcon: {

@@ -1,4 +1,5 @@
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface AudioPlaybackSnapshot {
   trackId: string | null;
@@ -14,6 +15,9 @@ export interface AudioPlaybackSnapshot {
   repeatMode: RepeatMode;
   isLooping: boolean;
   sleepTimerRemainingSeconds: number;
+  queue: AudioQueueItem[];
+  queueIndex: number;
+  shuffleEnabled: boolean;
 }
 
 export interface AudioTrackMetadata {
@@ -23,6 +27,23 @@ export interface AudioTrackMetadata {
   artistName: string | null;
   lyrics: string | null;
   durationSeconds: number | null;
+}
+
+export interface AudioQueueItem {
+  trackId: string;
+  uri: string;
+  metadata: AudioTrackMetadata;
+}
+
+export interface QueueTrackSource {
+  id: string;
+  title: string;
+  audioUri: string | null;
+  coverImage: string | null;
+  versionName: string | null;
+  artistName?: string | null;
+  lyrics: string | null;
+  duration: number | null;
 }
 
 export type RepeatMode = 'off' | 'track' | 'context';
@@ -43,6 +64,9 @@ const initialSnapshot: AudioPlaybackSnapshot = {
   repeatMode: 'off',
   isLooping: false,
   sleepTimerRemainingSeconds: 0,
+  queue: [],
+  queueIndex: -1,
+  shuffleEnabled: false,
 };
 
 let snapshot = initialSnapshot;
@@ -54,11 +78,46 @@ let audioModeRequest: Promise<void> | null = null;
 let sleepTimerEndsAt: number | null = null;
 let sleepTimerHandle: ReturnType<typeof setInterval> | null = null;
 let sleepTimerTickInFlight = false;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let restoringPlaybackState = false;
+let shuffleOrder: number[] = [];
 const listeners = new Set<AudioListener>();
+const PLAYBACK_STATE_KEY = 'naghme.playback-state.v1';
+
+interface PersistedPlaybackState {
+  queue: AudioQueueItem[];
+  queueIndex: number;
+  positionMillis: number;
+  repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
+}
+
+function buildShuffleOrder(length: number, firstIndex: number): number[] {
+  const rest = Array.from({ length }, (_, index) => index).filter((index) => index !== firstIndex);
+  for (let index = rest.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [rest[index], rest[swapIndex]] = [rest[swapIndex], rest[index]];
+  }
+  return [firstIndex, ...rest];
+}
 
 function updateSnapshot(next: Partial<AudioPlaybackSnapshot>): void {
   snapshot = { ...snapshot, ...next };
   listeners.forEach((listener) => listener(snapshot));
+  if (!restoringPlaybackState) {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      const state: PersistedPlaybackState = {
+        queue: snapshot.queue,
+        queueIndex: snapshot.queueIndex,
+        positionMillis: snapshot.positionMillis,
+        repeatMode: snapshot.repeatMode,
+        shuffleEnabled: snapshot.shuffleEnabled,
+      };
+      void AsyncStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify(state)).catch(() => undefined);
+    }, 350);
+  }
 }
 
 function handlePlaybackStatus(status: AVPlaybackStatus): void {
@@ -73,6 +132,9 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
       durationMillis: status.durationMillis,
       isLooping: status.isLooping,
     });
+    if (status.didJustFinish && snapshot.repeatMode !== 'track') {
+      void nextAudio(true);
+    }
     return;
   }
 
@@ -112,6 +174,49 @@ export function configureBackgroundAudio(): Promise<void> {
   return audioModeRequest;
 }
 
+async function restorePlaybackState(): Promise<void> {
+  const raw = await AsyncStorage.getItem(PLAYBACK_STATE_KEY).catch(() => null);
+  if (!raw) return;
+  try {
+    const persisted = JSON.parse(raw) as Partial<PersistedPlaybackState>;
+    const queue = Array.isArray(persisted.queue)
+      ? persisted.queue.filter(
+          (item): item is AudioQueueItem =>
+            Boolean(
+              item &&
+                typeof item.trackId === 'string' &&
+                typeof item.uri === 'string' &&
+                item.metadata &&
+                typeof item.metadata.title === 'string',
+            ),
+        )
+      : [];
+    if (!queue.length) return;
+    const queueIndex = Math.min(Math.max(Number(persisted.queueIndex ?? 0), 0), queue.length - 1);
+    restoringPlaybackState = true;
+    updateSnapshot({
+      queue,
+      queueIndex,
+      repeatMode:
+        persisted.repeatMode === 'track' || persisted.repeatMode === 'context'
+          ? persisted.repeatMode
+          : 'off',
+      shuffleEnabled: persisted.shuffleEnabled === true,
+    });
+    shuffleOrder = persisted.shuffleEnabled === true ? buildShuffleOrder(queue.length, queueIndex) : [];
+    restoringPlaybackState = false;
+    await loadAudio(queue[queueIndex].uri, queue[queueIndex].trackId, queue[queueIndex].metadata);
+    if (Number(persisted.positionMillis) > 0) {
+      await seekAudio(Number(persisted.positionMillis));
+    }
+  } catch {
+    restoringPlaybackState = false;
+    await AsyncStorage.removeItem(PLAYBACK_STATE_KEY).catch(() => undefined);
+  }
+}
+
+void restorePlaybackState();
+
 function getFileExtension(uri: string): string | undefined {
   const withoutQuery = uri.split(/[?#]/, 1)[0];
   const extension = withoutQuery.split('.').pop()?.toLowerCase();
@@ -123,6 +228,10 @@ export async function loadAudio(
   trackId: string,
   track: AudioTrackMetadata,
 ): Promise<void> {
+  const queueItem: AudioQueueItem = { trackId, uri, metadata: track };
+  if (!snapshot.queue.some((item) => item.trackId === trackId && item.uri === uri)) {
+    updateSnapshot({ queue: [queueItem], queueIndex: 0 });
+  }
   if (sound && loadedUri === uri && loadedTrackId === trackId) {
     updateSnapshot({ trackId, uri, track });
     return;
@@ -165,7 +274,7 @@ export async function loadAudio(
       source,
       {
         shouldPlay: false,
-        isLooping: snapshot.repeatMode !== 'off',
+        isLooping: snapshot.repeatMode === 'track',
         progressUpdateIntervalMillis: 500,
         androidImplementation: 'ExoPlayer',
       },
@@ -191,7 +300,7 @@ export async function loadAudio(
           : 0,
       isLooping: created.status.isLoaded
         ? created.status.isLooping
-        : snapshot.repeatMode !== 'off',
+        : snapshot.repeatMode === 'track',
       error: created.status.isLoaded
         ? null
         : created.status.error
@@ -248,6 +357,134 @@ export async function playAudio(): Promise<boolean> {
     await sound.playAsync();
   }
   return true;
+}
+
+export async function seekAudio(positionMillis: number): Promise<number> {
+  if (loadRequest) await loadRequest;
+  if (!sound) return 0;
+  const status = await sound.getStatusAsync();
+  if (!status.isLoaded) return 0;
+  const maxPosition = status.durationMillis ?? Math.max(0, positionMillis);
+  const nextPosition = Math.min(Math.max(0, positionMillis), maxPosition);
+  await sound.setPositionAsync(nextPosition);
+  updateSnapshot({ positionMillis: nextPosition });
+  return nextPosition;
+}
+
+function createQueueItem(track: QueueTrackSource): AudioQueueItem | null {
+  if (!track.audioUri) return null;
+  return {
+    trackId: track.id,
+    uri: track.audioUri,
+    metadata: {
+      title: track.title,
+      coverImage: track.coverImage,
+      versionName: track.versionName,
+      artistName: track.artistName ?? null,
+      lyrics: track.lyrics,
+      durationSeconds: track.duration,
+    },
+  };
+}
+
+export async function playTracksInQueue(
+  tracks: QueueTrackSource[],
+  startIndex: number,
+): Promise<boolean> {
+  const playableTracks = tracks
+    .map(createQueueItem)
+    .filter((item): item is AudioQueueItem => item !== null);
+  if (!playableTracks.length) return false;
+  const requestedTrackId = tracks[startIndex]?.id;
+  const playableIndex = Math.max(
+    0,
+    playableTracks.findIndex((item) => item.trackId === requestedTrackId),
+  );
+  return setPlaybackQueue(playableTracks, playableIndex, true);
+}
+
+export async function setPlaybackQueue(
+  queue: AudioQueueItem[],
+  startIndex = 0,
+  autoPlay = true,
+): Promise<boolean> {
+  if (!queue.length) return false;
+  const safeIndex = Math.min(Math.max(0, startIndex), queue.length - 1);
+  updateSnapshot({
+    queue,
+    queueIndex: safeIndex,
+    trackId: null,
+    uri: null,
+    track: null,
+    isLoaded: false,
+    isLoading: false,
+    isPlaying: false,
+    error: null,
+    positionMillis: 0,
+    durationMillis: queue[safeIndex].metadata.durationSeconds
+      ? queue[safeIndex].metadata.durationSeconds * 1000
+      : 0,
+  });
+  shuffleOrder = snapshot.shuffleEnabled ? buildShuffleOrder(queue.length, safeIndex) : [];
+  await loadAudio(queue[safeIndex].uri, queue[safeIndex].trackId, queue[safeIndex].metadata);
+  if (!autoPlay) return true;
+  return playAudio();
+}
+
+function getNextQueueIndex(direction: 1 | -1): number | null {
+  const length = snapshot.queue.length;
+  if (!length) return null;
+  if (snapshot.shuffleEnabled) {
+    const order = shuffleOrder.length === length ? shuffleOrder : buildShuffleOrder(length, snapshot.queueIndex);
+    shuffleOrder = order;
+    const currentPosition = order.indexOf(snapshot.queueIndex);
+    const nextPosition = currentPosition + direction;
+    if (nextPosition >= 0 && nextPosition < length) return order[nextPosition];
+    return snapshot.repeatMode === 'context' ? order[direction === 1 ? 0 : length - 1] : null;
+  }
+  const next = snapshot.queueIndex + direction;
+  if (next >= 0 && next < length) return next;
+  return snapshot.repeatMode === 'context' ? (direction === 1 ? 0 : length - 1) : null;
+}
+
+async function playQueueIndex(index: number): Promise<boolean> {
+  const item = snapshot.queue[index];
+  if (!item) return false;
+  updateSnapshot({ queueIndex: index, error: null });
+  try {
+    await loadAudio(item.uri, item.trackId, item.metadata);
+    return playAudio();
+  } catch {
+    updateSnapshot({ error: 'بارگذاری یکی از فایل‌های صف انجام نشد.' });
+    return false;
+  }
+}
+
+export async function nextAudio(fromCompletion = false): Promise<boolean> {
+  if (!snapshot.queue.length) return false;
+  const nextIndex = getNextQueueIndex(1);
+  if (nextIndex === null) {
+    if (fromCompletion) updateSnapshot({ error: 'صف پخش به پایان رسید.' });
+    return false;
+  }
+  return playQueueIndex(nextIndex);
+}
+
+export async function previousAudio(): Promise<boolean> {
+  if (!snapshot.queue.length) return false;
+  if (!snapshot.isLoaded || snapshot.positionMillis > 3000) {
+    await seekAudio(0);
+    return true;
+  }
+  const previousIndex = getNextQueueIndex(-1);
+  if (previousIndex === null) return false;
+  return playQueueIndex(previousIndex);
+}
+
+export async function setShuffleEnabled(enabled: boolean): Promise<boolean> {
+  shuffleOrder = enabled ? buildShuffleOrder(snapshot.queue.length, Math.max(0, snapshot.queueIndex)) : [];
+  updateSnapshot({ shuffleEnabled: enabled });
+  return enabled;
 }
 
 function clearSleepTimerInterval(): void {
@@ -334,6 +571,9 @@ export async function stopAndUnloadAudio(): Promise<void> {
     repeatMode: 'off',
     isLooping: false,
     sleepTimerRemainingSeconds: 0,
+    queue: [],
+    queueIndex: -1,
+    shuffleEnabled: false,
   });
 }
 
@@ -353,14 +593,13 @@ export async function rewindAudio(milliseconds = 10000): Promise<number> {
 }
 
 export async function setRepeatMode(mode: RepeatMode): Promise<RepeatMode> {
-  const shouldLoop = mode !== 'off';
   if (sound) {
     const status = await sound.getStatusAsync();
     if (status.isLoaded) {
-      await sound.setIsLoopingAsync(shouldLoop);
+      await sound.setIsLoopingAsync(mode === 'track');
     }
   }
-  updateSnapshot({ repeatMode: mode, isLooping: shouldLoop });
+  updateSnapshot({ repeatMode: mode, isLooping: mode === 'track' });
   return mode;
 }
 

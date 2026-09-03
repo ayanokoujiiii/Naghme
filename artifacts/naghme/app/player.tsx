@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -32,6 +33,11 @@ import {
   rewindAudio,
   subscribeToAudio,
   toggleAudioPlayback,
+  nextAudio,
+  previousAudio,
+  seekAudio,
+  setShuffleEnabled,
+  setPlaybackQueue,
   RepeatMode,
 } from '@/src/audio/audioManager';
 import { getLatestJournalMood } from '@/src/db/queries';
@@ -58,6 +64,7 @@ export default function PlayerScreen() {
   const [coverColor, setCoverColor] = useState<string>(colors.primary);
   const [latestMood, setLatestMood] = useState<string | null>(null);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
+  const [queueVisible, setQueueVisible] = useState<boolean>(false);
   const posterMotionStyle = useMoodPosterStyle(latestMood);
 
   useEffect(() => subscribeToAudio(setAudio), []);
@@ -123,6 +130,50 @@ export default function PlayerScreen() {
     }
   };
 
+  const moveNext = async () => {
+    setError('');
+    try {
+      await nextAudio();
+    } catch {
+      setError('رفتن به قطعه‌ی بعد انجام نشد.');
+    }
+  };
+
+  const movePrevious = async () => {
+    setError('');
+    try {
+      await previousAudio();
+    } catch {
+      setError('رفتن به قطعه‌ی قبل انجام نشد.');
+    }
+  };
+
+  const toggleShuffle = async () => {
+    setError('');
+    try {
+      await setShuffleEnabled(!audio.shuffleEnabled);
+    } catch {
+      setError('تغییر حالت تصادفی انجام نشد.');
+    }
+  };
+
+  const seek = async (value: number) => {
+    try {
+      await seekAudio(value);
+    } catch {
+      setError('جابه‌جایی در قطعه انجام نشد.');
+    }
+  };
+
+  const setPlaybackItem = async (index: number) => {
+    setError('');
+    try {
+      await setPlaybackQueue(audio.queue, index, true);
+    } catch {
+      setError('پخش قطعه‌ی انتخاب‌شده انجام نشد.');
+    }
+  };
+
   if (!audio.track) {
     return (
       <View style={[styles.screen, styles.emptyScreen, { paddingTop: insets.top + 16 }]}>
@@ -143,10 +194,6 @@ export default function PlayerScreen() {
   }
 
   const durationMillis = audio.durationMillis || (audio.track.durationSeconds ?? 0) * 1000;
-  const progress = durationMillis > 0
-    ? Math.min(1, Math.max(0, audio.positionMillis / durationMillis))
-    : 0;
-
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -170,6 +217,15 @@ export default function PlayerScreen() {
             <Feather name="chevron-down" size={25} color={colors.foreground} />
           </Pressable>
           <Text style={styles.headerTitle}>اکنون در حال پخش</Text>
+          <Pressable
+            testID="player-queue"
+            accessibilityRole="button"
+            accessibilityLabel={`نمایش صف پخش، ${audio.queue.length} قطعه`}
+            onPress={() => setQueueVisible(true)}
+            style={({ pressed }) => [styles.timerButton, pressed && styles.pressed]}
+          >
+            <Feather name="list" size={19} color={colors.foreground} />
+          </Pressable>
           <Pressable
             testID="player-sleep-timer"
             accessibilityRole="button"
@@ -238,9 +294,19 @@ export default function PlayerScreen() {
         </View>
 
         <View style={styles.playback}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressValue, { width: `${progress * 100}%` }]} />
-          </View>
+          <Slider
+            testID="player-seek"
+            accessibilityLabel="جابه‌جایی در قطعه"
+            style={styles.slider}
+            minimumValue={0}
+            maximumValue={Math.max(durationMillis, 1)}
+            value={Math.min(audio.positionMillis, Math.max(durationMillis, 1))}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.border}
+            thumbTintColor={colors.primary}
+            disabled={!audio.isLoaded || audio.isBuffering || durationMillis <= 0}
+            onSlidingComplete={(value) => void seek(value)}
+          />
           <View style={styles.timeRow}>
             <Text style={styles.time}>{formatTime(audio.positionMillis)}</Text>
             <Text style={styles.time}>{formatTime(durationMillis)}</Text>
@@ -248,6 +314,20 @@ export default function PlayerScreen() {
         </View>
 
         <View style={styles.controls}>
+          <Pressable
+            testID="player-previous"
+            accessibilityRole="button"
+            accessibilityLabel="قطعه‌ی قبلی"
+            disabled={!audio.queue.length}
+            onPress={() => void movePrevious()}
+            style={({ pressed }) => [
+              styles.iconControl,
+              !audio.queue.length && styles.secondaryControlDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="skip-back" size={20} color={colors.foreground} />
+          </Pressable>
           <Pressable
             testID="player-rewind"
             accessibilityRole="button"
@@ -302,6 +382,52 @@ export default function PlayerScreen() {
               {repeatModeShortLabel(audio.repeatMode)}
             </Text>
           </Pressable>
+          <Pressable
+            testID="player-next"
+            accessibilityRole="button"
+            accessibilityLabel="قطعه‌ی بعدی"
+            disabled={!audio.queue.length}
+            onPress={() => void moveNext()}
+            style={({ pressed }) => [
+              styles.iconControl,
+              !audio.queue.length && styles.secondaryControlDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="skip-forward" size={20} color={colors.foreground} />
+          </Pressable>
+        </View>
+
+        <View style={styles.utilityControls}>
+          <Pressable
+            testID="player-shuffle"
+            accessibilityRole="button"
+            accessibilityLabel={audio.shuffleEnabled ? 'غیرفعال کردن پخش تصادفی' : 'فعال کردن پخش تصادفی'}
+            accessibilityState={{ selected: audio.shuffleEnabled }}
+            disabled={!audio.queue.length}
+            onPress={() => void toggleShuffle()}
+            style={({ pressed }) => [
+              styles.utilityControl,
+              audio.shuffleEnabled && styles.secondaryControlActive,
+              !audio.queue.length && styles.secondaryControlDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="shuffle" size={17} color={audio.shuffleEnabled ? colors.primary : colors.foreground} />
+            <Text style={[styles.secondaryControlText, audio.shuffleEnabled && styles.secondaryControlTextActive]}>
+              تصادفی
+            </Text>
+          </Pressable>
+          <Pressable
+            testID="player-open-queue"
+            accessibilityRole="button"
+            accessibilityLabel="نمایش صف پخش"
+            onPress={() => setQueueVisible(true)}
+            style={({ pressed }) => [styles.utilityControl, pressed && styles.pressed]}
+          >
+            <Feather name="list" size={17} color={colors.foreground} />
+            <Text style={styles.secondaryControlText}>صف پخش ({audio.queue.length})</Text>
+          </Pressable>
         </View>
 
         {error || audio.error ? <Text style={styles.errorText}>{error || audio.error}</Text> : null}
@@ -332,6 +458,64 @@ export default function PlayerScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={queueVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQueueVisible(false)}
+      >
+        <Pressable
+          testID="player-queue-backdrop"
+          style={styles.timerModalBackdrop}
+          onPress={() => setQueueVisible(false)}
+        >
+          <View style={styles.queueSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.timerSheetHandle} />
+            <View style={styles.queueHeading}>
+              <Text style={styles.timerSheetTitle}>صف پخش</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="بستن صف پخش"
+                onPress={() => setQueueVisible(false)}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              >
+                <Feather name="x" size={21} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.queueList}>
+              {audio.queue.map((item, index) => (
+                <Pressable
+                  key={`${item.trackId}-${index}`}
+                  testID={`player-queue-item-${item.trackId}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setQueueVisible(false);
+                    void setPlaybackItem(index);
+                  }}
+                  style={({ pressed }) => [
+                    styles.queueItem,
+                    index === audio.queueIndex && styles.queueItemActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Feather
+                    name={index === audio.queueIndex ? 'volume-2' : 'music'}
+                    size={17}
+                    color={index === audio.queueIndex ? colors.primary : colors.mutedForeground}
+                  />
+                  <View style={styles.queueItemCopy}>
+                    <Text style={styles.queueItemTitle} numberOfLines={1}>{item.metadata.title}</Text>
+                    <Text style={styles.queueItemMeta} numberOfLines={1}>
+                      {item.metadata.artistName || 'هنرمند ناشناس'}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={sleepTimerVisible}
@@ -413,13 +597,13 @@ function formatTime(milliseconds: number): string {
 
 function repeatModeLabel(mode: RepeatMode): string {
   if (mode === 'track') return 'تکرار قطعه';
-  if (mode === 'context') return 'تکرار آلبوم';
+  if (mode === 'context') return 'تکرار صف';
   return 'بدون تکرار';
 }
 
 function repeatModeShortLabel(mode: RepeatMode): string {
   if (mode === 'track') return 'قطعه';
-  if (mode === 'context') return 'آلبوم';
+  if (mode === 'context') return 'صف';
   return 'تکرار';
 }
 
@@ -673,11 +857,17 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     version: { color: colors.primary, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 8 },
     artist: { color: colors.mutedForeground, fontSize: 14, textAlign: 'center', marginTop: 6 },
     playback: { marginTop: 28 },
-    progressTrack: { height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.secondary },
-    progressValue: { height: '100%', borderRadius: 3, backgroundColor: colors.primary },
+    slider: { width: '100%', height: 32 },
     timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
     time: { color: colors.mutedForeground, fontSize: 11 },
     controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18 },
+    iconControl: {
+      width: 42,
+      height: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginHorizontal: 3,
+    },
     secondaryControl: {
       minWidth: 68,
       minHeight: 56,
@@ -704,6 +894,23 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.primary,
     },
     playButtonDisabled: { opacity: 0.62 },
+    utilityControls: {
+      flexDirection: 'row-reverse',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 14,
+    },
+    utilityControl: {
+      minHeight: 38,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      borderRadius: 13,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     lyricsSection: {
       marginTop: 30,
       padding: 18,
@@ -735,6 +942,38 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    queueSheet: {
+      maxHeight: '78%',
+      paddingTop: 10,
+      paddingHorizontal: 18,
+      paddingBottom: 24,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    queueHeading: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    queueList: { maxHeight: 430 },
+    queueItem: {
+      minHeight: 58,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+      marginBottom: 7,
+      backgroundColor: colors.secondary,
+    },
+    queueItemActive: { backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.primary },
+    queueItemCopy: { flex: 1, alignItems: 'flex-end' },
+    queueItemTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    queueItemMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
     timerSheetHandle: {
       alignSelf: 'center',
       width: 42,
