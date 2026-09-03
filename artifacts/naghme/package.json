@@ -59,9 +59,11 @@
     "expo-av": "~16.0.8",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
+    "expo-image-manipulator": "~14.0.8",
     "expo-localization": "^17.0.9",
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "^16.0.10",
+    "fflate": "^0.8.3",
     "zustand": "^5.0.15"
   }
 }

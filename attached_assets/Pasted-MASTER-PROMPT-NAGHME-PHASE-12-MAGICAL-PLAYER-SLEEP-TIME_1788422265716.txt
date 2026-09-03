@@ -1,0 +1,32 @@
+MASTER PROMPT: NAGHME - PHASE 12 (MAGICAL PLAYER, SLEEP TIMER & INTERACTIVE GRAPH)
+
+You are an Expert React Native & Expo Software Architect. Phase 11 was a complete success. We are now implementing the magical UI/UX phase to breathe life into the app.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Do NOT break existing data or audio logic. Use robust error handling.
+
+PHASE 12 OBJECTIVES TO IMPLEMENT:
+
+1. Sleep Timer (تایمر خواب) in `app/player.tsx`:
+- Add a sleek "Sleep Timer" icon button in the player screen.
+- Clicking it opens a small, elegant Modal/ActionSheet to select: 15m, 30m, 45m, 60m, or "لغو" (Cancel).
+- Implement the logic in the audio manager: When the timer finishes, pause the audio and clear the timer. Display a subtle countdown or indicator on the timer icon if a timer is active.
+
+2. Dynamic Cover Colors (تطبیق رنگ جادویی):
+- Install and use `expo-image-colors` (or a similar compatible library) to extract the dominant/average color from the currently playing Track's `coverImage`.
+- Apply this extracted color as a soft, subtle glowing drop-shadow or a smooth radial gradient behind the main poster in `app/player.tsx`. If no cover exists, fallback gracefully to the default dark theme.
+
+3. Mood Particle Effects (افکت انیمیشنی پوستر):
+- In `app/player.tsx`, query the *latest* `mood` from `JournalEntries` for the current track.
+- Overlay a lightweight visual animation on top of the Poster image based on that mood using React Native's `Animated` API:
+  * "غمگین" (Sad): Gentle vertical falling lines or dots simulating soft Rain.
+  * "آرام" (Calm): Soft, slow pulsating opacity glow (breathing effect) or warm light rays.
+  * "پرانرژی" (Energetic): A subtle, faster-moving dynamic particle effect or a subtle bounce.
+- Keep animations lightweight, elegant, and non-distracting.
+
+4. Interactive Music Graph (`app/(tabs)/graph.tsx`):
+- Upgrade the nodes in the Music Graph UI. Add an `onLongPress` handler to Album and Track nodes.
+- Logic: Long-pressing a Track node should immediately load and play it in the background audio manager without leaving the Graph screen. Show a subtle Toast/Alert saying "پخش آغاز شد" (Playback started).
+
+ACTION: Execute these steps sequentially. 1. Add Sleep Timer logic. 2. Implement Dynamic Colors. 3. Build Mood Particle overlays. 4. Make Graph interactive. Test thoroughly on Android and wait for my instruction.

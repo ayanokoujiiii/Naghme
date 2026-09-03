@@ -819,6 +819,19 @@ export async function getJournalEntries(trackId: string): Promise<JournalEntryRe
   );
 }
 
+export async function getLatestJournalMood(trackId: string): Promise<string | null> {
+  const database = await requireDatabase();
+  const row = await database.getFirstAsync<Pick<JournalEntryRecord, 'mood'>>(
+    `SELECT mood
+     FROM JournalEntries
+     WHERE trackId = ?
+     ORDER BY datetime(createdAt) DESC
+     LIMIT 1`,
+    [trackId],
+  );
+  return row?.mood ?? null;
+}
+
 export async function deleteJournalEntry(id: string): Promise<void> {
   const database = await requireDatabase();
   await database.runAsync('DELETE FROM JournalEntries WHERE id = ?', [id]);

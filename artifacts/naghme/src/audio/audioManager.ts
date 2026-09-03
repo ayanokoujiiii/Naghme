@@ -13,6 +13,7 @@ export interface AudioPlaybackSnapshot {
   durationMillis: number;
   repeatMode: RepeatMode;
   isLooping: boolean;
+  sleepTimerRemainingSeconds: number;
 }
 
 export interface AudioTrackMetadata {
@@ -41,6 +42,7 @@ const initialSnapshot: AudioPlaybackSnapshot = {
   durationMillis: 0,
   repeatMode: 'off',
   isLooping: false,
+  sleepTimerRemainingSeconds: 0,
 };
 
 let snapshot = initialSnapshot;
@@ -49,6 +51,9 @@ let loadedUri: string | null = null;
 let loadedTrackId: string | null = null;
 let loadRequest: Promise<void> | null = null;
 let audioModeRequest: Promise<void> | null = null;
+let sleepTimerEndsAt: number | null = null;
+let sleepTimerHandle: ReturnType<typeof setInterval> | null = null;
+let sleepTimerTickInFlight = false;
 const listeners = new Set<AudioListener>();
 
 function updateSnapshot(next: Partial<AudioPlaybackSnapshot>): void {
@@ -231,7 +236,76 @@ export async function toggleAudioPlayback(): Promise<boolean> {
   return true;
 }
 
+export async function playAudio(): Promise<boolean> {
+  if (loadRequest) {
+    await loadRequest;
+  }
+  if (!sound) return false;
+
+  const status = await sound.getStatusAsync();
+  if (!status.isLoaded) return false;
+  if (!status.isPlaying) {
+    await sound.playAsync();
+  }
+  return true;
+}
+
+function clearSleepTimerInterval(): void {
+  if (sleepTimerHandle) {
+    clearInterval(sleepTimerHandle);
+    sleepTimerHandle = null;
+  }
+  sleepTimerEndsAt = null;
+  sleepTimerTickInFlight = false;
+}
+
+async function finishSleepTimer(): Promise<void> {
+  clearSleepTimerInterval();
+  try {
+    if (sound) {
+      const status = await sound.getStatusAsync();
+      if (status.isLoaded && status.isPlaying) {
+        await sound.pauseAsync();
+      }
+    }
+  } catch {
+    // The sound may be unloading at the same moment the timer expires.
+  } finally {
+    updateSnapshot({ sleepTimerRemainingSeconds: 0 });
+  }
+}
+
+async function tickSleepTimer(): Promise<void> {
+  if (!sleepTimerEndsAt || sleepTimerTickInFlight) return;
+  sleepTimerTickInFlight = true;
+  try {
+    const remaining = Math.max(0, Math.ceil((sleepTimerEndsAt - Date.now()) / 1000));
+    if (remaining <= 0) {
+      await finishSleepTimer();
+    } else {
+      updateSnapshot({ sleepTimerRemainingSeconds: remaining });
+    }
+  } finally {
+    sleepTimerTickInFlight = false;
+  }
+}
+
+export function setSleepTimer(minutes: 15 | 30 | 45 | 60 | null): void {
+  clearSleepTimerInterval();
+  if (minutes === null) {
+    updateSnapshot({ sleepTimerRemainingSeconds: 0 });
+    return;
+  }
+
+  sleepTimerEndsAt = Date.now() + minutes * 60 * 1000;
+  updateSnapshot({ sleepTimerRemainingSeconds: minutes * 60 });
+  sleepTimerHandle = setInterval(() => {
+    void tickSleepTimer();
+  }, 1000);
+}
+
 export async function stopAndUnloadAudio(): Promise<void> {
+  clearSleepTimerInterval();
   if (loadRequest) {
     await loadRequest.catch(() => undefined);
   }
@@ -259,6 +333,7 @@ export async function stopAndUnloadAudio(): Promise<void> {
     durationMillis: 0,
     repeatMode: 'off',
     isLooping: false,
+    sleepTimerRemainingSeconds: 0,
   });
 }
 

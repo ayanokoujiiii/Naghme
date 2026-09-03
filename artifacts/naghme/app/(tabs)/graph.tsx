@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,9 +26,10 @@ import {
   TrackRecord,
 } from '@/src/db/queries';
 import { SAMPLE_ARTIST_ALBUM_LINKS } from '@/src/db/seed';
+import { loadAudio, playAudio } from '@/src/audio/audioManager';
 
 type ExpandedState = Record<string, boolean>;
-type GraphAlbum = AlbumRecord & { tracks: TrackRecord[] };
+type GraphAlbum = AlbumRecord & { tracks: TrackRecord[]; artistName?: string | null };
 type GraphArtist = ArtistRecord & { albums: GraphAlbum[] };
 
 export default function GraphScreen() {
@@ -80,7 +82,11 @@ export default function GraphScreen() {
           .filter((album): album is AlbumRecord => Boolean(album))
           .map((album) => {
             linkedAlbumIds.add(album.id);
-            return { ...album, tracks: tracksByAlbum.get(album.id) ?? [] };
+            return {
+              ...album,
+              artistName: artist.name,
+              tracks: tracksByAlbum.get(album.id) ?? [],
+            };
           });
         return { ...artist, albums: linkedAlbums };
       });
@@ -116,6 +122,40 @@ export default function GraphScreen() {
 
   const toggle = (key: string) => {
     setExpanded((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const playGraphTrack = async (track: TrackRecord, artistName: string | null = null) => {
+    if (!track.audioUri) {
+      Alert.alert('فایل صوتی موجود نیست', 'برای این قطعه هنوز فایل صوتی ثبت نشده است.');
+      return;
+    }
+    try {
+      await loadAudio(track.audioUri, track.id, {
+        title: track.title,
+        coverImage: track.coverImage,
+        versionName: track.versionName,
+        artistName,
+        lyrics: track.lyrics,
+        durationSeconds: track.duration,
+      });
+      const started = await playAudio();
+      if (started) {
+        Alert.alert('پخش آغاز شد', track.title);
+      } else {
+        Alert.alert('پخش انجام نشد', 'فایل صوتی آماده‌ی پخش نیست.');
+      }
+    } catch {
+      Alert.alert('پخش انجام نشد', 'بارگذاری فایل صوتی این قطعه ممکن نیست.');
+    }
+  };
+
+  const playAlbum = async (album: GraphAlbum) => {
+    const firstPlayableTrack = album.tracks.find((track) => Boolean(track.audioUri));
+    if (!firstPlayableTrack) {
+      Alert.alert('فایل صوتی موجود نیست', 'هیچ قطعه‌ی قابل پخشی در این آلبوم ثبت نشده است.');
+      return;
+    }
+    await playGraphTrack(firstPlayableTrack, album.artistName ?? null);
   };
 
   return (
@@ -176,6 +216,8 @@ export default function GraphScreen() {
                         expanded={expanded[`album:${album.id}`]}
                         onPress={() => router.push(`/album/${album.id}`)}
                         onToggle={() => toggle(`album:${album.id}`)}
+                        onLongPress={() => void playAlbum(album)}
+                        onTrackLongPress={(track) => void playGraphTrack(track, artist.name)}
                         colors={colors}
                         styles={styles}
                       />
@@ -194,6 +236,8 @@ export default function GraphScreen() {
                     expanded={expanded[`album:${album.id}`]}
                     onPress={() => router.push(`/album/${album.id}`)}
                     onToggle={() => toggle(`album:${album.id}`)}
+                    onLongPress={() => void playAlbum(album)}
+                    onTrackLongPress={(track) => void playGraphTrack(track)}
                     colors={colors}
                     styles={styles}
                   />
@@ -206,7 +250,10 @@ export default function GraphScreen() {
                 {unassignedTracks.map((track) => (
                   <Pressable
                     key={track.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`پخش ${track.title}`}
                     onPress={() => router.push(`/track/${track.id}`)}
+                    onLongPress={() => void playGraphTrack(track)}
                     style={({ pressed }) => [styles.trackNode, pressed && styles.pressed]}
                   >
                     <Feather name="music" size={17} color={colors.primary} />
@@ -245,6 +292,7 @@ function NodeHeader({
   expanded,
   onPress,
   onToggle,
+  onLongPress,
   colors,
   styles,
 }: {
@@ -254,6 +302,7 @@ function NodeHeader({
   expanded?: boolean;
   onPress: () => void;
   onToggle?: () => void;
+  onLongPress?: () => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
@@ -273,6 +322,7 @@ function NodeHeader({
       <Pressable
         accessibilityRole="button"
         onPress={onPress}
+        onLongPress={onLongPress}
         style={({ pressed }) => [styles.nodeButton, pressed && styles.pressed]}
       >
         <View style={styles.nodeIcon}><Feather name={icon} size={18} color={colors.primary} /></View>
@@ -291,6 +341,8 @@ function AlbumBranch({
   expanded,
   onPress,
   onToggle,
+  onLongPress,
+  onTrackLongPress,
   colors,
   styles,
 }: {
@@ -298,6 +350,8 @@ function AlbumBranch({
   expanded?: boolean;
   onPress: () => void;
   onToggle: () => void;
+  onLongPress: () => void;
+  onTrackLongPress: (track: TrackRecord) => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
@@ -310,6 +364,7 @@ function AlbumBranch({
         expanded={expanded}
         onPress={onPress}
         onToggle={album.tracks.length ? onToggle : undefined}
+        onLongPress={onLongPress}
         colors={colors}
         styles={styles}
       />
@@ -319,6 +374,7 @@ function AlbumBranch({
             <Pressable
               key={track.id}
               onPress={() => router.push(`/track/${track.id}`)}
+              onLongPress={() => onTrackLongPress(track)}
               style={({ pressed }) => [styles.trackNode, pressed && styles.pressed]}
             >
               <Feather name="music" size={16} color={colors.accentForeground} />
