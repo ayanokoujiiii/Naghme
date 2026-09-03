@@ -2,3 +2,4 @@
 - [Expo static build port conflict](expo-build-port-conflict.md) — stop the mockup preview while the static Expo builder claims Metro port 8081.
 - [Music graph schema boundary](music-graph-schema-boundary.md) — seeded artist–album links stay outside SQLite until an explicit schema migration is planned.
 - [Gemini key ownership](gemini-key-ownership.md) — Naghme’s user-owned Gemini key is optional, local-only, and the local recommender must remain the fallback.
+- [Cover color extraction](cover-color-extraction.md) — native color extraction must be lazy and keep an image-parser fallback for Expo Go and web.

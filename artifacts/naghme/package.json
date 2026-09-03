@@ -66,6 +66,7 @@
     "@expo-google-fonts/rakkas": "^0.4.1",
     "@expo-google-fonts/tajawal": "^0.4.1",
     "@expo-google-fonts/vazirmatn": "^0.4.1",
+    "@react-native-community/slider": "5.0.1",
     "expo-av": "~16.0.8",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
@@ -75,6 +76,7 @@
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "^16.0.10",
     "fflate": "^0.8.3",
+    "react-native-image-colors": "2.6.0",
     "react-native-view-shot": "4.0.3",
     "zustand": "^5.0.15"
   }

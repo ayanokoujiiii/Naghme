@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -6,10 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  GestureResponderEvent,
   Image,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -32,8 +31,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { captureRef } from 'react-native-view-shot';
+import { studioPalette } from '@/constants/colors';
 import { useColors } from '@/hooks/useColors';
-import { withAlpha } from '@/src/player/coverColors';
+import { getDominantCoverColor, withAlpha } from '@/src/player/coverColors';
 
 interface PostcardStudioProps {
   visible: boolean;
@@ -122,22 +122,6 @@ const menuOptions: Array<{
   { value: 'filters', label: 'فیلترها', icon: 'layers' },
 ];
 
-const elegantPalette = [
-  '#F6F0E8',
-  '#E5A35D',
-  '#C96B4B',
-  '#9E4F43',
-  '#6F303A',
-  '#493047',
-  '#263D4A',
-  '#315A5A',
-  '#496A57',
-  '#78845A',
-  '#B9A77B',
-  '#242020',
-  '#151A24',
-] as const;
-type PickerTarget = 'text' | 'background' | null;
 type TextSubMenu = 'color' | 'font' | 'alignment' | 'size';
 type BackgroundSubMenu = 'type' | 'colors' | 'settings';
 
@@ -174,9 +158,7 @@ export function PostcardStudio({
   const [textSize, setTextSize] = useState<number>(18);
   const [customStickers, setCustomStickers] = useState<CustomSticker[]>([]);
   const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
-  const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
-  const [pickerHex, setPickerHex] = useState<string>('#F6F0E8');
-  const [pickerError, setPickerError] = useState<string>('');
+  const [coverColorLoading, setCoverColorLoading] = useState<boolean>(false);
   const [activeFilters, setActiveFilters] = useState<FilterName[]>([]);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('jpg');
   const [saving, setSaving] = useState<boolean>(false);
@@ -219,9 +201,6 @@ export function PostcardStudio({
     setTextSize(18);
     setCustomStickers([]);
     setActiveStickerId(null);
-    setPickerTarget(null);
-    setPickerHex('#F6F0E8');
-    setPickerError('');
     setActiveFilters([]);
     setExportFormat('jpg');
   }, [lyrics, visible]);
@@ -300,27 +279,55 @@ export function PostcardStudio({
     );
   };
 
-  const openColorPicker = (target: Exclude<PickerTarget, null>) => {
-    const currentColor = target === 'text' ? textColor : solidBackground;
-    setPickerHex(currentColor);
-    setPickerError('');
-    setPickerTarget(target);
-  };
-
-  const applyPickerColor = () => {
-    const hex = normalizeHex(pickerHex);
-    if (!hex) {
-      setPickerError('کد رنگ باید به شکل #FFFFFF باشد.');
-      return;
-    }
-    if (pickerTarget === 'text') {
-      setTextColor(hex);
-    } else if (pickerTarget === 'background') {
-      setSolidBackground(hex);
+  const applyPaletteColor = (target: 'text' | 'background', color: string) => {
+    if (target === 'text') {
+      setTextColor(color);
+    } else {
+      setSolidBackground(color);
       setBackgroundKind('solid');
     }
-    setPickerError('');
-    setPickerTarget(null);
+  };
+
+  const applyCoverColor = async (target: 'text' | 'background') => {
+    if (!coverImage) {
+      showToast('برای استخراج رنگ، این قطعه باید کاور داشته باشد.');
+      return;
+    }
+    if (coverColorLoading) return;
+
+    setCoverColorLoading(true);
+    try {
+      let extractedColor: string | null = null;
+      try {
+        const { getColors } = await import('react-native-image-colors');
+        const result = await getColors(coverImage, {
+          fallback: studioPalette[0],
+          cache: true,
+          key: coverImage,
+        });
+        const candidate =
+          result.platform === 'ios'
+            ? result.background || result.primary
+            : result.platform === 'android'
+              ? result.dominant || result.average
+              : result.dominant;
+        extractedColor = normalizeHex(candidate);
+      } catch {
+        // Expo Go may not include this native module; use the local image parser below.
+      }
+
+      if (!extractedColor) {
+        extractedColor = normalizeHex(await getDominantCoverColor(coverImage, studioPalette[0]));
+      }
+      if (!extractedColor) throw new Error('No usable cover color was returned.');
+      applyPaletteColor(target, extractedColor);
+      showToast('رنگ شاخص کاور اعمال شد.');
+    } catch (error: unknown) {
+      console.error('[Naghme cover color extraction failed]', error);
+      showToast('استخراج رنگ کاور انجام نشد؛ یک رنگ از پالت انتخاب کن.');
+    } finally {
+      setCoverColorLoading(false);
+    }
   };
 
   const applyCustomDimensions = () => {
@@ -346,7 +353,7 @@ export function PostcardStudio({
 
     setSaving(true);
     try {
-      console.error('[Naghme postcard export] requesting media-library permission');
+      console.log('[Naghme postcard export] requesting media-library permission');
       const { status } = await MediaLibrary.requestPermissionsAsync(true);
       if (status !== 'granted') {
         showToast(
@@ -354,7 +361,7 @@ export function PostcardStudio({
         );
         return;
       }
-      console.error('[Naghme postcard export] permission granted; capturing canvas', {
+      console.log('[Naghme postcard export] permission granted; capturing canvas', {
         format: exportFormat,
         width: postcardWidth,
         height: postcardHeight,
@@ -364,9 +371,9 @@ export function PostcardStudio({
         quality: 1.0,
         result: 'tmpfile',
       });
-      console.error('[Naghme postcard export] capture complete', uri);
+      console.log('[Naghme postcard export] capture complete', uri);
       await MediaLibrary.saveToLibraryAsync(uri);
-      console.error('[Naghme postcard export] saved to library');
+      console.log('[Naghme postcard export] saved to library');
       showToast(`عکس‌نوشته با فرمت ${exportFormat.toUpperCase()} ذخیره شد.`);
     } catch (error: unknown) {
       console.error('[Naghme postcard export] failed', error);
@@ -635,45 +642,26 @@ export function PostcardStudio({
                         </ScrollView>
                       ) : null}
                       {backgroundSubMenu === 'colors' ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteOptions}>
-                          {elegantPalette.map((color) => (
-                            <Pressable
-                              key={color}
-                              testID={`postcard-color-${color}`}
-                              accessibilityRole="button"
-                              accessibilityLabel="انتخاب رنگ پس‌زمینه"
-                              onPress={() => {
-                                setSolidBackground(color);
-                                setBackgroundKind('solid');
-                              }}
-                              style={[
-                                styles.colorOption,
-                                { backgroundColor: color },
-                                solidBackground === color && styles.colorOptionSelected,
-                              ]}
-                            />
-                          ))}
-                          <Pressable
-                            testID="postcard-background-custom-color"
-                            accessibilityRole="button"
-                              onPress={() => openColorPicker('background')}
-                            style={styles.customColorButton}
-                          >
-                            <Feather name="sliders" size={15} color={colors.primary} />
-                            <Text style={styles.customColorLabel}>سفارشی</Text>
-                          </Pressable>
-                        </ScrollView>
+                        <ColorPalette
+                          target="background"
+                          selectedColor={solidBackground}
+                          onSelect={(color) => applyPaletteColor('background', color)}
+                          onCoverColor={() => void applyCoverColor('background')}
+                          coverColorLoading={coverColorLoading}
+                          colors={colors}
+                          styles={styles}
+                        />
                       ) : null}
                       {backgroundSubMenu === 'settings' ? (
                         <StudioSlider
                           value={blurRadius}
                           min={0}
                           max={50}
-                          step={1}
+                          step={0.01}
                           onChange={setBlurRadius}
                           title="تاری پس‌زمینه"
                           caption="تصویر را واضح یا نرم کن"
-                          valueLabel={blurRadius === 0 ? 'خاموش' : `${blurRadius} / ۵۰`}
+                          valueLabel={(value) => value === 0 ? 'خاموش' : `${value.toFixed(2)} / ۵۰`}
                           colors={colors}
                           styles={styles}
                         />
@@ -695,29 +683,15 @@ export function PostcardStudio({
                         styles={styles}
                       />
                       {textSubMenu === 'color' ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paletteOptions}>
-                          {elegantPalette.map((color) => (
-                            <Pressable
-                              key={`text-${color}`}
-                              testID={`postcard-text-color-${color}`}
-                              accessibilityRole="button"
-                              accessibilityLabel="انتخاب رنگ متن"
-                              onPress={() => {
-                                setTextColor(color);
-                              }}
-                              style={[styles.colorOption, { backgroundColor: color }]}
-                            />
-                          ))}
-                          <Pressable
-                            testID="postcard-text-custom-color"
-                            accessibilityRole="button"
-                              onPress={() => openColorPicker('text')}
-                            style={styles.customColorButton}
-                          >
-                            <Feather name="sliders" size={15} color={colors.primary} />
-                            <Text style={styles.customColorLabel}>سفارشی</Text>
-                          </Pressable>
-                        </ScrollView>
+                        <ColorPalette
+                          target="text"
+                          selectedColor={textColor}
+                          onSelect={(color) => applyPaletteColor('text', color)}
+                          onCoverColor={() => void applyCoverColor('text')}
+                          coverColorLoading={coverColorLoading}
+                          colors={colors}
+                          styles={styles}
+                        />
                       ) : null}
                       {textSubMenu === 'font' ? (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.panelOptions}>
@@ -766,7 +740,7 @@ export function PostcardStudio({
                           onChange={setTextSize}
                           title="اندازه متن"
                           caption="شعر را کوچک یا بزرگ کن"
-                          valueLabel={`${textSize}px`}
+                          valueLabel={(value) => `${Math.round(value)}px`}
                           colors={colors}
                           styles={styles}
                         />
@@ -828,7 +802,7 @@ export function PostcardStudio({
                                 value={activeSticker.opacity}
                                 min={0.1}
                                 max={1}
-                                step={0.05}
+                                step={0.01}
                                 onChange={(value) =>
                                   setCustomStickers((current) =>
                                     current.map((item) => (item.id === activeSticker.id ? { ...item, opacity: value } : item)),
@@ -836,7 +810,7 @@ export function PostcardStudio({
                                 }
                                 title="شفافیت"
                                 caption="شدت دیده‌شدن استیکر"
-                                valueLabel={`${Math.round(activeSticker.opacity * 100)}٪`}
+                                valueLabel={(value) => `${Math.round(value * 100)}٪`}
                                 colors={colors}
                                 styles={styles}
                               />
@@ -844,7 +818,7 @@ export function PostcardStudio({
                                 value={activeSticker.borderRadius}
                                 min={0}
                                 max={100}
-                                step={1}
+                                step={0.01}
                                 onChange={(value) =>
                                   setCustomStickers((current) =>
                                     current.map((item) => (item.id === activeSticker.id ? { ...item, borderRadius: value } : item)),
@@ -852,7 +826,7 @@ export function PostcardStudio({
                                 }
                                 title="گردی گوشه‌ها"
                                 caption="لبه‌های استیکر را نرم کن"
-                                valueLabel={`${Math.round(activeSticker.borderRadius)}px`}
+                                valueLabel={(value) => `${Math.round(value)}px`}
                                 colors={colors}
                                 styles={styles}
                               />
@@ -970,20 +944,6 @@ export function PostcardStudio({
             <Text style={styles.toastText}>{toastMessage}</Text>
           </Animated.View>
         ) : null}
-        <HexColorModal
-          visible={pickerTarget !== null}
-          title={pickerTarget === 'background' ? 'رنگ سفارشی پس‌زمینه' : 'رنگ سفارشی متن'}
-          value={pickerHex}
-          onChangeText={(value) => {
-            setPickerHex(value);
-            setPickerError('');
-          }}
-          onClose={() => setPickerTarget(null)}
-          onApply={applyPickerColor}
-          error={pickerError}
-          colors={colors}
-          styles={styles}
-        />
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -1149,6 +1109,63 @@ function DraggableSticker({
   );
 }
 
+function ColorPalette({
+  target,
+  selectedColor,
+  onSelect,
+  onCoverColor,
+  coverColorLoading,
+  colors,
+  styles,
+}: {
+  target: 'text' | 'background';
+  selectedColor: string;
+  onSelect: (color: string) => void;
+  onCoverColor: () => void;
+  coverColorLoading: boolean;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.paletteOptions}
+    >
+      <Pressable
+        testID={`postcard-${target}-cover-color`}
+        accessibilityRole="button"
+        accessibilityLabel="استخراج رنگ از کاور"
+        disabled={coverColorLoading}
+        onPress={onCoverColor}
+        style={({ pressed }) => [styles.coverColorButton, pressed && styles.pressed]}
+      >
+        {coverColorLoading ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Feather name="image" size={14} color={colors.primary} />
+        )}
+        <Text style={styles.customColorLabel}>رنگ کاور</Text>
+      </Pressable>
+      {studioPalette.map((color) => (
+        <Pressable
+          key={`${target}-${color}`}
+          testID={`postcard-${target === 'text' ? 'text-' : ''}color-${color}`}
+          accessibilityRole="button"
+          accessibilityLabel={target === 'text' ? 'انتخاب رنگ متن' : 'انتخاب رنگ پس‌زمینه'}
+          accessibilityState={{ selected: selectedColor === color }}
+          onPress={() => onSelect(color)}
+          style={[
+            styles.colorOption,
+            { backgroundColor: color },
+            selectedColor === color && styles.colorOptionSelected,
+          ]}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
 function ChoiceOption({
   testID,
   label,
@@ -1198,46 +1215,43 @@ function StudioSlider({
   value: number;
   min: number;
   max: number;
-  step: number;
+  step?: number;
   onChange: (value: number) => void;
   title: string;
   caption: string;
-  valueLabel: string;
+  valueLabel: string | ((value: number) => string);
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const [trackWidth, setTrackWidth] = useState<number>(1);
-  const updateValue = (event: GestureResponderEvent) => {
-    const position = Math.min(1, Math.max(0, event.nativeEvent.locationX / Math.max(trackWidth, 1)));
-    onChange(roundToStep(min + position * (max - min), step));
-  };
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: updateValue,
-        onPanResponderMove: updateValue,
-      }),
-    [max, min, onChange, step, trackWidth],
-  );
-  const position = Math.min(1, Math.max(0, (value - min) / Math.max(max - min, 1)));
+  const [localValue, setLocalValue] = useState<number>(value);
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
 
   return (
     <View style={styles.sliderRow}>
-      <Text style={styles.sliderValue}>{valueLabel}</Text>
+      <Text style={styles.sliderValue}>
+        {typeof valueLabel === 'function' ? valueLabel(localValue) : valueLabel}
+      </Text>
       <View style={styles.sliderCopy}>
         <Text style={styles.sliderTitle}>{title}</Text>
         <Text style={styles.sliderCaption}>{caption}</Text>
       </View>
-      <View
-        {...panResponder.panHandlers}
-        style={styles.sliderTrack}
-        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-      >
-        <View style={[styles.sliderFill, { width: `${position * 100}%` }]} />
-        <View style={[styles.sliderKnob, { left: `${position * 100}%`, backgroundColor: colors.primary }]} />
-      </View>
+      <Slider
+        style={styles.nativeSlider}
+        value={localValue}
+        minimumValue={min}
+        maximumValue={max}
+        step={step ?? 0.01}
+        minimumTrackTintColor={colors.primary}
+        maximumTrackTintColor={colors.secondary}
+        thumbTintColor={colors.primary}
+        onValueChange={setLocalValue}
+        onSlidingComplete={(nextValue) => {
+          setLocalValue(nextValue);
+          onChange(nextValue);
+        }}
+      />
     </View>
   );
 }
@@ -1276,82 +1290,6 @@ function SubMenuTabs<T extends string>({
         </Pressable>
       ))}
     </ScrollView>
-  );
-}
-
-function HexColorModal({
-  visible,
-  title,
-  value,
-  onChangeText,
-  onClose,
-  onApply,
-  error,
-  colors,
-  styles,
-}: {
-  visible: boolean;
-  title: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  onClose: () => void;
-  onApply: () => void;
-  error: string;
-  colors: ReturnType<typeof useColors>;
-  styles: ReturnType<typeof createStyles>;
-}) {
-  const previewColor = normalizeHex(value) ?? colors.secondary;
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.colorModalBackdrop}>
-        <View style={styles.colorModalCard}>
-          <View style={styles.colorModalHeader}>
-            <Pressable
-              testID="postcard-color-wheel-close"
-              accessibilityRole="button"
-              accessibilityLabel="بستن انتخاب‌گر رنگ"
-              onPress={onClose}
-              style={styles.colorModalClose}
-            >
-              <Feather name="x" size={18} color={colors.foreground} />
-            </Pressable>
-            <Text style={styles.colorModalTitle}>{title}</Text>
-          </View>
-          <View style={styles.hexInputRow}>
-            <View style={[styles.hexPreview, { backgroundColor: previewColor }]} />
-            <TextInput
-              testID="postcard-color-hex-input"
-              value={value}
-              onChangeText={onChangeText}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={7}
-              keyboardType="default"
-              placeholder="#FFFFFF"
-              placeholderTextColor={colors.mutedForeground}
-              selectionColor={colors.primary}
-              style={styles.hexInput}
-            />
-          </View>
-          {error ? <Text style={styles.hexError}>{error}</Text> : null}
-          <Text style={styles.hexHint}>کد رنگ شش‌رقمی را وارد کن.</Text>
-          <Pressable
-            testID="postcard-color-hex-apply"
-            accessibilityRole="button"
-            onPress={onApply}
-            style={({ pressed }) => [styles.colorModalApply, pressed && styles.pressed]}
-          >
-            <Text style={styles.colorModalApplyText}>اعمال</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -1492,7 +1430,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     colorOption: { width: 34, height: 34, borderRadius: 17, borderWidth: 2, borderColor: colors.border, marginHorizontal: 4 },
     colorOptionSelected: { borderWidth: 3, borderColor: colors.primary },
     paletteOptions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 12 },
-    customColorButton: { minWidth: 68, height: 38, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.accent },
+    coverColorButton: { minWidth: 76, height: 38, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 9, borderRadius: 12, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.accent },
     customColorLabel: { color: colors.primary, fontSize: 10, fontWeight: '700' },
     dimensionEditor: { paddingHorizontal: 12, gap: 7 },
     dimensionTitle: { color: colors.foreground, fontSize: 11, fontWeight: '700', textAlign: 'right' },
@@ -1506,14 +1444,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     sliderTitle: { color: colors.foreground, fontSize: 11, fontWeight: '700', textAlign: 'right' },
     sliderCaption: { color: colors.mutedForeground, fontSize: 9, textAlign: 'right', marginTop: 2 },
     sliderValue: { minWidth: 44, color: colors.primary, fontSize: 10, fontWeight: '700', textAlign: 'center' },
-    sliderTrack: { flex: 1, height: 25, justifyContent: 'center', position: 'relative', borderRadius: 12 },
-    sliderFill: { position: 'absolute', left: 0, height: 5, borderRadius: 5, backgroundColor: colors.primary },
-    sliderKnob: { position: 'absolute', top: 5, width: 15, height: 15, borderRadius: 8, marginLeft: -7, borderWidth: 2, borderColor: colors.primaryForeground },
-    hexInputRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-    hexPreview: { width: 48, height: 48, borderRadius: 14, borderWidth: 2, borderColor: colors.border },
-    hexInput: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary, color: colors.foreground, paddingHorizontal: 14, textAlign: 'left', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
-    hexHint: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right' },
-    hexError: { color: colors.destructive, fontSize: 10, textAlign: 'right' },
+    nativeSlider: { flex: 1, height: 36 },
     fontOption: { minWidth: 78, minHeight: 51, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 11, paddingHorizontal: 7 },
     fontSample: { color: colors.foreground, fontSize: 17 },
     optionLabel: { color: colors.mutedForeground, fontSize: 10, textAlign: 'center' },
@@ -1543,13 +1474,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     saveButtonText: { color: colors.primaryForeground, fontSize: 14, fontWeight: '700' },
     toast: { position: 'absolute', left: 20, right: 20, bottom: 24, minHeight: 48, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary, shadowColor: colors.background, shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
     toastText: { color: colors.foreground, fontSize: 12, fontWeight: '600', textAlign: 'right' },
-    colorModalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.72)' },
-    colorModalCard: { width: '100%', maxWidth: 390, gap: 14, padding: 16, borderRadius: 24, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-    colorModalHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-    colorModalTitle: { flex: 1, color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
-    colorModalClose: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.secondary },
-    colorModalApply: { minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.primary },
-    colorModalApplyText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
     pressed: { opacity: 0.74 },
   });
 }

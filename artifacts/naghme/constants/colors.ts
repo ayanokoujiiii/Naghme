@@ -41,4 +41,26 @@ const colors = {
   radius: 16,
 };
 
+export const studioPalette = [
+  '#F6F0E8',
+  '#FAF7F2',
+  '#E5A35D',
+  '#D9C2A3',
+  '#C96B4B',
+  '#9E4F43',
+  '#6F303A',
+  '#B95D6A',
+  '#D98B88',
+  '#493047',
+  '#263D4A',
+  '#48698A',
+  '#315A5A',
+  '#496A57',
+  '#6B8F71',
+  '#78845A',
+  '#B9A77B',
+  '#242020',
+  '#151A24',
+] as const;
+
 export default colors;

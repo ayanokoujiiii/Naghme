@@ -1,0 +1,27 @@
+MASTER PROMPT: NAGHME - PHASE 14.9 (STUDIO POLISH: SLIDER JITTER, COLOR PALETTES & EXPORT LOG FIX)
+
+You are a Senior React Native Architect. The user QA tested Phase 14.8. The export works, but the AI mistakenly used `console.error` to log SUCCESS messages, causing Expo Go's Red Screen of Death on successful saves. Furthermore, the UI sliders jitter terribly due to render-thrashing, and the Hex color input is not user-friendly.
+
+CRITICAL RULES:
+1. Native Android priority.
+2. NEVER use `console.error` for success logs.
+3. Prevent render-thrashing on Sliders by using `onSlidingComplete` for heavy UI updates.
+
+PHASE 14.9 OBJECTIVES TO IMPLEMENT:
+
+1. Fix the Fake "Export Errors":
+- Look at `savePostcard` in `PostcardStudio.tsx`.
+- You are currently using `console.error` to log "[Naghme postcard export] capture complete" and "[Naghme postcard export] saved to library".
+- **FIX:** Change ALL of these success logs to `console.log`. Only use `console.error` strictly inside the `catch (error)` block. Ensure a simple success `Toast` or `Alert` is shown to the user without triggering the Expo error overlay.
+
+2. Fix Slider Jitter & Precision (Render-Thrashing):
+- **Issue:** Sliding Opacity, Blur, or Radius causes extreme jitter because it triggers a full heavy re-render on every millimeter of movement.
+- **Fix:** Use `@react-native-community/slider`. Set `step={0.01}` for fine precision.
+- **Architecture:** Use a lightweight local state for the slider's visual thumb position (updated via `onValueChange`), but ONLY update the heavy parent component state (Blur/Radius/Opacity applied to the actual images) using the `onSlidingComplete` prop. This ensures the slider thumb moves smoothly at 60fps without thrashing the canvas renderer.
+
+3. User-Friendly Color Palettes (No Hex Typing):
+- Remove the raw Hex `<TextInput>` as the primary color picking method.
+- **Implementation:** Build a horizontal `ScrollView` containing 15-20 predefined elegant circular color swatches (e.g., White, Off-White, Black, Gold, Sepia, Navy, Crimson, Forest Green, Pastel variations).
+- **Smart Color Pick (استخراج از کاور):** Add a special button at the beginning of the palette called "رنگ کاور" (Cover Colors). When pressed, use `expo-image-colors` to extract the dominant/average colors from the track's `coverImage` and apply it to the Text or Background.
+
+ACTION: Execute these 3 surgical polishes. 1. Remove `console.error` for success logs. 2. Implement `onSlidingComplete` for smooth sliders. 3. Replace the Hex input with an elegant predefined palette and a "Smart Cover Color" button. Test slider smoothness heavily.
