@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Platform,
@@ -17,7 +18,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   runOnJS,
@@ -151,12 +152,14 @@ export function PostcardStudio({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const shotRef = useRef<View | null>(null);
+  const canvasRef = useRef<View | null>(null);
   const [step, setStep] = useState<StudioStep>('selector');
   const [selectedLyrics, setSelectedLyrics] = useState<string>(lyrics);
   const [ratio, setRatio] = useState<CanvasRatio>('portrait');
   const [customWidth, setCustomWidth] = useState<string>('1080');
   const [customHeight, setCustomHeight] = useState<string>('1350');
+  const [tempWidth, setTempWidth] = useState<string>('1080');
+  const [tempHeight, setTempHeight] = useState<string>('1350');
   const [activeMenu, setActiveMenu] = useState<StudioMenu>(null);
   const [textSubMenu, setTextSubMenu] = useState<TextSubMenu>('color');
   const [backgroundSubMenu, setBackgroundSubMenu] = useState<BackgroundSubMenu>('type');
@@ -169,6 +172,7 @@ export function PostcardStudio({
   const [hue, setHue] = useState<number>(30);
   const [saturation, setSaturation] = useState<number>(0.42);
   const [brightness, setBrightness] = useState<number>(0.96);
+  const [textColor, setTextColor] = useState<string>(hsvToHex(30, 0.42, 0.96));
   const [customStickers, setCustomStickers] = useState<CustomSticker[]>([]);
   const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
@@ -176,6 +180,7 @@ export function PostcardStudio({
   const [exportFormat, setExportFormat] = useState<ExportFormat>('jpg');
   const [saving, setSaving] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string>('');
+  const pickerValues = useRef({ hue: 30, saturation: 0.42, brightness: 0.96 });
   const toastProgress = useSharedValue(0);
   const postcardWidth = Math.min(Math.max(width - 32, 280), 360);
   const customWidthNumber = Math.min(4096, Math.max(120, Number.parseInt(customWidth, 10) || 1080));
@@ -185,7 +190,6 @@ export function PostcardStudio({
       ? { value: 'custom' as const, label: 'سفارشی', caption: `${customWidthNumber} × ${customHeightNumber}`, ratio: customWidthNumber / customHeightNumber }
       : ratioOptions.find((item) => item.value === ratio) ?? ratioOptions[1];
   const postcardHeight = postcardWidth / selectedRatio.ratio;
-  const selectedTextColor = hsvToHex(hue, saturation, brightness);
   const backgroundUri =
     backgroundKind === 'custom' ? customBackgroundUri : backgroundKind === 'cover' ? coverImage : null;
 
@@ -201,6 +205,8 @@ export function PostcardStudio({
     setRatio('portrait');
     setCustomWidth('1080');
     setCustomHeight('1350');
+    setTempWidth('1080');
+    setTempHeight('1350');
     setActiveMenu(null);
     setTextSubMenu('color');
     setBackgroundSubMenu('type');
@@ -212,6 +218,8 @@ export function PostcardStudio({
     setHue(30);
     setSaturation(0.42);
     setBrightness(0.96);
+    setTextColor(hsvToHex(30, 0.42, 0.96));
+    pickerValues.current = { hue: 30, saturation: 0.42, brightness: 0.96 };
     setCustomStickers([]);
     setActiveStickerId(null);
     setPickerTarget(null);
@@ -293,6 +301,31 @@ export function PostcardStudio({
     );
   };
 
+  const openColorPicker = (target: Exclude<PickerTarget, null>) => {
+    const currentColor = target === 'text' ? textColor : solidBackground;
+    const next = hexToHsv(currentColor);
+    pickerValues.current = next;
+    setHue(next.hue);
+    setSaturation(next.saturation);
+    setBrightness(next.brightness);
+    setPickerTarget(target);
+  };
+
+  const applyPickerColor = (nextHue = hue, nextSaturation = saturation, nextBrightness = brightness) => {
+    const hex = hsvToHex(nextHue, nextSaturation, nextBrightness);
+    if (pickerTarget === 'text') {
+      setTextColor(hex);
+    } else if (pickerTarget === 'background') {
+      setSolidBackground(hex);
+      setBackgroundKind('solid');
+    }
+  };
+
+  const applyCustomDimensions = () => {
+    setCustomWidth(tempWidth);
+    setCustomHeight(tempHeight);
+  };
+
   const savePostcard = async () => {
     if (saving) return;
     if (!selectedLyrics.trim()) {
@@ -303,7 +336,7 @@ export function PostcardStudio({
       showToast('ذخیره در گالری روی نسخه‌ی وب در دسترس نیست.');
       return;
     }
-    const target = shotRef.current;
+    const target = canvasRef.current;
     if (!target) {
       showToast('بوم عکس‌نوشته آماده نیست.');
       return;
@@ -312,12 +345,10 @@ export function PostcardStudio({
     setSaving(true);
     try {
       console.error('[Naghme postcard export] requesting media-library permission');
-      const permission = await MediaLibrary.requestPermissionsAsync();
-      if (!permission.granted) {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
         showToast(
-          permission.canAskAgain
-            ? 'برای ذخیره، اجازه‌ی دسترسی به گالری لازم است.'
-            : 'دسترسی گالری رد شده است؛ آن را از تنظیمات فعال کن.',
+          'برای ذخیره، اجازه‌ی دسترسی به گالری لازم است.',
         );
         return;
       }
@@ -337,6 +368,8 @@ export function PostcardStudio({
       showToast(`عکس‌نوشته با فرمت ${exportFormat.toUpperCase()} ذخیره شد.`);
     } catch (error: unknown) {
       console.error('[Naghme postcard export] failed', error);
+      const message = error instanceof Error ? error.message : 'خطای ناشناخته‌ای رخ داد.';
+      Alert.alert('خطا در ذخیره', message);
       showToast('ذخیره‌ی عکس‌نوشته انجام نشد.');
     } finally {
       setSaving(false);
@@ -353,7 +386,8 @@ export function PostcardStudio({
       presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <View style={styles.screen}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={styles.screen}>
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>استودیو شعر / نسخه‌ی Canva</Text>
@@ -433,7 +467,7 @@ export function PostcardStudio({
             </View>
 
             <View
-              ref={shotRef}
+              ref={canvasRef}
               collapsable={false}
               testID="postcard-capture-canvas"
               style={[styles.postcard, backgroundStyle, { width: postcardWidth, height: postcardHeight }]}
@@ -471,7 +505,7 @@ export function PostcardStudio({
                     title={title}
                     artistName={artistName}
                     lyrics={selectedLyrics}
-                    textColor={selectedTextColor}
+                    textColor={textColor}
                     textStyle={textStyle}
                     alignment={alignment}
                     width={postcardWidth - 68}
@@ -520,8 +554,8 @@ export function PostcardStudio({
                           <View style={styles.dimensionInputs}>
                             <TextInput
                               testID="postcard-custom-width"
-                              value={customWidth}
-                              onChangeText={setCustomWidth}
+                              value={tempWidth}
+                              onChangeText={setTempWidth}
                               keyboardType="number-pad"
                               placeholder="عرض"
                               placeholderTextColor={colors.mutedForeground}
@@ -529,14 +563,22 @@ export function PostcardStudio({
                             />
                             <TextInput
                               testID="postcard-custom-height"
-                              value={customHeight}
-                              onChangeText={setCustomHeight}
+                              value={tempHeight}
+                              onChangeText={setTempHeight}
                               keyboardType="number-pad"
                               placeholder="ارتفاع"
                               placeholderTextColor={colors.mutedForeground}
                               style={styles.dimensionInput}
                             />
                           </View>
+                          <Pressable
+                            testID="postcard-apply-dimensions"
+                            accessibilityRole="button"
+                            onPress={applyCustomDimensions}
+                            style={({ pressed }) => [styles.dimensionApplyButton, pressed && styles.pressed]}
+                          >
+                            <Text style={styles.dimensionApplyText}>اعمال</Text>
+                          </Pressable>
                           <Text style={styles.dimensionCaption}>عرض و ارتفاع بر حسب واحد طراحی وارد می‌شود.</Text>
                         </View>
                       ) : null}
@@ -611,7 +653,7 @@ export function PostcardStudio({
                           <Pressable
                             testID="postcard-background-custom-color"
                             accessibilityRole="button"
-                            onPress={() => setPickerTarget('background')}
+                              onPress={() => openColorPicker('background')}
                             style={styles.customColorButton}
                           >
                             <Feather name="sliders" size={15} color={colors.primary} />
@@ -661,6 +703,7 @@ export function PostcardStudio({
                                 setHue(next.hue);
                                 setSaturation(next.saturation);
                                 setBrightness(next.brightness);
+                                setTextColor(color);
                               }}
                               style={[styles.colorOption, { backgroundColor: color }]}
                             />
@@ -668,7 +711,7 @@ export function PostcardStudio({
                           <Pressable
                             testID="postcard-text-custom-color"
                             accessibilityRole="button"
-                            onPress={() => setPickerTarget('text')}
+                              onPress={() => openColorPicker('text')}
                             style={styles.customColorButton}
                           >
                             <Feather name="sliders" size={15} color={colors.primary} />
@@ -919,21 +962,35 @@ export function PostcardStudio({
           hue={hue}
           saturation={saturation}
           brightness={brightness}
-          onHueChange={setHue}
-          onSaturationChange={setSaturation}
-          onBrightnessChange={setBrightness}
+          onHueChange={(next) => {
+            pickerValues.current.hue = next;
+            setHue(next);
+            applyPickerColor(next, pickerValues.current.saturation, pickerValues.current.brightness);
+          }}
+          onSaturationChange={(next) => {
+            pickerValues.current.saturation = next;
+            setSaturation(next);
+            applyPickerColor(pickerValues.current.hue, next, pickerValues.current.brightness);
+          }}
+          onBrightnessChange={(next) => {
+            pickerValues.current.brightness = next;
+            setBrightness(next);
+            applyPickerColor(pickerValues.current.hue, pickerValues.current.saturation, next);
+          }}
           onClose={() => setPickerTarget(null)}
           onApply={() => {
-            if (pickerTarget === 'background') {
-              setSolidBackground(hsvToHex(hue, saturation, brightness));
-              setBackgroundKind('solid');
-            }
+            applyPickerColor(
+              pickerValues.current.hue,
+              pickerValues.current.saturation,
+              pickerValues.current.brightness,
+            );
             setPickerTarget(null);
           }}
           colors={colors}
           styles={styles}
         />
-      </View>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -1072,9 +1129,9 @@ function DraggableSticker({
           animatedStyle,
         ]}
       >
-        <Image
+        <Animated.Image
           source={{ uri }}
-          style={[styles.customStickerImage, { borderRadius }]}
+          style={[styles.customStickerImage, { opacity, borderRadius }]}
           resizeMode="contain"
         />
       </Animated.View>
@@ -1566,6 +1623,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     dimensionTitle: { color: colors.foreground, fontSize: 11, fontWeight: '700', textAlign: 'right' },
     dimensionInputs: { flexDirection: 'row-reverse', gap: 8 },
     dimensionInput: { flex: 1, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary, color: colors.foreground, paddingHorizontal: 12, textAlign: 'right', fontSize: 13 },
+    dimensionApplyButton: { minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: colors.primary },
+    dimensionApplyText: { color: colors.primaryForeground, fontSize: 11, fontWeight: '700' },
     dimensionCaption: { color: colors.mutedForeground, fontSize: 9, textAlign: 'right' },
     sliderRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
     sliderCopy: { minWidth: 95, alignItems: 'flex-end' },
