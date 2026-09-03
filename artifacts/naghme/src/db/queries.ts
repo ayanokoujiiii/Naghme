@@ -156,7 +156,6 @@ export type PersonalRelationshipInput = Omit<
 > & {
   emotionalTags?: string | null;
   personalNote?: string | null;
-  listeningCount?: number;
 };
 
 function createId(prefix: string): string {
@@ -175,6 +174,14 @@ async function requireDatabase() {
 
 const TRACK_COLUMNS =
   'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName';
+// ListeningHistory is authoritative. The legacy relationship column remains
+// only for schema compatibility and is intentionally not used for runtime counts.
+const LISTENING_COUNT_JOIN = `
+  LEFT JOIN (
+    SELECT trackId, COUNT(*) AS listeningCount
+    FROM ListeningHistory
+    GROUP BY trackId
+  ) AS ListeningCounts ON ListeningCounts.trackId = Tracks.id`;
 
 export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
   const name = input.name.trim();
@@ -708,7 +715,7 @@ export async function getRecommendationTracks(): Promise<RecommendationTrack[]> 
        Tracks.versionName,
        Artists.name AS artistName,
        Albums.title AS albumTitle,
-       COALESCE(PersonalRelationships.listeningCount, 0) AS listeningCount,
+        COALESCE(ListeningCounts.listeningCount, 0) AS listeningCount,
        PersonalRelationships.rating,
        PersonalRelationships.personalNote,
        PersonalRelationships.favorite,
@@ -730,6 +737,7 @@ export async function getRecommendationTracks(): Promise<RecommendationTrack[]> 
      FROM Tracks
      LEFT JOIN Artists ON Artists.id = Tracks.artistId
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
+      ${LISTENING_COUNT_JOIN}
      LEFT JOIN PersonalRelationships
        ON PersonalRelationships.trackId = Tracks.id
      ORDER BY Tracks.title COLLATE NOCASE ASC`,
@@ -751,8 +759,19 @@ export async function getPersonalRelationship(
   const row = await database.getFirstAsync<
     Omit<PersonalRelationshipRecord, 'favorite'> & { favorite: number }
   >(
-    `SELECT trackId, rating, favorite, emotionalTags, personalNote, listeningCount
-     FROM PersonalRelationships WHERE trackId = ?`,
+    `SELECT
+       PersonalRelationships.trackId,
+       PersonalRelationships.rating,
+       PersonalRelationships.favorite,
+       PersonalRelationships.emotionalTags,
+       PersonalRelationships.personalNote,
+       (
+         SELECT COUNT(*)
+         FROM ListeningHistory
+         WHERE ListeningHistory.trackId = PersonalRelationships.trackId
+       ) AS listeningCount
+     FROM PersonalRelationships
+     WHERE PersonalRelationships.trackId = ?`,
     [trackId],
   );
   return row ? mapRelationship(row) : null;
@@ -768,21 +787,19 @@ export async function upsertPersonalRelationship(
   const database = await requireDatabase();
   await database.runAsync(
     `INSERT INTO PersonalRelationships
-       (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
-     VALUES (?, ?, ?, ?, ?, ?)
+       (trackId, rating, favorite, emotionalTags, personalNote)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(trackId) DO UPDATE SET
        rating = excluded.rating,
        favorite = excluded.favorite,
        emotionalTags = excluded.emotionalTags,
-       personalNote = excluded.personalNote,
-       listeningCount = excluded.listeningCount`,
+       personalNote = excluded.personalNote`,
     [
       input.trackId,
       input.rating,
       input.favorite ? 1 : 0,
       input.emotionalTags ?? null,
       input.personalNote ?? null,
-      input.listeningCount ?? 0,
     ],
   );
 

@@ -1,0 +1,500 @@
+We are now starting:
+
+# PHASE 02 — MUSIC DOMAIN FOUNDATION
+## STEP 01 — LISTENING DATA CONSISTENCY
+
+IMPORTANT PROJECT CONTEXT:
+
+Naghme is a personal digital music archive / museum-like music knowledge system.
+
+Its long-term goal is NOT to become a Spotify clone.
+
+The application should eventually represent:
+
+- musical works
+- recordings / performances
+- versions
+- artists
+- artistic roles
+- albums
+- credits
+- lyrics / poetry
+- sheet music
+- artwork / posters
+- sources
+- personal relationship with music
+- listening history
+- journal entries
+- relationships between musical entities
+- visual music graph
+- AI-assisted exploration
+
+However, we are implementing these capabilities gradually.
+
+DO NOT implement the future domain model in this step.
+
+This step has ONE purpose:
+
+Make listening-count data internally consistent.
+
+==================================================
+1. STRICT SCOPE
+==================================================
+
+In this step ONLY address the current inconsistency between:
+
+- ListeningHistory
+- PersonalRelationships.listeningCount
+- any code that reads or writes listeningCount
+
+Do NOT implement:
+
+- Work
+- Recording
+- Version
+- Role
+- Credit
+- AlbumCredits
+- AlbumTracks
+- Source
+- Artwork
+- Collection
+- ArtistRelationships
+- ListeningEvents
+- Person/Artist split
+- new recommendation architecture
+- new AI architecture
+- UI redesign
+- unrelated database changes
+
+Do not expand the scope.
+
+==================================================
+2. FIRST: INSPECT, DO NOT GUESS
+==================================================
+
+Before changing code, inspect the actual current implementation.
+
+Search the entire Naghme codebase for:
+
+- listeningCount
+- ListeningHistory
+- logListen
+- listenedAt
+- listening history queries
+- recommendation queries using listeningCount
+- statistics using listeningCount
+- chat/archive context using listeningCount
+- any code that increments, decrements, resets, or writes listeningCount
+- any code that displays listeningCount
+
+Create a short internal map of:
+
+1. where ListeningHistory is written
+2. where ListeningHistory is read
+3. where listeningCount is written
+4. where listeningCount is read
+5. which UI or business logic depends on each
+
+Do not assume the previous audit is complete.
+Verify the actual source code.
+
+==================================================
+3. DEFINE THE SOURCE OF TRUTH
+==================================================
+
+For the current architecture, use:
+
+ListeningHistory
+
+as the canonical source of truth for the number of listening events.
+
+Reason:
+
+ListeningHistory contains individual listening records.
+
+Therefore:
+
+listeningCount should represent the number of valid ListeningHistory records for that track.
+
+IMPORTANT:
+
+Do NOT introduce ListeningEvents in this step.
+
+Do NOT create a second event table.
+
+Do NOT migrate to a new event architecture yet.
+
+==================================================
+4. SAFELY HANDLE PersonalRelationships.listeningCount
+==================================================
+
+The existing database contains:
+
+PersonalRelationships.listeningCount
+
+Do NOT immediately delete the column.
+
+Do NOT recreate the table.
+
+Do NOT destroy existing data.
+
+First determine whether any current feature genuinely requires the stored column.
+
+Then choose the smallest safe implementation.
+
+Preferred direction:
+
+- ListeningHistory is authoritative.
+- Application-level listening counts should be derived from ListeningHistory.
+- Existing PersonalRelationships.listeningCount may remain temporarily for schema compatibility if removing it would be unsafe.
+- It must no longer become an independent source of truth.
+
+If practical and safe, update the data-access layer so that track listeningCount is derived using:
+
+COUNT(ListeningHistory rows)
+
+rather than trusting PersonalRelationships.listeningCount.
+
+If there are existing queries that depend on the stored value, replace them with derived counts where appropriate.
+
+Do NOT perform a destructive schema migration just to remove the old column.
+
+==================================================
+5. PRESERVE EXISTING HISTORY
+==================================================
+
+Existing ListeningHistory records are user data.
+
+Do NOT delete them.
+
+Do NOT deduplicate them.
+
+Do NOT merge records based on timestamps.
+
+Do NOT reinterpret them.
+
+If there are 20 history records, they remain 20 records.
+
+The purpose of this step is consistency, not historical cleanup.
+
+==================================================
+6. HANDLE EXISTING listeningCount VALUES
+==================================================
+
+There may already be inconsistent values in:
+
+PersonalRelationships.listeningCount
+
+Do NOT blindly overwrite all historical values without understanding the current data.
+
+Inspect the actual usage and migration implications.
+
+If the safest solution is to stop reading the stored value and derive the count from ListeningHistory, prefer that.
+
+If a compatibility synchronization is necessary, make it deterministic and document it clearly.
+
+Never invent historical listening events to make numbers match.
+
+Never delete ListeningHistory records to make numbers match.
+
+==================================================
+7. UPDATE BUSINESS LOGIC
+==================================================
+
+After identifying all usages, make sure the following use the canonical ListeningHistory count where appropriate:
+
+- library statistics
+- track statistics
+- recommendation inputs
+- chat/archive context
+- any listening-related UI
+- any sorting/filtering based on listening count
+
+Do not change unrelated recommendation logic.
+
+Do not redesign recommendation scoring.
+
+Only replace the source of the listening-count value where necessary.
+
+==================================================
+8. logListen
+==================================================
+
+Inspect the actual logListen implementation.
+
+The desired behavior is:
+
+When a listening event is recorded:
+
+1. insert one ListeningHistory record
+2. do not create a second independent count that can diverge
+3. future count queries should derive from ListeningHistory
+
+If the existing code writes both ListeningHistory and listeningCount, determine whether the second write is still necessary.
+
+Remove only the redundant write if it is safe.
+
+Do NOT introduce a new event architecture.
+
+==================================================
+9. DATABASE QUERY DESIGN
+==================================================
+
+Prefer efficient SQL aggregation where practical.
+
+For example, where appropriate:
+
+COUNT(ListeningHistory.id)
+
+grouped by track.
+
+Do not issue one separate query per track if a single query or efficient join can provide the counts.
+
+However:
+
+Do not over-engineer this.
+
+Use the existing database architecture and query style.
+
+Keep the implementation maintainable and understandable.
+
+==================================================
+10. PERSONAL RELATIONSHIP SEMANTICS
+==================================================
+
+Important distinction:
+
+PersonalRelationships represents the user's relationship with a track.
+
+Fields such as:
+
+- favorite
+- rating
+- emotionalTags
+- personalNote
+
+remain personal relationship data.
+
+The listening count is behavioral history data.
+
+Do not mix these concepts.
+
+Do not redesign PersonalRelationships in this step.
+
+==================================================
+11. UI
+==================================================
+
+Do not redesign the UI.
+
+Only make minimal changes if necessary so that an existing listening count displayed by the UI comes from the canonical ListeningHistory-derived value.
+
+Existing visual design must remain intact.
+
+==================================================
+12. TESTING
+==================================================
+
+Create the smallest practical verification for this change.
+
+At minimum verify the logic using representative data:
+
+Example:
+
+Track A:
+ListeningHistory = 5 records
+
+Expected listening count:
+5
+
+Track B:
+ListeningHistory = 0 records
+
+Expected listening count:
+0
+
+If PersonalRelationships.listeningCount contains:
+
+Track A = 1
+Track B = 99
+
+the application-level listening count must still resolve to:
+
+Track A = 5
+Track B = 0
+
+Do not alter the historical ListeningHistory records to achieve this.
+
+==================================================
+13. VERIFY EXISTING FEATURES
+==================================================
+
+Verify that these existing features still work:
+
+- Home statistics
+- recent/favorite tracks
+- search
+- track detail
+- recommendation
+- chat/archive context if applicable
+- listening history
+- player/logListen behavior
+
+Do not redesign these features.
+
+The only expected behavioral change is that listening-count information becomes consistent.
+
+==================================================
+14. DATABASE SAFETY
+==================================================
+
+Do NOT:
+
+- delete database
+- reset database
+- recreate tables
+- regenerate IDs
+- delete listening history
+- deduplicate listening history
+- invent listening events
+- introduce a new event table
+- modify unrelated schema
+- perform destructive migration
+
+Preserve all existing IDs and user data.
+
+==================================================
+15. MIGRATION REQUIREMENT
+==================================================
+
+If no schema change is required:
+
+Do NOT create a pointless migration.
+
+If a schema change is genuinely necessary:
+
+- use the existing migration system
+- increment the database version correctly
+- make the migration deterministic
+- preserve all existing data
+- make it idempotent
+- document exactly why it is necessary
+
+Do not change the backup format unless strictly necessary.
+
+==================================================
+16. TYPECHECK AND REGRESSION
+==================================================
+
+Run:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency validation if relevant
+- Metro startup
+- relevant existing route checks
+
+If tests can be added without introducing a large test framework, add small focused verification.
+
+Do not spend this step building a full testing infrastructure.
+
+==================================================
+17. FINAL REPORT
+==================================================
+
+Return:
+
+# PHASE 02 STEP 01 — LISTENING DATA CONSISTENCY REPORT
+
+## 1. Problem found
+Explain the actual inconsistency discovered in simple language.
+
+## 2. Code locations inspected
+List the important files and what each does.
+
+## 3. ListeningHistory usage
+Explain where it is written and read.
+
+## 4. listeningCount usage
+Explain where it was written and read.
+
+## 5. Source of truth
+Explicitly state what is now authoritative and why.
+
+## 6. Implementation changes
+List every changed file and explain the change.
+
+## 7. Database changes
+State clearly:
+- migration created or not
+- database version before/after
+- columns added/removed/changed
+- whether any records were modified
+
+## 8. Existing data preservation
+Explicitly confirm:
+- IDs preserved
+- ListeningHistory preserved
+- Journal preserved
+- PersonalRelationships preserved
+- no historical listening events invented
+- no history records deleted
+
+## 9. Feature verification
+Report results for:
+- Home statistics
+- recommendation
+- track detail
+- listening history
+- player/logListen
+- chat/archive context if applicable
+
+## 10. Tests
+Report exact results.
+
+## 11. Remaining limitations
+Only list real limitations.
+
+## 12. Next step recommendation
+Do NOT implement the next step automatically.
+
+Recommend the next logical step based on actual findings.
+
+==================================================
+18. IMPORTANT ACCURACY RULE
+==================================================
+
+Do not claim that something was tested if it was only inspected.
+
+Distinguish clearly between:
+
+- source-level verification
+- automated test
+- Web Preview
+- native Android test
+
+Do not invent test data results.
+
+If native SQLite is unavailable, say so.
+
+==================================================
+19. ARCHITECTURAL BOUNDARY
+==================================================
+
+Remember the larger Naghme roadmap.
+
+This step is ONLY about listening-count consistency.
+
+After this step we will separately address the structure of:
+
+- Albums
+- Works
+- Recordings / Versions
+- Roles
+- Credits
+
+Do not start those now.
+
+The goal is to make Naghme more structurally correct one controlled step at a time, not to implement the entire future architecture at once.

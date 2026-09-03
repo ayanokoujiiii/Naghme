@@ -34,8 +34,13 @@ const ARTIST_BACKUP_COLUMNS =
 const ALBUM_BACKUP_COLUMNS = 'id, title, releaseYear, coverImage';
 const TRACK_BACKUP_COLUMNS =
   'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName';
-const RELATIONSHIP_BACKUP_COLUMNS =
-  'trackId, rating, favorite, emotionalTags, personalNote, listeningCount';
+const RELATIONSHIP_BACKUP_COLUMNS = `
+  trackId, rating, favorite, emotionalTags, personalNote,
+  (
+    SELECT COUNT(*)
+    FROM ListeningHistory
+    WHERE ListeningHistory.trackId = PersonalRelationships.trackId
+  ) AS listeningCount`;
 const JOURNAL_BACKUP_COLUMNS = 'id, trackId, note, mood, createdAt';
 const HISTORY_BACKUP_COLUMNS = 'id, trackId, listenedAt';
 
@@ -197,21 +202,19 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     for (const relationship of backup.personalRelationships) {
       await database.runAsync(
         `INSERT INTO PersonalRelationships
-           (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (trackId, rating, favorite, emotionalTags, personalNote)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(trackId) DO UPDATE SET
            rating = excluded.rating,
            favorite = excluded.favorite,
            emotionalTags = excluded.emotionalTags,
-           personalNote = excluded.personalNote,
-           listeningCount = excluded.listeningCount`,
+           personalNote = excluded.personalNote`,
         [
           relationship.trackId,
           relationship.rating,
           relationship.favorite ? 1 : 0,
           relationship.emotionalTags,
           relationship.personalNote,
-          relationship.listeningCount,
         ],
       );
     }

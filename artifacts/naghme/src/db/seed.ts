@@ -321,15 +321,15 @@ export async function injectSampleData(): Promise<SeedResult> {
   // Keep personal edits intact when the sample button is pressed again.
   await database.runAsync(
     `INSERT OR IGNORE INTO PersonalRelationships
-       (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [SAMPLE_TRACK_IDS.tasnifBidad, 5, 1, 'نوستالژی، آرامش', 'اولین قطعه‌ای که در نغمه نگه داشتم.', 3],
+       (trackId, rating, favorite, emotionalTags, personalNote)
+     VALUES (?, ?, ?, ?, ?)`,
+    [SAMPLE_TRACK_IDS.tasnifBidad, 5, 1, 'نوستالژی، آرامش', 'اولین قطعه‌ای که در نغمه نگه داشتم.'],
   );
   await database.runAsync(
     `INSERT OR IGNORE INTO PersonalRelationships
-       (trackId, rating, favorite, emotionalTags, personalNote, listeningCount)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [SAMPLE_TRACK_IDS.shabSokoutKavir, 4, 1, 'خلوت، شبانه', 'برای شب‌های آرام.', 2],
+       (trackId, rating, favorite, emotionalTags, personalNote)
+     VALUES (?, ?, ?, ?, ?)`,
+    [SAMPLE_TRACK_IDS.shabSokoutKavir, 4, 1, 'خلوت، شبانه', 'برای شب‌های آرام.'],
   );
 
   for (const entry of SAMPLE_JOURNAL_ENTRIES) {
