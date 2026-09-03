@@ -1,0 +1,1531 @@
+NAGHME 2.0 — PHASE 01 / STEP 1
+DATABASE & DOMAIN ARCHITECTURE AUDIT
+
+گزارش ممیزی و برنامهٔ معماری
+تاریخ بررسی: 2026-09-03
+
+----------------------------------------------------------------------
+1. EXECUTIVE SUMMARY
+----------------------------------------------------------------------
+
+نغمه در وضعیت فعلی یک آرشیو موسیقی شخصیِ کاربردی و نسبتاً پایدار است که
+بر پایهٔ Expo React Native، TypeScript، Expo Router، SQLite محلی و معماری
+Android-first / offline-first ساخته شده است.
+
+مدل فعلی برای استفادهٔ شخصی و چند هزار قطعه مناسب است، اما هنوز مدل کامل
+یک آرشیو حرفه‌ای موسیقی نیست.
+
+مهم‌ترین محدودیت‌ها:
+
+1. Tracks هم‌زمان نقش قطعه، ضبط، نسخه و بخشی از اثر موسیقایی را دارد.
+2. هر Track فقط یک artistId دارد و اعتبارهای چندگانه مثل خواننده،
+   آهنگساز، ترانه‌سرا و تنظیم‌کننده پشتیبانی نمی‌شود.
+3. Work، Version، Role، Credit، Source، Artwork و Collection هنوز
+   entity واقعی نیستند.
+4. رابطهٔ Album و Artist در دیتابیس وجود ندارد و Graph بخشی از آن را با
+   دادهٔ hard-code شده می‌سازد.
+5. ترتیب رسمی قطعات آلبوم ذخیره نمی‌شود و بعضی queryها به rowid تکیه دارند.
+6. سیستم migration واقعی وجود ندارد؛ فقط چند ستون به‌صورت دستی و ناقص
+   اضافه می‌شوند.
+7. تعداد شنیدن در دو مسیر متفاوت محاسبه می‌شود:
+   - از ListeningHistory
+   - از PersonalRelationships.listeningCount
+8. Backup/Restore داده‌های رسانه‌ای را منتقل نمی‌کند و Restore برخلاف متن
+   رابط کاربری، merge انجام می‌دهد، نه overwrite کامل.
+9. Journal ساختار خوبی دارد و free-form است، اما فقط در صفحهٔ Track
+   قابل مشاهده است.
+10. AI و Gemini اختیاری هستند و پیشنهاد محلی وجود دارد، اما گفت‌وگوی AI
+    کاملاً offline نیست و ذخیرهٔ دائمی ندارد.
+
+پیشنهاد اصلی:
+
+- ابتدا زیرساخت migration، index و consistency اصلاح شود.
+- سپس بدون حذف یا تغییر شناسه‌های فعلی، مدل Work / Version / Credit / Role
+  به‌صورت تدریجی اضافه شود.
+- Tracks به‌عنوان نام legacy حفظ شود و در مفهوم جدید نقش Recording را
+  داشته باشد.
+- Album و Collection کاملاً جدا باقی بمانند.
+- Source، Artwork و روابط Artist به Artist در مرحلهٔ بعدی ساخته شوند.
+
+----------------------------------------------------------------------
+2. CURRENT DATABASE MODEL
+----------------------------------------------------------------------
+
+تعریف اصلی دیتابیس در این فایل قرار دارد:
+
+artifacts/naghme/src/db/database.ts
+
+2.1 جدول Artists
+
+فیلدها:
+
+- id: TEXT، Primary Key، اجباری
+- name: TEXT، اجباری
+- type: TEXT، nullable
+- biography: TEXT، nullable
+- genres: TEXT، nullable
+- image: TEXT، nullable
+- profileImage: TEXT، nullable
+- galleryImages: TEXT، nullable
+
+نکات:
+
+- galleryImages به‌صورت یک رشته ذخیره می‌شود و در UI به‌صورت JSON parse
+  می‌شود.
+- image و profileImage تا حدی نقش مشابه دارند.
+- نقش‌های موسیقایی به‌صورت آزاد داخل type قرار می‌گیرند.
+- هیچ رابطهٔ artist-to-artist در دیتابیس وجود ندارد.
+
+2.2 جدول Albums
+
+فیلدها:
+
+- id: TEXT، Primary Key، اجباری
+- title: TEXT، اجباری
+- releaseYear: INTEGER، nullable
+- coverImage: TEXT، nullable
+
+محدودیت‌های فعلی:
+
+- releaseDate ندارد.
+- عنوان جایگزین ندارد.
+- description، genre، label و notes ندارد.
+- timestamp ندارد.
+- artistId ندارد.
+- ترتیب رسمی قطعات ندارد.
+- جدول واسط Album/Track وجود ندارد.
+- آلبوم فقط با Tracks.albumId به Track متصل می‌شود.
+
+2.3 جدول Tracks
+
+فیلدها:
+
+- id: TEXT، Primary Key، اجباری
+- title: TEXT، اجباری
+- duration: INTEGER، nullable
+- artistId: TEXT، nullable، FK به Artists
+- albumId: TEXT، nullable، FK به Albums
+- audioUri: TEXT، nullable
+- coverImage: TEXT، nullable
+- lyrics: TEXT، nullable
+- sheetMusicUri: TEXT، nullable
+- versionName: TEXT، nullable
+
+روابط:
+
+- artistId -> Artists.id
+- albumId -> Albums.id
+- هر دو با ON DELETE SET NULL
+
+محدودیت‌های فعلی:
+
+- یک Track فقط یک Artist دارد.
+- Work واقعی وجود ندارد.
+- Version واقعی وجود ندارد.
+- versionName فقط متن آزاد است.
+- سال، زبان، genre، description و notes وجود ندارد.
+- Track، Recording و نسخهٔ اجرا از هم تفکیک نشده‌اند.
+- cover مربوط به Track و cover مربوط به Album جدا هستند، اما abstraction
+  مشترک ندارند.
+
+2.4 جدول PersonalRelationships
+
+فیلدها:
+
+- trackId: TEXT، Primary Key و FK
+- rating: REAL، nullable
+- favorite: INTEGER، اجباری، پیش‌فرض 0
+- emotionalTags: TEXT، nullable
+- personalNote: TEXT، nullable
+- listeningCount: INTEGER، اجباری، پیش‌فرض 0
+
+رابطه:
+
+- هر Track حداکثر یک PersonalRelationship دارد.
+- حذف Track باعث حذف رابطهٔ شخصی می‌شود.
+
+قابلیت‌های موجود:
+
+- امتیازدهی 1 تا 5
+- favorite
+- یادداشت شخصی
+- emotional tags در مدل وجود دارد، اما UI فعلی کنترل کاملی برای آن ندارد.
+- listening count در جدول ذخیره می‌شود.
+
+مشکل مهم:
+
+listeningCount با رکوردهای واقعی ListeningHistory همیشه هماهنگ نیست.
+
+2.5 جدول JournalEntries
+
+فیلدها:
+
+- id: TEXT، Primary Key
+- trackId: TEXT، اجباری، FK
+- note: TEXT، اجباری
+- mood: TEXT، اجباری
+- createdAt: DATETIME، اجباری
+
+قابلیت‌ها:
+
+- چند entry برای یک Track پشتیبانی می‌شود.
+- entry قابل ایجاد، ویرایش و حذف است.
+- Journal آزاد است و به پرسش‌نامهٔ rigid تبدیل نشده است.
+- با حذف Track، entryها cascade delete می‌شوند.
+
+محدودیت‌ها:
+
+- فقط به Track متصل است.
+- updatedAt ندارد.
+- author/user ندارد؛ برای معماری single-user فعلی قابل قبول است.
+- صفحهٔ مستقل Journal وجود ندارد.
+
+2.6 جدول ListeningHistory
+
+فیلدها:
+
+- id: TEXT، Primary Key
+- trackId: TEXT، اجباری، FK
+- listenedAt: DATETIME، اجباری
+
+این جدول در واقع Listening Event فعلی است، اما نام legacy آن
+ListeningHistory است.
+
+در حال حاضر ندارد:
+
+- مدت گوش‌دادن
+- completion percentage
+- context
+- source
+- device
+- session
+- نوع رویداد
+- زمان پایان پخش
+
+2.7 Indexها و محدودیت‌ها
+
+به‌جز indexهای ضمنی Primary Key، index ثانویه‌ای تعریف نشده است.
+
+Indexهای فعلی وجود ندارند برای:
+
+- Tracks.artistId
+- Tracks.albumId
+- Tracks.title
+- JournalEntries.trackId
+- JournalEntries.createdAt
+- ListeningHistory.trackId
+- ListeningHistory.listenedAt
+- ستون‌های جست‌وجو
+
+برای تعداد کمی داده مشکلی ایجاد نمی‌کند، اما در آرشیو چند هزار قطعه باعث
+کندشدن search، history، recommendation و graph خواهد شد.
+
+2.8 Migration فعلی
+
+در database.ts فقط چند migration دستی وجود دارد:
+
+- Artists:
+  - profileImage
+  - galleryImages
+- Albums:
+  - coverImage
+- Tracks:
+  - artistId
+  - lyrics
+  - sheetMusicUri
+  - versionName
+
+مشکلات:
+
+- جدول migration وجود ندارد.
+- PRAGMA user_version استفاده نشده است.
+- ترتیب نسخه‌ها ثبت نمی‌شود.
+- migrationها transaction ندارند.
+- خطاهای ALTER TABLE عملاً نادیده گرفته می‌شوند.
+- اگر یک جدول قدیمی ستون‌های پایهٔ دیگری را نداشته باشد، اصلاح نمی‌شود.
+- تغییر constraintها یا foreign keyهای قدیمی پشتیبانی نمی‌شود.
+- CREATE TABLE IF NOT EXISTS ساختار قدیمی را اصلاح نمی‌کند.
+
+----------------------------------------------------------------------
+3. CURRENT DOMAIN MODEL
+----------------------------------------------------------------------
+
+بیشتر مدل‌های TypeScript در این فایل قرار دارند:
+
+artifacts/naghme/src/db/queries.ts
+
+3.1 مدل‌های اصلی
+
+مدل‌های موجود:
+
+- ArtistRecord
+- AlbumRecord
+- TrackRecord
+- PersonalRelationshipRecord
+- JournalEntryRecord
+- ListeningHistoryRecord
+- VersionTrackRecord
+- HomeTrackRecord
+- RecommendationTrack
+- MusicGraphRow
+- ChatArchiveContext
+
+مدل‌ها تقریباً مستقیماً از شکل rowهای SQLite کپی شده‌اند.
+
+3.2 مشکل coupling
+
+queries.ts هم‌زمان سه نقش دارد:
+
+1. تعریف domain type
+2. repository/query layer
+3. تبدیل و mapping داده‌ها
+
+این باعث شده domain objectها به شکل فعلی SQL وابسته باشند.
+
+نمونه‌های coupling:
+
+- TrackRecord تقریباً همان row جدول Tracks است.
+- MusicGraphRow یک projection مستقیم از SQL است.
+- RecommendationTrack یک joined projection است.
+- VersionTrackRecord entity نسخه نیست و فقط Trackهای هم‌نام را نمایش می‌دهد.
+- UI در چند بخش خودش mapping دستی از Track انجام می‌دهد.
+
+3.3 مدل جداگانهٔ Store
+
+در src/store/useAppStore.ts یک مدل کم‌حجم‌تر برای Track وجود دارد که فقط
+بخش‌هایی مانند id، title، duration، albumId، audioUri و coverImage را دارد.
+
+این مدل موارد زیر را ندارد:
+
+- artistId
+- lyrics
+- sheetMusicUri
+- versionName
+
+در UI فعلی نیز مدل اصلی پخش از audio manager می‌آید، نه از Store.
+
+3.4 وضعیت پخش صدا
+
+در src/audio/audioManager.ts وضعیت پخش به‌صورت singleton ماژولی نگهداری
+می‌شود.
+
+شامل:
+
+- track id
+- audio URI
+- title
+- artist name
+- album/cover metadata
+- isLoaded
+- isPlaying
+- buffering
+- error
+- position
+- duration
+- repeat mode
+- sleep timer
+
+این معماری برای یک پخش‌کنندهٔ single-user مناسب است، ولی queue واقعی یا
+context playback هنوز وجود ندارد.
+
+3.5 مدل Graph
+
+Graph با یک مدل مستقل canonical کار نمی‌کند. اطلاعات از چند بخش ترکیب
+می‌شوند:
+
+- Artist
+- Album
+- Track
+- MusicGraphRow
+- لینک‌های hard-coded seed
+
+بنابراین Graph در حال حاضر یک tree projection است، نه graph domain واقعی.
+
+3.6 مدل AI
+
+ChatArchiveContext شامل این داده‌هاست:
+
+- تاریخچهٔ اخیر شنیدن
+- Journal entryها
+- Trackهای پرتکرار
+- Artistهای پرتکرار
+
+این مدل برای context فعلی مناسب است، اما:
+
+- conversation ذخیره نمی‌شود.
+- AI context entity مستقل نیست.
+- مدل memory یا preference برای AI وجود ندارد.
+- AI context مستقیماً از queryهای تجمیعی تولید می‌شود.
+
+----------------------------------------------------------------------
+4. CURRENT RELATIONSHIPS
+----------------------------------------------------------------------
+
+4.1 Artist -> Track
+
+از طریق Tracks.artistId.
+
+- یک Artist به چند Track
+- هر Track حداکثر یک Artist
+- nullable
+
+این رابطه در مدل فعلی primary artist محسوب می‌شود، اما نقش دقیق آن
+ذخیره نشده است.
+
+4.2 Album -> Track
+
+از طریق Tracks.albumId.
+
+- یک Album به چند Track
+- هر Track حداکثر به یک Album
+- nullable
+
+4.3 Track -> PersonalRelationship
+
+از طریق PersonalRelationships.trackId.
+
+- یک Track به صفر یا یک PersonalRelationship
+
+4.4 Track -> JournalEntry
+
+از طریق JournalEntries.trackId.
+
+- یک Track به چند JournalEntry
+
+4.5 Track -> ListeningHistory
+
+از طریق ListeningHistory.trackId.
+
+- یک Track به چند رکورد ListeningHistory
+
+4.6 روابطی که وجود ندارند
+
+این روابط فعلاً واقعی نیستند:
+
+- Artist -> Album در دیتابیس
+- Artist -> Artist
+- Track -> Work
+- Work -> Version
+- Track -> Credit
+- Artist -> Role
+- Album -> Official Track Order
+- Track -> Source
+- Track -> Artwork
+- User -> Collection
+- JournalEntry -> Work یا Artist
+- ListeningEvent -> session/context/source
+
+4.7 رابطهٔ مصنوعی در Graph
+
+در seed.ts چند رابطهٔ Artist و Album به‌صورت constant تعریف شده‌اند و
+Graph آن‌ها را با داده‌های SQLite ادغام می‌کند.
+
+در نتیجه:
+
+- این روابط داخل دیتابیس نیستند.
+- backup آن‌ها را به‌عنوان relation مستقل ذخیره نمی‌کند.
+- آلبوم‌های جدید کاربر نمی‌توانند به‌صورت واقعی به Artist متصل شوند.
+- Graph با seed data coupling دارد.
+
+4.8 Version فعلی
+
+Version واقعی وجود ندارد.
+
+در عوض:
+
+- Trackهای دیگری با title یکسان پیدا می‌شوند.
+- versionName فقط برای نمایش استفاده می‌شود.
+- این رابطه بر اساس lower(trim(title)) ساخته می‌شود.
+
+این روش ممکن است Trackهای کاملاً متفاوت را اشتباهاً version یکدیگر
+نشان دهد.
+
+----------------------------------------------------------------------
+5. GAPS AGAINST NAGHME 2.0
+----------------------------------------------------------------------
+
+PERSON
+
+وجود ندارد.
+
+Artists فعلاً به‌صورت هم‌زمان نقش شخص، هنرمند، گروه و performer را دارد.
+
+ARTIST
+
+به‌صورت محدود وجود دارد.
+
+موجود:
+
+- name
+- biography
+- genres
+- images
+- type
+
+ناقص:
+
+- نقش‌های متعدد
+- نام‌های جایگزین
+- منابع و شناسه‌های بیرونی
+- روابط با هنرمندان دیگر
+- تفکیک شخص و گروه
+
+WORK
+
+وجود ندارد.
+
+عنوان موسیقی در Track ذخیره شده و composition از recording جدا نیست.
+
+TRACK / RECORDING
+
+وجود دارد، اما بیش از حد پرمسئولیت است.
+
+Track فعلی هم‌زمان شامل metadata، audio asset، lyrics، sheet music،
+album relation، artist relation و version label است.
+
+VERSION
+
+وجود ندارد.
+
+versionName فقط یک string است و ساختار ندارد.
+
+ROLE
+
+وجود ندارد.
+
+Artist.type جایگزین مناسبی برای role نیست.
+
+CREDIT
+
+وجود ندارد.
+
+یک Track فقط یک artistId دارد و نمی‌تواند این ساختار را ذخیره کند:
+
+- vocalist
+- composer
+- lyricist
+- arranger
+- musician
+- conductor
+- producer
+
+SOURCE
+
+وجود ندارد.
+
+URIهای audio، sheet music و تصویر، provenance یا source محسوب نمی‌شوند.
+
+ARTWORK
+
+وجود ندارد.
+
+تصویرها در چند ستون پراکنده ذخیره می‌شوند:
+
+- Artists.image
+- Artists.profileImage
+- Artists.galleryImages
+- Albums.coverImage
+- Tracks.coverImage
+
+RELATIONSHIP
+
+به‌صورت محدود وجود دارد.
+
+PersonalRelationships فقط رابطهٔ شخصی کاربر با Track را نگهداری می‌کند.
+
+COLLECTION
+
+وجود ندارد.
+
+Album و Collection نباید یکی شوند:
+
+- Album یعنی آلبوم منتشرشده یا canonical
+- Collection یعنی گروه‌بندی شخصی کاربر
+
+JOURNAL ENTRY
+
+وجود دارد و بخش خوبی از هدف را پوشش می‌دهد.
+
+نکتهٔ مثبت مهم این است که Journal آزاد است و چند entry برای یک Track را
+پشتیبانی می‌کند.
+
+LISTENING EVENT
+
+به‌صورت ListeningHistory وجود دارد، اما فقط زمان شروع شنیدن را ذخیره
+می‌کند.
+
+----------------------------------------------------------------------
+6. PROPOSED DOMAIN MODEL
+----------------------------------------------------------------------
+
+پیشنهاد عملی، مرحله‌ای و سازگار با دیتابیس فعلی:
+
+6.1 Artist / Person
+
+در فاز اول نام Artists حفظ شود تا migration پرریسک نشود.
+
+بعداً:
+
+- Person: موجودیت انسانی یا گروه
+- ArtistProfile: هویت هنری یا فعالیت موسیقایی شخص
+
+فعلاً تفکیک کامل Person و Artist ضروری نیست.
+
+6.2 Work
+
+اثر موسیقایی مستقل از ضبط:
+
+- id
+- title
+- alternateTitles
+- description
+- language
+- genre
+- notes
+- createdAt
+- updatedAt
+
+هدف این است که چند ضبط یا نسخه بتوانند به یک اثر متصل شوند و عنوان اثر
+با عنوان فایل یا ضبط یکی فرض نشود.
+
+6.3 Track به‌عنوان Recording
+
+برای جلوگیری از شکستن داده‌های فعلی، نام Tracks حفظ شود، اما از نظر
+domain نقش آن یک آیتم قابل پخش یا recording در آرشیو شخصی باشد.
+
+در آینده:
+
+- Tracks.workId
+- Tracks.versionId
+
+اضافه شوند و فعلاً nullable باشند.
+
+6.4 Version
+
+Version برای توصیف تفاوت اجرایی یا تفسیری:
+
+- studio
+- live
+- radio
+- acoustic
+- remastered
+- cover
+- alternate take
+- سایر انواع
+
+فیلدهای حداقلی:
+
+- id
+- workId
+- name
+- kind
+- description
+- notes
+- createdAt
+- updatedAt
+
+در فاز اول Version نباید با حدس‌زدن title ساخته شود.
+
+6.5 Role
+
+جدول Role مستقل باشد، نه free-text در Artist.
+
+نمونه roleها:
+
+- vocalist
+- composer
+- lyricist
+- arranger
+- musician
+- conductor
+- producer
+- ensemble
+- other
+
+Role باید قابل توسعه باشد و label فارسی/انگلیسی داشته باشد.
+
+6.6 Credit
+
+رابطهٔ چندبه‌چند بین Track، Artist و Role:
+
+- trackId
+- artistId
+- roleId
+- creditOrder
+- note
+
+این ساختار اجازه می‌دهد یک Track چند credit داشته باشد.
+
+رابطهٔ فعلی Tracks.artistId باید برای سازگاری باقی بماند و بعدها به‌عنوان
+legacy یا primary artist استفاده شود.
+
+6.7 Album
+
+Album باید از Collection جدا بماند.
+
+فیلدهای پیشنهادی:
+
+- title
+- alternateTitles
+- releaseYear
+- releaseDate
+- cover
+- description
+- genre
+- label
+- notes
+- createdAt
+- updatedAt
+
+برای ترتیب قطعات، رابطهٔ جدا لازم است.
+
+6.8 Album Track Order
+
+برای ترتیب رسمی:
+
+- albumId
+- trackId
+- discNumber
+- trackNumber
+- titleOverride
+- notes
+
+اگر یک Track بتواند در چند release یا album باشد، این مدل از
+Tracks.albumId انعطاف‌پذیرتر است.
+
+6.9 PersonalRelationship
+
+در فاز اول همان رابطهٔ شخصی Track باقی بماند:
+
+- rating
+- favorite
+- emotionalTags
+- personalNote
+- memories
+- associations
+
+listeningCount بهتر است در آینده از ListeningEvents محاسبه شود، نه اینکه
+منبع مستقل حقیقت باشد.
+
+6.10 JournalEntry
+
+Journal باید همچنان free-form بماند.
+
+فیلدهای آینده:
+
+- trackId nullable یا فعلاً اجباری
+- workId nullable
+- note
+- mood
+- createdAt
+- updatedAt
+
+نباید Journal به فرم پرسش‌نامه‌ای تبدیل شود.
+
+6.11 ListeningEvent
+
+در مدل مفهومی جدید:
+
+- id
+- trackId
+- startedAt
+- endedAt
+- listenedDuration
+- completionPercent
+- context
+- source
+- eventType
+
+ListeningHistory فعلی می‌تواند تا پایان migration به‌عنوان legacy نگه
+داشته شود.
+
+6.12 Source
+
+در فاز آینده:
+
+- title
+- URL
+- sourceType
+- author
+- publicationDate
+- notes
+- createdAt
+
+Source باید به entity مربوطه متصل شود، نه اینکه صرفاً داخل note نوشته شود.
+
+6.13 Artwork
+
+در فاز آینده یک entity مستقل:
+
+- id
+- uri
+- artworkType
+- title
+- caption
+- sourceId
+- width
+- height
+- createdAt
+
+سپس رابطهٔ جدا برای اتصال Artwork به Artist، Album، Track، Work و
+Postcard Project ایجاد شود.
+
+6.14 Collection
+
+Collection باید کاملاً مستقل از Album باشد:
+
+- id
+- name
+- description
+- coverArtworkId
+- createdAt
+- updatedAt
+
+و جدول عضویت:
+
+- collectionId
+- trackId
+- position
+- addedAt
+- note
+
+6.15 Artist-to-Artist Relationship
+
+در فاز آینده:
+
+- fromArtistId
+- toArtistId
+- relationshipType
+- note
+- sourceId
+- createdAt
+
+نمونه:
+
+- collaborator
+- teacher
+- student
+- ensemble_member
+- related_artist
+- other
+
+----------------------------------------------------------------------
+7. PROPOSED DATABASE SCHEMA
+----------------------------------------------------------------------
+
+این بخش فقط طراحی مفهومی است و migration code در آن نوشته نشده است.
+
+7.1 SchemaMeta یا SchemaMigrations
+
+هدف:
+
+- نگهداری نسخهٔ دیتابیس
+- اجرای migrationها به‌ترتیب
+- جلوگیری از اجرای دوباره
+- ثبت موفق یا ناموفق بودن migration
+
+فیلدهای پیشنهادی:
+
+- version
+- appliedAt
+- checksum یا description اختیاری
+
+استفاده از PRAGMA user_version نیز ممکن است، اما برای migrationهای جدی
+جدول قابل مشاهده‌تر است.
+
+7.2 Works
+
+- id: PK
+- title: required
+- alternateTitles: nullable
+- description: nullable
+- language: nullable
+- genre: nullable
+- notes: nullable
+- createdAt
+- updatedAt
+
+Index:
+
+- title
+- normalized title در صورت نیاز
+
+7.3 Versions
+
+- id: PK
+- workId: FK به Works
+- name
+- kind
+- description
+- notes
+- createdAt
+- updatedAt
+
+Index:
+
+- workId
+- workId + kind
+
+7.4 Tracks / Recordings
+
+جدول فعلی حفظ شود و به‌تدریج این فیلدها را بگیرد:
+
+- workId: nullable FK
+- versionId: nullable FK
+- year: nullable
+- language: nullable
+- genre: nullable
+- description: nullable
+- notes: nullable
+- createdAt
+- updatedAt
+
+فیلدهای فعلی باید فعلاً باقی بمانند تا backupها و داده‌های قبلی نشکنند.
+
+Index:
+
+- artistId
+- albumId
+- workId
+- versionId
+- normalized title
+
+7.5 Roles
+
+- id: PK
+- key: unique
+- label
+- description
+- isSystem
+
+7.6 Credits
+
+- id: PK
+- trackId: FK
+- artistId: FK
+- roleId: FK
+- creditOrder
+- note
+
+Index:
+
+- trackId
+- artistId
+- roleId
+
+برای جلوگیری از duplicate می‌توان روی ترکیب
+trackId + artistId + roleId محدودیت unique گذاشت، اگر با نیاز محصول
+سازگار باشد.
+
+7.7 AlbumCredits
+
+برای رابطهٔ Artist و Album:
+
+- id: PK
+- albumId: FK
+- artistId: FK
+- roleId: FK
+- creditOrder
+- note
+
+این ساختار جایگزین لینک‌های hard-code شدهٔ Graph خواهد شد.
+
+7.8 AlbumTracks
+
+- albumId: FK
+- trackId: FK
+- discNumber
+- trackNumber
+- titleOverride
+- notes
+
+Primary Key پیشنهادی:
+
+- albumId + trackId
+
+Index:
+
+- albumId + discNumber + trackNumber
+- trackId
+
+7.9 ListeningEvents
+
+به‌عنوان مدل canonical جدید:
+
+- id: PK
+- trackId: FK
+- startedAt
+- endedAt
+- listenedDuration
+- completionPercent
+- context
+- source
+- eventType
+
+برای سازگاری، داده‌های قدیمی ListeningHistory باید با duration و
+completion خالی منتقل شوند.
+
+7.10 PersonalRelationships
+
+فعلاً حفظ شود.
+
+در آینده می‌توان اضافه کرد:
+
+- memories
+- associations
+- firstHeardAt
+- lastListenedAt، اگر نیاز performance وجود داشت
+
+اما منبع اصلی count باید ListeningEvents باشد.
+
+7.11 JournalEntries
+
+فیلدهای جدید پیشنهادی:
+
+- updatedAt
+- workId nullable
+
+trackId در مرحلهٔ اول باقی بماند تا migration پیچیده نشود.
+
+7.12 Sources، Artwork و Collections
+
+این سه حوزه بهتر است بعد از پایدارشدن مدل اصلی اضافه شوند و در migration
+اول وارد نشوند.
+
+----------------------------------------------------------------------
+8. MIGRATION STRATEGY
+----------------------------------------------------------------------
+
+دیتابیس نباید حذف و دوباره ساخته شود.
+
+مرحلهٔ صفر: Backup محافظتی
+
+قبل از هر migration:
+
+1. export فعلی اجرا شود.
+2. فایل backup نسخهٔ 1 حفظ شود.
+3. تعداد رکوردهای هر جدول ثبت شود.
+4. شناسه‌های موجود ثبت و immutable باقی بمانند.
+
+مرحلهٔ یک: ایجاد migration واقعی
+
+- معرفی schema versioning
+- اجرای migrationها به‌ترتیب
+- transaction برای هر migration
+- شکست صریح در صورت خطا
+- عدم swallow کردن خطاهای مهم
+- verify کردن وجود جدول، ستون و foreign key
+
+مرحلهٔ دو: Indexهای پایه
+
+بدون تغییر domain:
+
+- index روی Trackهای مرتبط با Artist و Album
+- index روی JournalEntries.trackId و createdAt
+- index روی ListeningHistory.trackId و listenedAt
+- index روی titleهای قابل جست‌وجو
+
+این مرحله کم‌ریسک‌ترین بهبود performance است.
+
+مرحلهٔ سه: اصلاح listening count
+
+یکی از دو سیاست باید انتخاب شود.
+
+گزینهٔ پیشنهادی:
+
+ListeningHistory/ListeningEvents تنها منبع حقیقت باشد و count با query
+محاسبه شود.
+
+مزیت:
+
+- امکان اصلاح یا حذف event
+- عدم ناسازگاری
+- backup دقیق‌تر
+
+گزینهٔ جایگزین:
+
+اگر performance مهم باشد، listeningCount نگه داشته شود، اما:
+
+- log listen و increment در یک transaction انجام شوند.
+- حذف یا restore event نیز count را اصلاح کند.
+- مقدار count دوره‌ای reconcile شود.
+
+پیشنهاد اصلی گزینهٔ اول است مگر اینکه performance واقعی خلاف آن را نشان
+دهد.
+
+مرحلهٔ چهار: اضافه‌کردن Work و Version
+
+- جدول Works ایجاد شود.
+- Tracks فعلی حذف یا rename نشوند.
+- workId و versionId ابتدا nullable باشند.
+- برای هر Track فعلی یک mapping legacy ساخته شود.
+- از deduplicate کردن خودکار بر اساس title خودداری شود.
+- اگر title یکسان است، تا زمانی که کاربر یا منطق مطمئن تأیید نکرده،
+  آن‌ها یکی فرض نشوند.
+
+مرحلهٔ پنج: Credit و Role
+
+- Roleهای پایه ایجاد شوند.
+- از Tracks.artistId برای ساخت یک credit با نقش عمومی مثل primary artist
+  استفاده شود.
+- نباید از artistId فعلی نتیجه‌گیری شود که شخص حتماً خواننده یا آهنگساز
+  بوده است.
+- creditهای چندگانه فقط برای داده‌های جدید یا داده‌ای که کاربر تأیید
+  کرده ساخته شوند.
+
+مرحلهٔ شش: ترتیب Album
+
+- جدول AlbumTracks اضافه شود.
+- برای داده‌های فعلی که ترتیب رسمی ندارند، ترتیب موقت بر اساس ترتیب فعلی
+  رکوردها ساخته شود.
+- این ترتیب باید inferred تلقی شود، نه ترتیب رسمی تاریخی.
+- اگر ترتیب واقعی در backup یا metadata موجود نیست، نباید آن را ادعا کرد.
+
+مرحلهٔ هفت: ListeningEvent غنی‌تر
+
+دو مسیر ممکن است:
+
+1. اضافه‌کردن ستون‌های جدید به ListeningHistory
+2. ساخت ListeningEvents جدید و انتقال داده‌های قدیمی
+
+پیشنهاد:
+
+- تا زمان تثبیت کد، ListeningHistory حفظ شود.
+- سپس با migration مشخص به ListeningEvents منتقل شود.
+- شناسه و timestamp قدیمی حفظ شوند.
+
+مرحلهٔ هشت: به‌روزرسانی repository و domain types
+
+پس از تثبیت schema:
+
+- typeها از rowهای خام جدا شوند.
+- query projectionها مدل مستقل داشته باشند.
+- mapping مرکزی ایجاد شود.
+- UI دیگر مستقیماً به aliasهای SQL وابسته نباشد.
+
+مرحلهٔ نه: Backup نسخهٔ دو
+
+Backup جدید باید:
+
+- version مستقل داشته باشد.
+- migration backup را پشتیبانی کند.
+- تفاوت merge و replace را شفاف کند.
+- نتیجهٔ واقعی Restore را اعلام کند.
+- schema را با SELECT * وابسته نکند.
+- media manifest و وضعیت URIها را مشخص کند.
+- در صورت نیاز پروژه‌های Postcard Studio را نیز شامل شود.
+
+----------------------------------------------------------------------
+9. FILE IMPACT MAP
+----------------------------------------------------------------------
+
+DATABASE
+
+فایل‌های اصلی:
+
+- artifacts/naghme/src/db/database.ts
+- artifacts/naghme/src/db/database.web.ts
+- فایل‌های migration جدید در artifacts/naghme/src/db/
+
+تغییرات:
+
+- schema versioning
+- migration transaction
+- indexها
+- جدول‌های Work، Version، Role، Credit
+- AlbumTracks
+- ListeningEvents یا ارتقای ListeningHistory
+
+DOMAIN TYPES
+
+فایل فعلی:
+
+- artifacts/naghme/src/db/queries.ts
+
+تغییرات:
+
+- جداکردن entityها از row typeها
+- اضافه‌شدن Work/Version/Role/Credit
+- اصلاح مدل Track
+- تفکیک projectionهای Home، Graph، Recommendation و AI
+
+QUERIES / REPOSITORIES
+
+فایل اصلی:
+
+- artifacts/naghme/src/db/queries.ts
+
+تغییرات:
+
+- queryهای جدید برای creditها
+- Work و Version
+- Album ordering
+- event-based listening count
+- index-friendly search
+- global journal/history query
+- حذف اتکا به rowid برای دادهٔ معنایی
+
+SERVICES
+
+فایل‌های مرتبط:
+
+- artifacts/naghme/src/audio/audioManager.ts
+- artifacts/naghme/src/ai/recommendation.ts
+- artifacts/naghme/src/ai/gemini.ts
+- artifacts/naghme/src/store/useAppStore.ts
+
+تغییرات احتمالی:
+
+- ثبت listening event با lifecycle کامل‌تر
+- اصلاح consistency شمارنده‌ها
+- recommendation بر اساس eventهای واقعی
+- fallback شفاف‌تر برای AI
+- احتمال ایجاد playback queue واقعی در آینده
+
+SCREENS
+
+مسیرهای اصلی:
+
+- app/(tabs)/index.tsx
+- app/(tabs)/archive.tsx
+- app/(tabs)/search.tsx
+- app/(tabs)/graph.tsx
+- app/(tabs)/ai-chat.tsx
+- app/artist/[id].tsx
+- app/album/[id].tsx
+- app/track/[id].tsx
+- app/add-artist.tsx
+- app/add-album.tsx
+- app/add-track.tsx
+- app/recommendation.tsx
+- app/settings.tsx
+
+تغییرات مرحلهٔ بعد:
+
+- چند Artist برای هر Track
+- انتخاب Work و Version
+- مدیریت Creditها
+- نمایش ترتیب آلبوم
+- صفحهٔ مستقل Journal
+- صفحهٔ مستقل History
+- نمایش relationهای واقعی در Graph
+
+GRAPH
+
+فایل اصلی:
+
+- app/(tabs)/graph.tsx
+
+تغییرات:
+
+- حذف seed-only artist/album link
+- استفاده از AlbumCredits یا relation واقعی
+- پشتیبانی از Work، Version، Credit و Artist relations
+- تبدیل tree فعلی به graph داده‌محور در مراحل بعد
+
+AI
+
+فایل‌های اصلی:
+
+- app/(tabs)/ai-chat.tsx
+- src/ai/gemini.ts
+- src/ai/recommendation.ts
+- query مربوط به ChatArchiveContext
+
+تغییرات:
+
+- نمایش شفاف ارسال داده به Gemini
+- ذخیرهٔ اختیاری conversation
+- fallback مناسب‌تر در حالت offline
+- recommendation مبتنی بر ListeningEvents
+- عدم ارسال اطلاعاتی که کاربر قصد اشتراک‌گذاری آن را ندارد
+
+BACKUP / RESTORE
+
+فایل‌ها:
+
+- src/db/portability.ts
+- app/settings.tsx
+
+تغییرات:
+
+- backup version 2
+- پشتیبانی از جدول‌های جدید
+- انتخاب صریح Merge یا Replace
+- گزارش رکوردهای اضافه، به‌روزرسانی‌شده و حذف‌شده
+- media manifest
+- بررسی broken URI
+- احتمال backup پروژه‌های Postcard Studio
+
+TESTS
+
+در ساختار فعلی تست اختصاصی قابل مشاهده‌ای برای این حوزه‌ها وجود ندارد.
+
+در فاز implementation باید تست‌های زیر اضافه شوند:
+
+- migration از دیتابیس قدیمی
+- حفظ IDها
+- foreign keyها
+- restore نسخهٔ 1
+- backup نسخهٔ 2
+- merge و replace
+- listening count
+- deduplication خطرناک title
+- ترتیب AlbumTracks
+- حذف Track و cascadeها
+
+----------------------------------------------------------------------
+10. RISKS
+----------------------------------------------------------------------
+
+10.1 از بین رفتن شناسه‌ها
+
+شناسه‌های فعلی باید حفظ شوند.
+
+تغییر ID باعث شکستن:
+
+- روابط شخصی
+- Journal
+- History
+- backupهای قدیمی
+- لینک‌های داخلی routeها
+
+10.2 تبدیل Track به Work
+
+بزرگ‌ترین ریسک domain migration این است که Trackهای هم‌نام اشتباهاً یک
+Work فرض شوند.
+
+راه امن:
+
+- ابتدا برای هر Track یک Work legacy بسازیم.
+- ادغام Workها را به تصمیم بعدی یا تأیید کاربر موکول کنیم.
+
+10.3 Artist واحد
+
+از artistId فعلی نمی‌توان فهمید Artist:
+
+- خواننده است
+- آهنگساز است
+- تنظیم‌کننده است
+- گروه است
+- یا فقط performer اصلی است
+
+بنابراین migration نباید نقش دقیق را جعل کند.
+
+10.4 Album order
+
+ترتیب رسمی آلبوم فعلاً ذخیره نشده است.
+
+مرتب‌سازی بر اساس title یا rowid، ترتیب رسمی تاریخی را ثابت نمی‌کند.
+
+10.5 Listening count
+
+وجود دو منبع count ممکن است باعث شود:
+
+- recommendation اشتباه شود.
+- Chat آمار متفاوتی نمایش دهد.
+- صفحهٔ Track با recommendation ناسازگار باشد.
+
+10.6 Restore
+
+Restore فعلی:
+
+- بر اساس ID upsert می‌کند.
+- داده‌های غایب در backup را حذف نمی‌کند.
+- بنابراین overwrite واقعی نیست.
+- URIها و فایل‌های رسانه‌ای را جابه‌جا نمی‌کند.
+- AI key و مدل را backup نمی‌کند.
+- Postcard Studio projectها را backup نمی‌کند.
+
+10.7 SELECT *
+
+Backup به ترتیب ستون‌های فعلی وابسته است.
+
+با اضافه‌شدن ستون یا تغییر schema، این روش می‌تواند shape نامطمئن تولید
+کند.
+
+10.8 URIهای محلی
+
+audio، cover، profile و gallery به URIهای دستگاه وابسته‌اند.
+
+انتقال backup به دستگاه دیگر ممکن است رکوردها را حفظ کند، اما فایل
+رسانه‌ای دیگر وجود نداشته باشد.
+
+10.9 AI و حریم خصوصی
+
+Gemini context به Google ارسال می‌شود.
+
+حتی اگر داده‌ها روی دستگاه ذخیره شوند، هنگام استفاده از AI دیگر کاملاً
+local باقی نمی‌مانند.
+
+همچنین کلید فعلی در AsyncStorage ذخیره می‌شود و secure storage نیست.
+
+10.10 Web Preview
+
+SQLite در web عمداً در دسترس نیست و database.web.ts مقدار null برمی‌گرداند.
+
+بنابراین قابلیت‌های دیتابیسی در Web Preview قابل استفاده نیستند و این
+رفتار باید در محصول و تست‌ها آگاهانه مدیریت شود.
+
+10.11 Postcard Studio
+
+Postcard Studio بسیاری از قابلیت‌های حرفه‌ای interaction را دارد، اما:
+
+- پروژه‌ها ذخیره نمی‌شوند.
+- فقط خروجی نهایی به Gallery می‌رود.
+- در backup وارد نمی‌شود.
+- position و scale عناصر persist نمی‌شوند.
+- color wheel واقعی وجود ندارد.
+- filterها عمدتاً overlay هستند، نه پردازش واقعی تصویر.
+
+----------------------------------------------------------------------
+11. MUST / SHOULD / FUTURE
+----------------------------------------------------------------------
+
+A. MUST IMPLEMENT NOW
+
+1. سیستم migration و schema versioning واقعی
+2. indexهای اصلی SQLite
+3. یکسان‌سازی listening count و ListeningHistory
+4. مشخص‌کردن دقیق Merge یا Replace در Restore
+5. حذف وابستگی Backup به SELECT *
+6. حفظ تمام IDهای فعلی
+7. جلوگیری از حدس‌زدن Work و Role از روی title و artistId
+8. جایگزین‌کردن Artist/Album hard-code Graph با رابطهٔ ذخیره‌شده، اگر
+   Graph همچنان قرار است آن رابطه را نمایش دهد
+9. ثبت و گزارش URIهای رسانه‌ای غیرقابل انتقال
+10. شفاف‌سازی حریم خصوصی Gemini و fallback محلی
+
+B. SHOULD IMPLEMENT SOON
+
+1. Work
+2. Version
+3. Role
+4. Credit چندبه‌چند
+5. AlbumTracks برای ترتیب قطعات
+6. ListeningEvent غنی‌تر
+7. صفحهٔ مستقل Journal
+8. صفحهٔ مستقل History
+9. ذخیرهٔ conversationهای AI
+10. backup نسخهٔ دوم
+11. persist کردن پروژه‌های Postcard Studio
+12. جداکردن domain types از raw database rows
+13. تبدیل Graph به graph داده‌محور
+
+C. FUTURE / DO NOT IMPLEMENT YET
+
+1. تفکیک کامل Person و Artist
+2. Source و provenance
+3. Artwork abstraction کامل
+4. Collectionهای کاربر
+5. Artist-to-Artist relationships
+6. external IDs و metadata providerها
+7. AI personalization پیشرفته
+8. مدل یادگیری از feedback کاربر
+9. color wheel حرفه‌ای
+10. پردازش واقعی grayscale، invert، noise و high contrast
+11. fontهای اختصاصی Nastaliq/Thuluth
+12. همگام‌سازی ابری
+13. backend و authentication
+
+----------------------------------------------------------------------
+12. RECOMMENDED IMPLEMENTATION ORDER
+----------------------------------------------------------------------
+
+Phase 1 — Stability Foundation
+
+1. ایجاد schema versioning
+2. migration runner امن
+3. indexهای پایه
+4. بررسی foreign keyها
+5. تست backup فعلی
+6. مستندسازی رفتار Merge/Replace
+
+Phase 2 — Listening Consistency
+
+1. تعیین منبع اصلی count
+2. اصلاح logListen
+3. reconcile کردن countهای قدیمی
+4. ثبت event در زمان درست playback
+5. اضافه‌کردن duration و completion به‌صورت nullable
+
+Phase 3 — Album Integrity
+
+1. ایجاد AlbumTracks
+2. حفظ Tracks.albumId برای سازگاری
+3. انتقال رابطه‌های فعلی
+4. نمایش trackNumber و discNumber
+5. حذف وابستگی به rowid برای مفهوم ترتیب
+
+Phase 4 — Work / Version
+
+1. اضافه‌کردن Works
+2. اضافه‌کردن workId nullable به Tracks
+3. اضافه‌کردن Versions
+4. اضافه‌کردن versionId nullable
+5. نگه‌داشتن versionName تا پایان migration
+6. عدم deduplicate خودکار Trackهای هم‌نام
+
+Phase 5 — Roles / Credits
+
+1. Roleهای پایه
+2. Credits چندبه‌چند
+3. تبدیل Artist فعلی به credit عمومی legacy
+4. فرم مدیریت creditهای Track
+5. AlbumCredits برای Graph و album-level artist relation
+
+Phase 6 — Domain Refactor
+
+1. جداکردن modelهای domain از SQL rowها
+2. مرکزی‌کردن mapping
+3. اصلاح query projectionها
+4. حذف مدل‌های تکراری Track
+5. هماهنگ‌سازی audio manager، Store و UI
+
+Phase 7 — Journal / History Product Surface
+
+1. صفحهٔ مستقل Journal
+2. صفحهٔ مستقل History
+3. فیلتر بر اساس Track، Artist، Work و زمان
+4. نمایش duration و completion
+5. اتصال بهتر Journal به recommendation و AI
+
+Phase 8 — Backup 2.0
+
+1. نسخهٔ جدید backup
+2. migration فایل‌های backup قدیمی
+3. انتخاب Merge یا Replace
+4. پشتیبانی از entityهای جدید
+5. media manifest
+6. گزارش داده‌های رسانه‌ای قابل یا غیرقابل بازیابی
+
+Phase 9 — Advanced Archive Layer
+
+1. Source
+2. Artwork
+3. Collection
+4. Artist relationships
+5. Postcard project archive
+6. AI conversation archive
+
+----------------------------------------------------------------------
+نتیجهٔ نهایی
+----------------------------------------------------------------------
+
+نغمه لازم نیست از ابتدا بازنویسی شود. پایهٔ فعلی برای ادامه مناسب است،
+به‌خصوص در بخش‌های:
+
+- Journal آزاد
+- persistence محلی
+- پخش صوت
+- backup اولیه
+- recommendation محلی
+- رابط Track/Album/Artist
+
+اما قبل از ورود به قابلیت‌های بسیار حرفه‌ای، باید سه پایه اصلاح شود:
+
+1. migration و schema versioning
+2. consistency تاریخچه و listening count
+3. جداکردن Work، Recording، Version و Credit
+
+NO PROJECT FILES WERE MODIFIED.

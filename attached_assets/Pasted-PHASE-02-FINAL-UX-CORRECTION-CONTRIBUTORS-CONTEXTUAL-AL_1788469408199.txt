@@ -1,0 +1,524 @@
+PHASE 02 — FINAL UX CORRECTION
+CONTRIBUTORS + CONTEXTUAL ALBUM FILTERING + CREATE-FORM WORKFLOW
+
+This is a final UX correction to the existing Naghme Phase 02 implementation.
+
+DO NOT start Phase 03.
+DO NOT redesign the architecture.
+DO NOT reset, rebuild, or delete the database.
+DO NOT remove or replace the existing Roles/Credits model.
+
+The goal is to make the existing Roles/Credits functionality genuinely usable from the user-facing Add/Edit workflows and fix the Artist → Album selection logic.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. RENAME THE USER-FACING "EXPLICIT CREDITS" SECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In Artist Detail, change the user-facing section title:
+
+Current:
+"اعتبارات صریح"
+
+New:
+"مشارکت‌کنندگان"
+
+Use "مشارکت‌کنندگان" anywhere in the UI where this concept is presented to the user.
+
+Do NOT rename technical database concepts, tables, types, or internal functions related to Credits.
+
+This is a UI terminology change only.
+
+Avoid exposing technical terminology such as:
+- Explicit Credits
+- Credit Records
+- Credits
+
+to the end user.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. CRITICAL UX RULE — CONTRIBUTORS MUST BE ENTERED DURING CREATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The current workflow is NOT acceptable if it behaves like:
+
+Add Track
+→ Save Track
+→ Reopen/Edit Track
+→ Add Contributor
+
+or:
+
+Add Album
+→ Save Album
+→ Reopen/Edit Album
+→ Add Contributor
+
+Do NOT require the user to save the entity first just to unlock the Contributors section.
+
+The user must be able to enter Contributors directly inside the initial Add form.
+
+Correct workflow:
+
+Add Track
+→ enter Track information
+→ select Artist
+→ select Album
+→ add one or more Contributors
+→ select their Roles
+→ Save ONCE
+
+Similarly:
+
+Add Album
+→ enter Album information
+→ add one or more Contributors
+→ select their Roles
+→ Save ONCE
+
+The user should be able to provide all relevant information they know at the moment of creation.
+
+The initial creation form must NOT display messages such as:
+
+"ابتدا قطعه را ذخیره کنید تا مشارکت اضافه شود"
+
+or:
+
+"ابتدا آلبوم را ذخیره کنید تا مشارکت اضافه شود"
+
+Those messages must be removed from the creation workflow.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ADD TRACK — INLINE CONTRIBUTORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Add Track form must contain a dedicated:
+
+"مشارکت‌کنندگان"
+
+section BEFORE the final Save action.
+
+The user can add multiple contributor rows.
+
+Each contributor row must contain:
+
+- Artist selector
+- Role selector
+- Optional notes
+- Remove button
+
+The user must be able to select existing Artists and Roles without manually entering IDs.
+
+Example:
+
+مشارکت‌کنندگان
+
+[ دلکش ▼ ] [ خواننده ▼ ] [ حذف ]
+
+[ علی تجویدی ▼ ] [ آهنگساز ▼ ] [ حذف ]
+
+[ رهی معیری ▼ ] [ ترانه‌سرا ▼ ] [ حذف ]
+
+[ + افزودن مشارکت ]
+
+Then the user presses the normal Save button once.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. ADD ALBUM — INLINE CONTRIBUTORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Add Album form must have the same inline Contributors capability.
+
+The user must be able to add one or more contributors BEFORE saving the album.
+
+Example:
+
+Album information
+↓
+Contributors
+↓
+[ + Add Contributor ]
+↓
+Save
+
+Do NOT force:
+
+Save Album → Edit Album → Add Contributor.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. TECHNICAL SAVE WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+New entities do not have database IDs before creation.
+
+Therefore, do NOT create fake database records or fake permanent IDs just to support the form.
+
+Use temporary form state, for example:
+
+pendingCredits[]
+
+During Save:
+
+1. Validate the entity fields.
+2. Validate pending Contributors.
+3. Create the Track or Album.
+4. Obtain the newly created entity ID.
+5. Create the corresponding Credit records using that ID.
+6. Commit the operation.
+
+Prefer a single database transaction:
+
+BEGIN
+→ create entity
+→ create Credits
+→ COMMIT
+
+If any part fails:
+
+ROLLBACK
+
+The user should experience this as one Save operation.
+
+Do not leave behind a partially-created Track/Album with missing Contributors when the transaction fails.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. EDIT TRACK / EDIT ALBUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Edit Track and Edit Album forms must also show existing Contributors.
+
+The user must be able to:
+
+- View existing contributors
+- Add contributors
+- Change Artist
+- Change Role
+- Edit notes
+- Remove contributors
+- Save changes
+
+The edit workflow may use the existing entity ID because the entity already exists.
+
+Maintain the same user-friendly "مشارکت‌کنندگان" terminology.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. CONTRIBUTOR VALIDATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Each Contributor entry must require:
+
+- Artist
+- Role
+
+Notes are optional.
+
+Prevent duplicate contributor relationships for the same target when the combination is identical:
+
+Artist + Role + Target
+
+Show clear Persian validation messages.
+
+Do not silently create duplicate Credits.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. EMPTY STATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Inside the Contributors section, use a natural empty state such as:
+
+"هنوز مشارکتی اضافه نشده"
+
+with:
+
+"+ افزودن مشارکت"
+
+Do NOT tell the user:
+
+"ابتدا قطعه را ذخیره کنید"
+
+or:
+
+"ابتدا آلبوم را ذخیره کنید"
+
+because Contributors must be available during creation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. IMMEDIATE DISPLAY AFTER SAVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After successfully saving a Track:
+
+Track Detail must immediately display its Contributors.
+
+After successfully saving an Album:
+
+Album Detail must immediately display its Contributors.
+
+Artist Detail must also reflect the relevant contribution relationship.
+
+The user should NOT need to reopen/edit the entity just to see the Contributors that were entered during creation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. ARTIST → ALBUM CONTEXTUAL FILTERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In the Add Track form, when the user selects an Artist, the Album selector must become contextual to that Artist.
+
+The Album selector must NOT show every Album in the database.
+
+Example:
+
+Selected Artist:
+Delkash
+
+Available Albums:
+- Album A — associated with Delkash
+- Album B — associated with Delkash
+- Album C — associated with another artist
+
+The Album selector must show only:
+
+- Album A
+- Album B
+
+Album C must NOT appear.
+
+The user must never accidentally attach a Track by Artist A to an unrelated Album belonging to Artist B simply because that Album exists in the global Album list.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. USE REAL DATABASE RELATIONSHIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Artist → Album filtering must use the actual relationships in the existing Naghme data model.
+
+Do NOT perform a text search such as:
+
+Album.artistName === selectedArtist.name
+
+Do NOT invent relationships.
+
+Use the existing relational model and queries.
+
+Respect:
+
+- AlbumTracks
+- Tracks.artistId
+- Credits
+- existing Artist/Album relationships
+
+Choose the correct existing relationship according to the current Naghme data model.
+
+The result must represent Albums that are genuinely associated with the selected Artist.
+
+Do not fabricate associations merely to populate the picker.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. WHEN THE ARTIST CHANGES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If the user does:
+
+1. Select Artist A
+2. Select Album A
+3. Change Artist to Artist B
+
+then immediately reevaluate the selected Album.
+
+If Album A is not associated with Artist B:
+
+- Clear the selected Album.
+- Refresh the Album selector.
+- Show only Albums associated with Artist B.
+
+Never leave an invalid Artist + Album combination silently selected.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. ARTIST WITH NO ALBUMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If the selected Artist has no associated Albums:
+
+The Album selector should show an appropriate empty state such as:
+
+"برای این هنرمند هنوز آلبومی ثبت نشده"
+
+The form must remain functional.
+
+It must NOT crash.
+
+The existing ability to create a Track without an Album must remain intact if Album is currently optional in the data model.
+
+Do not make Album mandatory merely to implement this filtering.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+14. DO NOT BREAK EXISTING PHASE 02 DATA MODEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Preserve all existing Phase 02 work:
+
+- ListeningHistory canonical listening count
+- AlbumTracks
+- Works
+- Versions
+- Roles
+- Credits
+- PersonalRelationships
+- JournalEntries
+- Backup/Restore
+- Integrity checks
+- Existing IDs
+- Existing data
+
+Do NOT:
+
+- Reset the database
+- Delete existing records
+- Change existing IDs
+- Remove migrations
+- Remove Roles/Credits
+- Replace the Credits architecture
+- Remove AlbumTracks
+- Rewrite unrelated systems
+- Start a new architecture
+
+Make the smallest maintainable changes necessary.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+15. DATA PRESERVATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Existing data must remain intact.
+
+Existing Tracks, Albums, Artists, Works, Versions, AlbumTracks, PersonalRelationships, JournalEntries, ListeningHistory, Roles and Credits must remain valid.
+
+Existing backup files must continue to restore correctly.
+
+Do not introduce destructive migrations.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+16. REQUIRED USER JOURNEY TEST — TRACK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Test this exact workflow:
+
+1. Open Add Track.
+2. Enter Track information.
+3. Select an Artist.
+4. Verify that Album choices are filtered to that Artist.
+5. Select an appropriate Album.
+6. Add Contributor #1 BEFORE saving.
+7. Select Artist and Role.
+8. Add Contributor #2 BEFORE saving.
+9. Select Artist and Role.
+10. Press Save ONCE.
+11. Open Track Detail.
+12. Verify both Contributors are displayed.
+13. Open Edit Track.
+14. Add/change/remove a Contributor.
+15. Save.
+16. Verify the changes.
+17. Verify the Track itself remains intact.
+
+There must be NO requirement to save the Track before adding the first Contributor.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+17. REQUIRED USER JOURNEY TEST — ALBUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Test:
+
+1. Open Add Album.
+2. Enter Album information.
+3. Add one or more Contributors BEFORE saving.
+4. Select Artists and Roles.
+5. Press Save ONCE.
+6. Open Album Detail.
+7. Verify Contributors are displayed.
+8. Open Edit Album.
+9. Add/change/remove a Contributor.
+10. Save.
+11. Verify the changes.
+12. Verify the Album itself remains intact.
+
+Again:
+
+NO Save → Edit → Add Contributor workflow for initial creation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+18. REQUIRED FILTER TEST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create/use test data involving at least two Artists with different Albums.
+
+Verify:
+
+Artist A selected
+→ only Albums associated with Artist A appear.
+
+Change to Artist B
+→ Artist A's unrelated Album disappears.
+
+Artist B's Albums appear.
+
+Select an Artist with no Albums
+→ appropriate empty state appears.
+
+No crash.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+19. QUALITY CHECKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After implementation, run:
+
+- TypeScript typecheck
+- Workspace typecheck
+- git diff --check
+- Expo dependency check
+- Expo Doctor
+- Metro bundle
+- Web Preview if available
+
+If Expo Go is available, manually test:
+
+- Artist Detail
+- Add Track
+- Add Album
+- Contributors during creation
+- Track Detail
+- Album Detail
+- Artist → Album filtering
+- Changing Artist after selecting Album
+- Artist with no Albums
+
+Do not claim native Android/Expo Go testing unless it was actually performed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+20. FINAL REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Provide a concise final report containing:
+
+1. Renamed "اعتبارات صریح" → "مشارکت‌کنندگان"
+2. Inline Contributors during Add Track
+3. Inline Contributors during Add Album
+4. One-save transactional creation behavior
+5. Edit behavior
+6. Artist → Album filtering
+7. Artist-change behavior
+8. Empty Album behavior
+9. Tests performed
+10. Typecheck result
+11. Expo Doctor result
+12. Metro/Web result
+13. Whether Expo Go/native Android was actually tested
+14. Any remaining limitations
+
+IMPORTANT:
+
+This is the FINAL UX CORRECTION for Phase 02.
+
+After completing these corrections, STOP.
+
+DO NOT start Phase 03.
+DO NOT add unrelated features.
+DO NOT expand the scope.

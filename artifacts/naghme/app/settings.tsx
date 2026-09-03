@@ -170,7 +170,7 @@ export default function SettingsScreen() {
       const summary = await restoreArchiveBackup(json);
       Alert.alert(
         'بازیابی انجام شد',
-        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.tracks} قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} رکورد تاریخچه بازیابی شد.`,
+        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} رکورد تاریخچه بازیابی شد.`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {

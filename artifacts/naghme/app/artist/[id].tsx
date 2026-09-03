@@ -24,7 +24,9 @@ import {
   ArtistRecord,
   deleteArtist,
   getArtistById,
+  getCreditsForArtist,
   getTracksByArtistId,
+  CreditViewRecord,
   TrackRecord,
   updateArtist,
 } from '@/src/db/queries';
@@ -37,6 +39,7 @@ export default function ArtistDetailScreen() {
   const artistId = Array.isArray(id) ? id[0] : id;
   const [artist, setArtist] = useState<ArtistRecord | null>(null);
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
+  const [credits, setCredits] = useState<CreditViewRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [savingGallery, setSavingGallery] = useState<boolean>(false);
@@ -64,14 +67,16 @@ export default function ArtistDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundArtist, artistTracks] = await Promise.all([
+      const [foundArtist, artistTracks, artistCredits] = await Promise.all([
         getArtistById(artistId),
         getTracksByArtistId(artistId),
+        getCreditsForArtist(artistId),
       ]);
       if (!foundArtist) setError('هنرمند پیدا نشد.');
       else {
         setArtist(foundArtist);
         setTracks(artistTracks);
+        setCredits(artistCredits);
       }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن هنرمند انجام نشد.');
@@ -524,6 +529,26 @@ export default function ArtistDetailScreen() {
         )}
       </DetailCard>
 
+      {credits.length > 0 ? (
+        <>
+          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
+          <DetailCard>
+            {credits.map((credit) => (
+              <CreditRow
+                key={credit.id}
+                credit={credit}
+                colors={colors}
+                styles={styles}
+                onPress={() => {
+                  if (credit.trackId) router.push(`/track/${credit.trackId}`);
+                  else if (credit.albumId) router.push(`/album/${credit.albumId}`);
+                }}
+              />
+            ))}
+          </DetailCard>
+        </>
+      ) : null}
+
       <Modal
         visible={gridGalleryVisible}
         animationType="slide"
@@ -649,6 +674,37 @@ export default function ArtistDetailScreen() {
   );
 }
 
+function CreditRow({
+  credit,
+  colors,
+  styles,
+  onPress,
+}: {
+  credit: CreditViewRecord;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+  onPress: () => void;
+}) {
+  const targetTitle = credit.workTitle ?? credit.trackTitle ?? credit.albumTitle ?? 'مقصد نامشخص';
+  const targetType = credit.workId ? 'اثر' : credit.trackId ? 'قطعه' : 'آلبوم';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.creditRow, pressed && styles.pressed]}
+    >
+      <Feather name="chevron-left" size={17} color={colors.mutedForeground} />
+      <View style={styles.creditCopy}>
+        <Text style={styles.creditRole}>{credit.roleName}</Text>
+        <Text style={styles.creditTarget} numberOfLines={2}>
+          {targetTitle}
+        </Text>
+        <Text style={styles.creditTargetType}>{targetType}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 function parseGalleryImages(value: string | null | undefined): string[] {
   if (!value) return [];
   try {
@@ -743,6 +799,18 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 14,
       textAlign: 'right',
     },
+    creditRow: {
+      minHeight: 58,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    creditCopy: { flex: 1, alignItems: 'flex-end' },
+    creditRole: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    creditTarget: { color: colors.foreground, fontSize: 13, textAlign: 'right', marginTop: 3 },
+    creditTargetType: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 2 },
     mutedText: {
       color: colors.mutedForeground,
       fontSize: 13,

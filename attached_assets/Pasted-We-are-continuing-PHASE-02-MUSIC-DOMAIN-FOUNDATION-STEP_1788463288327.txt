@@ -1,0 +1,589 @@
+We are continuing:
+
+# PHASE 02 — MUSIC DOMAIN FOUNDATION
+## STEP 02 — ALBUM INTEGRITY
+
+PHASE 02 STEP 01 is complete.
+
+Step 01 established:
+
+ListeningHistory is the canonical source of listening counts.
+
+Do not revisit or redesign that decision in this step.
+
+This step has one purpose:
+
+Make the current Album ↔ Track relationship structurally reliable and preserve the order of tracks within an album without inventing historical metadata.
+
+==================================================
+1. PROJECT CONTEXT
+==================================================
+
+Naghme is a personal digital music archive / museum-like music knowledge system.
+
+The long-term architecture will eventually represent:
+
+- Work
+- Recording / performance
+- Version
+- Artist
+- Role
+- Credit
+- Album
+- Album edition
+- Artwork
+- Sources
+- Lyrics
+- Sheet music
+- Personal relationship
+- Journal
+- Listening history
+- visual relationships / graph
+
+But these concepts are being introduced gradually.
+
+Do NOT implement the future domain model in this step.
+
+==================================================
+2. STRICT SCOPE
+==================================================
+
+ONLY address:
+
+- Album ↔ Track relationship
+- official/user-defined track ordering inside an album
+- album track-list queries
+- safe album-track persistence
+- preservation of existing album and track data
+- verification of the new relationship
+
+Do NOT implement:
+
+- Work
+- Recording
+- Version
+- Role
+- Credit
+- AlbumCredits
+- Source
+- Artwork
+- Collection
+- ArtistRelationships
+- ListeningEvents
+- Person/Artist split
+- advanced graph redesign
+- UI redesign
+- new AI features
+- unrelated schema refactoring
+
+==================================================
+3. FIRST: INSPECT THE CURRENT IMPLEMENTATION
+==================================================
+
+Before changing anything, inspect the actual code.
+
+Search for all current Album ↔ Track behavior.
+
+Inspect at minimum:
+
+- database schema
+- migrations
+- queries.ts
+- album detail screen
+- track detail screen
+- seed data
+- graph queries
+- search queries
+- backup/restore
+- any code that assigns albumId
+- any code that retrieves album tracks
+
+Determine:
+
+1. How are tracks currently connected to albums?
+2. How is album track order currently determined?
+3. Does any code rely on rowid?
+4. Does any code rely on insertion order?
+5. Does any code assume albumId alone is sufficient?
+6. How does backup/restore represent album membership?
+7. Are there existing tracks without albumId?
+8. Are there existing albums with zero tracks?
+9. Can a track currently belong to only one album?
+10. Are duplicate album-track relationships possible?
+
+Do not guess.
+
+==================================================
+4. ARCHITECTURAL DECISION
+==================================================
+
+The current Tracks table contains:
+
+albumId
+
+This can remain for backward compatibility.
+
+However, a proper archive needs a dedicated relationship for:
+
+Album → ordered Track list
+
+The preferred model is a junction table:
+
+AlbumTracks
+
+with at least:
+
+- albumId
+- trackId
+- discNumber
+- trackNumber
+- optional titleOverride
+- optional notes
+
+Use a composite primary key where appropriate.
+
+IMPORTANT:
+
+Do not automatically assume that every existing albumId/trackId relationship has an official track number.
+
+Existing ordering information may not exist.
+
+Do NOT invent official track numbers.
+
+==================================================
+5. EXISTING DATA MIGRATION
+==================================================
+
+If AlbumTracks is introduced:
+
+Create a safe migration using the existing migration framework.
+
+Preserve all existing:
+
+- Album IDs
+- Track IDs
+- albumId values
+- track records
+- album records
+
+Existing Album ↔ Track relationships must not disappear.
+
+For legacy relationships where track order is unknown:
+
+DO NOT claim that the order is official.
+
+If a deterministic fallback order is necessary for migration, use a clearly documented legacy order and mark it as inferred/legacy if the schema supports that distinction.
+
+If the schema cannot safely represent whether an order is official:
+
+Do not fabricate certainty.
+
+The goal is data preservation first.
+
+==================================================
+6. TRACK ORDER
+==================================================
+
+The new relationship should support:
+
+- discNumber
+- trackNumber
+
+This must allow:
+
+Single-disc album:
+
+1, 2, 3, 4...
+
+Multi-disc album:
+
+Disc 1:
+1, 2, 3...
+
+Disc 2:
+1, 2, 3...
+
+The query layer must retrieve album tracks using explicit ordering:
+
+ORDER BY discNumber, trackNumber
+
+Do NOT use:
+
+- rowid
+- insertion order
+- accidental database order
+
+as the canonical album order.
+
+==================================================
+7. DUPLICATE PROTECTION
+==================================================
+
+The relationship must prevent accidental duplicate membership.
+
+For example:
+
+The same track must not accidentally appear twice in the same album at the same disc/track position.
+
+Choose constraints appropriate to the actual data model.
+
+Be careful:
+
+Do not prevent legitimate cases without first understanding the domain.
+
+Do not over-engineer editions or multiple versions yet.
+
+==================================================
+8. TRACK MEMBERSHIP SEMANTICS
+==================================================
+
+Do not assume a Track can belong to only one Album forever.
+
+The future archive may need to represent:
+
+- original album
+- compilation
+- reissue
+- anthology
+- soundtrack
+- live album
+- different editions
+
+Therefore:
+
+Do not redesign Track → Album as a permanent one-to-one concept.
+
+The new AlbumTracks relationship should allow the same Track to appear in multiple Albums when the current architecture needs that capability.
+
+However:
+
+Do not create duplicate memberships automatically.
+
+==================================================
+9. QUERY LAYER
+==================================================
+
+Update album-related queries so that:
+
+get album tracks
+
+uses AlbumTracks and explicit ordering.
+
+Verify all affected queries.
+
+Important:
+
+Do not break existing callers unnecessarily.
+
+If the current API returns Track records, preserve compatibility where practical.
+
+Keep database-row types separate from UI/domain types where practical, but do not perform a broad domain refactor in this step.
+
+==================================================
+10. ALBUM DETAIL SCREEN
+==================================================
+
+Do NOT redesign the Album screen.
+
+Make only the minimal functional change required for correct track ordering.
+
+The album track list should use the new explicit order.
+
+If an existing album has no known order:
+
+Do not display a fabricated "official" ordering.
+
+Use a clearly understood fallback only if necessary for current UI compatibility.
+
+==================================================
+11. ADD / EDIT ALBUM BEHAVIOR
+==================================================
+
+Inspect how tracks are currently associated with albums.
+
+If the application already has album editing:
+
+Make sure it does not silently destroy track membership or order.
+
+If there is no album-track editor yet:
+
+Do NOT build a full new editor in this step.
+
+The data model comes first.
+
+A later step can provide a proper archive-grade album editor.
+
+==================================================
+12. BACKUP / RESTORE
+==================================================
+
+This is important.
+
+The existing backup format is Version 1.
+
+Do NOT casually break it.
+
+Inspect whether AlbumTracks can be represented without breaking existing backups.
+
+Preferred approach:
+
+- preserve existing backup compatibility
+- if AlbumTracks cannot be safely represented in Backup Version 1, document this limitation rather than silently losing order information
+- do NOT create a large Backup 2.0 redesign in this step
+
+However, if a small backward-compatible extension is clearly safe and supported by the existing format, implement it only if it does not break old backups.
+
+Restore must preserve:
+
+- album IDs
+- track IDs
+- album membership
+- track ordering where available
+
+Never invent ordering during restore.
+
+==================================================
+13. GRAPH
+==================================================
+
+Do not redesign the music graph.
+
+However, inspect whether the graph currently assumes:
+
+Artist → Album → Track
+
+based on albumId alone.
+
+If necessary, make the smallest query-level adjustment so album-track relationships come from the new canonical AlbumTracks relationship.
+
+Do not implement new graph relationships yet.
+
+==================================================
+14. SEARCH
+==================================================
+
+Do not redesign search.
+
+Ensure that introducing AlbumTracks does not break existing track/album search.
+
+==================================================
+15. DATABASE SAFETY
+==================================================
+
+Use the existing migration system.
+
+Do NOT:
+
+- delete database
+- reset database
+- recreate existing tables destructively
+- regenerate IDs
+- delete existing Tracks
+- delete existing Albums
+- silently remove album membership
+- invent historical track numbers
+- infer official ordering from rowid and present it as fact
+
+Existing data must remain recoverable.
+
+==================================================
+16. INDEXES
+==================================================
+
+Add only justified indexes.
+
+At minimum evaluate whether the new relationship requires efficient lookup by:
+
+- albumId
+- trackId
+- albumId + discNumber + trackNumber
+
+Use appropriate indexes based on actual queries.
+
+Do not add random indexes.
+
+==================================================
+17. VERIFICATION
+==================================================
+
+Verify with representative data.
+
+At minimum test:
+
+Album A:
+
+Disc 1:
+Track 3
+Track 1
+Track 2
+
+After explicit ordering:
+
+Track 1
+Track 2
+Track 3
+
+Also test:
+
+Album A:
+Disc 1 Track 1
+Disc 1 Track 2
+Disc 2 Track 1
+
+Expected order:
+
+Disc 1 / Track 1
+Disc 1 / Track 2
+Disc 2 / Track 1
+
+Also verify:
+
+- same Track can belong to multiple Albums
+- duplicate membership is prevented appropriately
+- tracks without albums remain valid
+- albums without tracks remain valid
+- existing album/track IDs are preserved
+- existing albumId data remains recoverable
+
+If native SQLite is unavailable, use the strongest available SQLite verification without pretending it is Android-native.
+
+==================================================
+18. REGRESSION
+==================================================
+
+Verify:
+
+- Home
+- Archive
+- Search
+- Album detail
+- Track detail
+- Graph
+- Backup/Restore code paths where testable
+
+Do not redesign UI.
+
+==================================================
+19. TYPECHECK / BUILD
+==================================================
+
+Run:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency validation
+- Metro startup
+- Web Preview route checks
+
+If Android/native testing is unavailable:
+
+say so explicitly.
+
+==================================================
+20. IMPORTANT DOMAIN RULE
+==================================================
+
+An Album is not the same thing as a Work.
+
+A Track is not yet being redesigned into Recording/Version.
+
+Do not introduce those concepts here.
+
+This step only makes:
+
+Album → ordered Track membership
+
+more correct.
+
+==================================================
+21. FINAL REPORT
+==================================================
+
+Return exactly:
+
+# PHASE 02 STEP 02 — ALBUM INTEGRITY REPORT
+
+## 1. Current problem
+Explain the original Album ↔ Track limitation in simple language.
+
+## 2. Existing implementation inspected
+List important files and findings.
+
+## 3. New AlbumTracks model
+Explain:
+- columns
+- keys
+- ordering
+- constraints
+- indexes
+
+## 4. Migration
+Report:
+- database version before
+- database version after
+- migration number
+- exact preservation behavior
+
+## 5. Existing data
+Explicitly report:
+- album IDs
+- track IDs
+- album memberships
+- albums without tracks
+- tracks without albums
+
+## 6. Track ordering
+Explain how ordering now works.
+
+Clearly distinguish:
+- known explicit ordering
+- inferred legacy ordering
+- unknown ordering
+
+Do not claim unknown ordering is official.
+
+## 7. Query changes
+List changed queries.
+
+## 8. UI changes
+List only actual changes.
+
+## 9. Backup / Restore
+Explain exactly what happens to AlbumTracks and ordering.
+
+## 10. Graph impact
+Explain whether graph queries were changed.
+
+## 11. Tests
+Report exact results.
+
+## 12. Data preservation
+Explicitly confirm:
+- no database reset
+- IDs preserved
+- no tracks deleted
+- no albums deleted
+- no historical ordering invented
+
+## 13. Remaining limitations
+Only real limitations.
+
+## 14. Next step recommendation
+Recommend the next logical step.
+
+Do NOT automatically implement it.
+
+==================================================
+22. FINAL ACCURACY RULE
+==================================================
+
+Never call an inferred track order "official".
+
+Never claim Android-native verification if it was not actually executed.
+
+Never expand this step into Work / Version / Role / Credit.
+
+The purpose is simple:
+
+Make Albums trustworthy archive objects with an explicit, stable relationship to their ordered tracks, while preserving all existing Naghme data.

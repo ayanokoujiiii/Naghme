@@ -1,0 +1,530 @@
+PHASE 02 — STEP 04 CORRECTION
+ROLES & CREDITS — PRACTICAL USER DATA ENTRY
+
+The database foundation for Roles and Credits was implemented in Phase 02 Step 04.
+
+However, an important product requirement was not completed:
+
+The user must be able to MANUALLY ENTER, VIEW, EDIT, and REMOVE role/contribution data from the existing Naghme UI.
+
+The current implementation has the data model and query layer, but the user cannot practically populate Credits from the app.
+
+This correction is specifically for making the existing Roles/Credits functionality usable.
+
+DO NOT rebuild Naghme.
+DO NOT reset the database.
+DO NOT change the existing Phase 02 data model unless a real bug requires it.
+DO NOT create fake Credits.
+DO NOT fabricate historical music metadata.
+DO NOT introduce unrelated features.
+DO NOT start Phase 03.
+STOP after this correction is complete.
+
+==================================================
+1. CORE PRODUCT PRINCIPLE
+==================================================
+
+Naghme is a manually curated personal music archive.
+
+If the user adds a new metadata field or relationship, the application must provide a practical way for the user to enter that information.
+
+Therefore:
+
+Database field alone = NOT sufficient.
+
+Every new user-facing archive datum must have:
+
+ADD → SAVE → DISPLAY → EDIT → DELETE
+
+functionality where appropriate.
+
+For Roles/Credits this means the user must be able to manually create and manage contributions.
+
+==================================================
+2. DO NOT CONFUSE ARTIST ROLES WITH CREDITS
+==================================================
+
+There are two related but different concepts.
+
+A) General artist roles:
+
+Example:
+
+Ali Tajvidi
+- Composer
+- Arranger
+- Musician
+
+This describes roles the artist may have in the archive.
+
+B) Specific Credit:
+
+Example:
+
+Track: "Mara Bebus"
+
+Ali Tajvidi → Composer
+Rahim Moayeri → Lyricist
+Delkash → Vocalist
+
+This describes what a specific artist did for a specific Work, Track, or Album.
+
+The current Roles/Credits database model must remain the source of truth.
+
+Do not create separate composer/lyricist/vocalist tables.
+
+==================================================
+3. ARTIST ADD / EDIT UI
+==================================================
+
+Inspect the existing Add Artist and Edit Artist screens.
+
+Add a practical section for the artist's general roles if the current product model supports it.
+
+The user should be able to:
+
+- see available roles
+- select multiple roles for an artist
+- add/remove roles
+- save them persistently
+
+Use the existing Roles table.
+
+Do NOT create duplicate role definitions.
+
+Do NOT automatically create Work/Track/Album Credits from these general roles.
+
+General artist role ≠ specific Credit.
+
+If the existing data model does not currently have a dedicated relation for general artist roles, DO NOT invent a second role architecture unnecessarily.
+
+In that case, prioritize the specific Credit workflow described below.
+
+==================================================
+4. TRACK ADD / EDIT UI — REQUIRED
+==================================================
+
+This is the most important part.
+
+Inspect the existing Add Track and Edit Track forms.
+
+Add a section such as:
+
+"مشارکت‌کنندگان"
+
+or
+
+"عوامل و نقش‌ها"
+
+The exact visual wording can follow the existing Naghme UI language.
+
+The user must be able to:
+
+- add a contributor
+- select an existing Artist
+- select a Role
+- save the Credit
+- see all Credits currently attached to the Track
+- edit a Credit
+- remove a Credit
+
+Example:
+
+Track:
+مرا ببوس
+
+مشارکت‌کنندگان:
+
+دلکش       — خواننده
+علی تجویدی — آهنگساز
+رهی معیری  — ترانه‌سرا
+فلانی      — تنظیم‌کننده
+
+Provide:
+
+"+ افزودن مشارکت"
+
+When pressed:
+
+1. Select Artist
+2. Select Role
+3. Optional notes
+4. Save
+
+Do NOT require the user to manually enter Artist IDs or Role IDs.
+
+Use human-readable names.
+
+The artist selector should use existing Artists.
+
+The role selector should use existing Roles.
+
+If no Artist exists, provide an appropriate empty state directing the user to add an Artist first.
+
+If no Role exists, use the existing seeded Roles.
+
+Do not fabricate contributors.
+
+==================================================
+5. ALBUM ADD / EDIT UI — REQUIRED
+==================================================
+
+Inspect the existing Add Album and Edit Album forms.
+
+Add equivalent management for Album-level Credits.
+
+The user must be able to:
+
+- add Artist + Role
+- view Album Credits
+- edit them
+- remove them
+
+Example:
+
+Album:
+آلبوم X
+
+مشارکت‌کنندگان:
+
+فلانی — تهیه‌کننده
+فلانی — تنظیم‌کننده
+فلانی — نوازنده
+
+Use the existing Credits table and album target.
+
+Do not create another album-credit architecture.
+
+==================================================
+6. WORK / VERSION
+==================================================
+
+Do NOT build a full Work/Version editor in this correction.
+
+However, if the existing Track UI already exposes Work selection, do not break it.
+
+Do not create a new Work screen.
+
+Do not create Credit UI that requires a Work screen to function.
+
+Track and Album Credit management are sufficient for this correction.
+
+==================================================
+7. CREDIT DISPLAY
+==================================================
+
+Verify the existing Track Detail page.
+
+Credits saved through Add/Edit Track must actually appear on Track Detail.
+
+Example:
+
+مشارکت‌کنندگان
+
+🎤 دلکش
+خواننده
+
+🎼 علی تجویدی
+آهنگساز
+
+✍️ رهی معیری
+ترانه‌سرا
+
+The design must fit the existing Naghme visual language.
+
+Do not redesign the entire page.
+
+Only add the necessary section.
+
+==================================================
+8. ALBUM CREDIT DISPLAY
+==================================================
+
+Verify Album Detail.
+
+Saved Album Credits must be displayed there.
+
+Only display the section when Credits actually exist.
+
+Do not show empty fake content.
+
+==================================================
+9. ARTIST CREDIT DISPLAY
+==================================================
+
+Verify Artist Detail.
+
+The Artist page should show the artist's actual Credit relationships where appropriate.
+
+For example:
+
+مشارکت‌ها
+
+آهنگساز
+  ├── اثر A
+  └── قطعه B
+
+خواننده
+  └── قطعه C
+
+The exact presentation can remain simple.
+
+The critical requirement is:
+
+The user must be able to see the Credits they manually entered.
+
+Do not fabricate any.
+
+==================================================
+10. EDIT / DELETE BEHAVIOR
+==================================================
+
+Credit management must support:
+
+ADD
+EDIT
+DELETE
+
+Deleting a Credit must only delete that Credit.
+
+It must NEVER delete:
+
+- Artist
+- Track
+- Album
+- Work
+- Version
+- Journal
+- ListeningHistory
+- PersonalRelationship
+
+Confirm deletion where appropriate using the existing Naghme interaction pattern.
+
+==================================================
+11. DUPLICATE HANDLING
+==================================================
+
+Use the existing duplicate-prevention rules.
+
+Do not allow the same:
+
+Artist + Role + Target
+
+Credit to be accidentally duplicated.
+
+If the user attempts to add an existing Credit:
+
+show a clear Persian message rather than silently creating a duplicate.
+
+==================================================
+12. EXISTING DATA MUST REMAIN SAFE
+==================================================
+
+Do not migrate existing Track.artistId values into Credits.
+
+Do not invent Credits from existing data.
+
+Do not change existing Artists, Albums, Tracks, AlbumTracks, Works, Versions, JournalEntries, ListeningHistory, or PersonalRelationships.
+
+Existing data must remain intact.
+
+==================================================
+13. BACKUP / RESTORE
+==================================================
+
+Verify that Credits created through the new UI are included in existing backup data.
+
+Verify that Roles and Credits created by the user remain compatible with the existing backup/restore system.
+
+Do not redesign the backup format.
+
+Do not break old backups.
+
+==================================================
+14. PERSIAN / RTL UI
+==================================================
+
+All new visible UI must follow the existing Naghme conventions:
+
+- Persian
+- RTL
+- dark theme
+- mobile-first
+- existing typography
+- existing spacing
+- existing component language
+
+Do not introduce a new visual system.
+
+Use concise Persian labels.
+
+Suggested labels:
+
+مشارکت‌کنندگان
+نقش
+هنرمند
+افزودن مشارکت
+ویرایش
+حذف
+ذخیره
+لغو
+
+Use the actual existing terminology where the app already has established labels.
+
+==================================================
+15. USER EXPERIENCE
+==================================================
+
+The workflow must be understandable to a normal user.
+
+The user should NEVER need to know:
+
+- database IDs
+- SQLite
+- Credit IDs
+- Role IDs
+- foreign keys
+- Work IDs
+
+Everything must be selected through normal UI controls.
+
+Prefer existing modal/sheet/selector components if available.
+
+Avoid unnecessary dependencies.
+
+==================================================
+16. TESTING
+==================================================
+
+Test the complete practical workflow using existing/sample data.
+
+At minimum verify:
+
+TRACK:
+
+1. Open Add/Edit Track.
+2. Add an existing Artist as contributor.
+3. Select "خواننده" or equivalent vocalist role.
+4. Save.
+5. Reopen Track.
+6. Confirm the Credit appears.
+7. Edit the role or notes.
+8. Save.
+9. Confirm the change appears.
+10. Delete the Credit.
+11. Confirm it disappears.
+12. Confirm the Track still exists.
+
+ALBUM:
+
+Repeat the same workflow for an Album Credit.
+
+ARTIST:
+
+Open Artist Detail and verify the manually-created Credit is visible in the artist's contribution area.
+
+DUPLICATE:
+
+Attempt to create the same Artist + Role + Target twice and verify duplicate prevention.
+
+DATA SAFETY:
+
+Confirm deleting a Credit does not delete the Artist, Track, or Album.
+
+==================================================
+17. TYPE / BUILD CHECKS
+==================================================
+
+Run:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency check
+- Expo Doctor
+- Metro startup
+
+If possible, verify the new UI in Expo Go.
+
+Do not claim native Android testing unless an actual Android device/emulator was used.
+
+==================================================
+18. FINAL EXPO GO VERIFICATION
+==================================================
+
+After implementation, explicitly report what the user can now test visually in Expo Go.
+
+The report must give exact navigation paths, for example:
+
+خانه → آرشیو → قطعه‌ها → [قطعه] → ویرایش
+
+and:
+
+خانه → آرشیو → آلبوم‌ها → [آلبوم] → ویرایش
+
+and:
+
+خانه → آرشیو → خوانندگان → [هنرمند]
+
+Explain exactly where the new "مشارکت‌کنندگان" UI appears.
+
+==================================================
+19. FINAL REPORT
+==================================================
+
+Provide a medium-length report with exactly these sections:
+
+1. What was missing
+2. What was implemented
+3. Artist UI
+4. Track UI
+5. Album UI
+6. Credit display
+7. Edit/Delete behavior
+8. Duplicate prevention
+9. Backup/Restore
+10. Data preservation
+11. Tests
+12. Expo verification
+13. What to inspect manually in Expo Go
+14. Remaining limitations
+15. Final status
+
+Clearly distinguish:
+
+- Actually executed
+- Source-level verified
+- Not available
+
+Do not exaggerate test coverage.
+
+==================================================
+DEFINITION OF DONE
+==================================================
+
+This correction is complete only when:
+
+- the existing Roles/Credits database model is actually usable from the UI
+- the user can manually add a contributor to a Track
+- the user can select an existing Artist
+- the user can select an existing Role
+- the Credit is persisted
+- the Credit is displayed on Track Detail
+- the user can edit the Credit
+- the user can delete the Credit
+- Album Credits can similarly be manually managed
+- Artist contribution relationships are visible
+- duplicate Credits are prevented
+- deleting a Credit does not delete musical entities
+- existing data remains intact
+- backup/restore remains compatible
+- typecheck passes
+- Expo checks pass
+- Metro starts
+- no unrelated feature is introduced
+
+IMPORTANT:
+
+Do not proceed to Phase 03 after completing this correction.
+
+STOP HERE and provide the final report.

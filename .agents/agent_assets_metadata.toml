@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "RGiWCOTeD_BdiAm769T6e"
+uri = "file://attached_assets/naghme-2.0-phase-01-step-01-audit-report.txt"
+type = "text"
+title = "گزارش ممیزی معماری نغمه 2.0"
+description = "گزارش کامل Phase 01 / Step 1 دربارهٔ مدل دیتابیس، معماری دامنه، ریسک‌های مهاجرت و ترتیب پیشنهادی پیاده‌سازی."
+logical_id = "46ad79ac-5476-4cca-b862-b8f02e290420"
+content_hash = "sha256:4471fc85171cf17121330d05528652dcb9f7787921ae131720e808f70bd0eb91"
+size = 42305
+mtime_ms = 1788460912223
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:d54083f3-66d5-48a6-a74f-c5bd576dbc80/46ad79ac-5476-4cca-b862-b8f02e290420/824727f1-f90b-4f6e-9fa3-6ea2bda6cc62"
+storage_version_token = "1788460916703981"
+content_type = "text/plain"

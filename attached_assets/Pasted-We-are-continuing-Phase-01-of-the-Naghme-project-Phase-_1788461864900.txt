@@ -1,0 +1,496 @@
+We are continuing Phase 01 of the Naghme project.
+
+Phase 01 Step 01 — Foundation Audit is complete.
+Phase 01 Step 02 — Stability Foundation is implemented.
+
+Now perform:
+
+# PHASE 01 — STEP 03
+# VERIFICATION & NATIVE VALIDATION
+
+The purpose of this step is NOT to add new product features.
+
+The purpose is to verify that the Stability Foundation implemented in Step 02 is actually safe, repeatable, and compatible with the existing Naghme application.
+
+IMPORTANT:
+Do not expand the scope.
+Do not redesign the UI.
+Do not introduce new music-domain entities.
+Do not begin Work / Version / Role / Credit modeling yet.
+
+==================================================
+1. SCOPE
+==================================================
+
+Verify only the following:
+
+- database initialization
+- migration system
+- database versioning
+- migration idempotency
+- foreign-key behavior
+- indexes
+- data preservation
+- backup
+- restore
+- integrity checks
+- existing application startup
+- existing core database queries
+- TypeScript/build integrity
+
+The existing product behavior must remain unchanged.
+
+==================================================
+2. FIRST: INSPECT THE IMPLEMENTATION
+==================================================
+
+Before changing anything:
+
+Read the actual implementation from Step 02, especially:
+
+- artifacts/naghme/src/db/database.ts
+- artifacts/naghme/src/db/migrations.ts
+- artifacts/naghme/src/db/integrity.ts
+- artifacts/naghme/src/db/verification.ts
+- artifacts/naghme/src/db/portability.ts
+
+Also inspect the existing database query layer and all code that initializes or accesses SQLite.
+
+Do not assume the previous implementation is correct just because typecheck passed.
+
+Identify:
+
+- actual migration execution order
+- actual PRAGMA user_version behavior
+- actual transaction boundaries
+- actual foreign_keys behavior
+- actual index creation
+- actual backup columns
+- actual restore behavior
+- any remaining SELECT * usage in database portability code
+- any migration that can accidentally run twice
+- any migration that can destroy or overwrite existing data
+
+If something is unsafe, fix it within this step.
+
+==================================================
+3. TEST A: FRESH DATABASE
+==================================================
+
+Test a genuinely fresh database initialization.
+
+Verify:
+
+- database opens successfully
+- all expected current tables exist
+- required columns exist
+- foreign_keys is enabled
+- PRAGMA user_version reaches the expected version
+- required indexes exist
+- integrity check reports no structural problems
+
+Do not use this as an excuse to change the schema.
+
+Record the result.
+
+==================================================
+4. TEST B: EXISTING DATABASE / UPGRADE PATH
+==================================================
+
+The most important test is an existing installation.
+
+We need to verify that an existing Naghme database can move from the old unversioned state into the new versioned state without losing information.
+
+If the actual Android database file can be tested, use it.
+
+If a real existing database is not available in the current environment:
+
+- create a representative legacy database using the actual old schema
+- insert realistic sample records
+- preserve realistic IDs and relationships
+- run the migration system against it
+
+The test data should include at minimum:
+
+Artists
+Albums
+Tracks
+PersonalRelationships
+JournalEntries
+ListeningHistory
+
+Use multiple records and relationships, not only one row.
+
+Before migration record:
+
+- table counts
+- IDs
+- important field values
+- relationships
+- favorite/rating values
+- journal contents
+- listening history
+
+After migration verify all of these remain unchanged.
+
+IMPORTANT:
+
+Do NOT silently normalize, deduplicate, rename, or semantically reinterpret existing music data.
+
+==================================================
+5. TEST C: MIGRATION IDEMPOTENCY
+==================================================
+
+Run the migration initialization more than once.
+
+The second execution must NOT:
+
+- duplicate data
+- change IDs
+- recreate destructive tables
+- corrupt columns
+- produce duplicate indexes
+- change user data unexpectedly
+
+Verify that a database already at the latest migration version can safely initialize again.
+
+This is especially important because Naghme will start its database initialization whenever the application launches.
+
+==================================================
+6. TEST D: FOREIGN KEYS
+==================================================
+
+Verify the actual foreign-key behavior.
+
+Test valid references.
+
+Test invalid references where practical.
+
+Verify the intended existing behavior:
+
+Track → Artist:
+ON DELETE SET NULL
+
+Track → Album:
+ON DELETE SET NULL
+
+PersonalRelationship → Track:
+ON DELETE CASCADE
+
+JournalEntry → Track:
+ON DELETE CASCADE
+
+ListeningHistory → Track:
+ON DELETE CASCADE
+
+Do not change these semantics unless the existing schema makes the current behavior impossible or unsafe.
+
+If foreign_key_check reports problems, investigate and report them.
+
+Do NOT automatically delete orphaned user data.
+
+==================================================
+7. TEST E: INDEXES
+==================================================
+
+Verify that the intended indexes from Step 02 actually exist.
+
+Check:
+
+- idx_tracks_artist_title
+- idx_tracks_album_title
+- idx_tracks_title_nocase
+- idx_journal_track_created
+- idx_journal_created
+- idx_history_track_listened
+- idx_history_listened
+
+Do not add random indexes.
+
+Do not claim that indexes make arbitrary substring search fast.
+
+We only need to verify that the intended indexes exist and are valid.
+
+==================================================
+8. TEST F: BACKUP
+==================================================
+
+Inspect and test the existing backup implementation.
+
+Create a backup from a representative database.
+
+Verify:
+
+- backup version is correct
+- all supported current tables are included
+- IDs are preserved
+- relationships are preserved
+- duplicate IDs are rejected
+- explicit columns are used
+- malformed records are rejected clearly
+- backup generation does not modify the database
+
+Do NOT create Backup Version 2 yet.
+
+Do NOT add media-file backup yet.
+
+==================================================
+9. TEST G: RESTORE ROUND TRIP
+==================================================
+
+This is a critical test.
+
+Where native SQLite execution is available:
+
+1. Create a test database.
+2. Insert representative data.
+3. Create a backup.
+4. Restore that backup into a clean test database or an appropriately isolated test environment.
+5. Compare the result with the source data.
+
+Verify:
+
+- same IDs
+- same counts
+- same references
+- same artist/album/track relationships
+- same personal relationships
+- same journal entries
+- same listening history
+- same favorites
+- same ratings
+
+Also verify the actual documented restore behavior:
+
+RESTORE IS MERGE / UPSERT.
+
+Therefore:
+
+- records in the destination that are absent from the backup must remain
+- records in the backup must be inserted or updated
+- IDs must remain stable
+
+Do not silently change this behavior.
+
+If a true Android/native round-trip cannot be executed in Replit, DO NOT pretend that it was tested.
+
+Instead:
+
+- document exactly why it cannot be tested
+- identify what remains unverified
+- provide the smallest practical Android test procedure for the next environment
+
+==================================================
+10. TEST H: INTEGRITY CHECK
+==================================================
+
+Run the integrity check against:
+
+1. a clean database
+2. a migrated database
+3. a database containing representative records
+
+Verify that it correctly detects:
+
+- orphan tracks
+- orphan personal relationships
+- orphan journal entries
+- orphan listening history
+- invalid foreign keys
+- missing required fields
+- duplicate IDs
+- missing indexes
+- disabled foreign keys
+- unexpected database version
+
+The integrity checker must REPORT problems.
+
+It must NOT automatically repair or delete user data.
+
+==================================================
+11. TEST I: EXISTING APPLICATION
+==================================================
+
+Verify that the existing application still works after Step 02.
+
+At minimum verify:
+
+- app startup
+- Home
+- Archive
+- Search
+- Track detail
+- Artist detail
+- Album detail
+- Graph
+- Settings
+- existing audio/player behavior if accessible
+
+Do not redesign anything.
+
+We are testing regression, not improving UI.
+
+If a screen fails because of the database changes, fix only the regression caused by this step.
+
+==================================================
+12. TEST J: DATA CONSISTENCY
+==================================================
+
+Pay special attention to listening counts.
+
+The project currently has both:
+
+- ListeningHistory records
+- PersonalRelationships.listeningCount
+
+Do NOT redesign this yet.
+
+Do NOT introduce ListeningEvents yet.
+
+But verify whether the current implementation can produce inconsistent counts.
+
+If it can:
+
+- document exactly how
+- do not invent a new architecture in this step
+- do not silently rewrite historical data
+
+This issue will be handled in a later dedicated step.
+
+==================================================
+13. TEST K: TYPESCRIPT / BUILD
+==================================================
+
+Run:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency validation
+- Metro startup
+- Android build validation if practical
+
+If an Android build is available in the environment, prefer it over relying only on Web Preview.
+
+Remember:
+
+Web Preview is NOT sufficient evidence for native SQLite behavior.
+
+==================================================
+14. SAFETY RULES
+==================================================
+
+Absolutely do NOT:
+
+- delete the database
+- reset the database
+- recreate the database as a solution
+- regenerate IDs
+- deduplicate existing records
+- infer music semantics
+- introduce Work
+- introduce Version
+- introduce Role
+- introduce Credit
+- introduce AlbumTracks
+- introduce Sources
+- introduce Artwork
+- introduce Collections
+- introduce ArtistRelationships
+- introduce ListeningEvents
+- redesign the UI
+- add unrelated features
+- replace SQLite
+- add a backend
+- add authentication
+
+If a test exposes a serious architectural problem that cannot safely be fixed within this scope:
+
+STOP.
+
+Do not improvise.
+
+Document the problem and explain why it should be handled in a later step.
+
+==================================================
+15. REQUIRED FINAL REPORT
+==================================================
+
+At the end provide a concise but precise verification report with exactly these sections:
+
+# PHASE 01 STEP 03 — VERIFICATION REPORT
+
+## 1. Implementation changes
+List every file changed and why.
+
+## 2. Fresh database test
+Pass / Fail / Not testable
+Explain.
+
+## 3. Existing database migration test
+Pass / Fail / Not testable
+Explain.
+
+## 4. Migration idempotency
+Pass / Fail
+Explain.
+
+## 5. Foreign-key verification
+Pass / Fail
+Explain.
+
+## 6. Index verification
+Pass / Fail
+List verified indexes.
+
+## 7. Backup verification
+Pass / Fail / Not testable
+Explain.
+
+## 8. Restore round-trip
+Pass / Fail / Not testable
+Be explicit about native Android limitations.
+
+## 9. Integrity checker
+Pass / Fail
+Explain.
+
+## 10. Application regression
+Pass / Fail
+List screens/workflows checked.
+
+## 11. Data preservation
+Explicitly state whether:
+- IDs were preserved
+- records were preserved
+- relationships were preserved
+- any user data was changed
+
+## 12. Listening-count inconsistency
+Describe the current situation only.
+Do not redesign it yet.
+
+## 13. Typecheck / build / Metro
+Report exact results.
+
+## 14. Remaining limitations
+Only real limitations.
+
+## 15. Recommendation for next step
+Do NOT automatically implement the next phase.
+Recommend the next step based on evidence.
+
+IMPORTANT FINAL RULE:
+
+Do not claim a native Android test passed if it was only tested in Web Preview.
+
+Accuracy is more important than completing the checklist.
+
+At the very end explicitly state:
+
+- whether the database was deleted or reset
+- whether existing IDs were preserved
+- whether user data was changed
+- whether native Android backup/restore was actually tested
+
+Do not proceed to Work / Version / Role / Credit until this verification step is complete.

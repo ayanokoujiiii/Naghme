@@ -1,0 +1,532 @@
+NAGHME 2.0 — PHASE 01 / STEP 1
+DATABASE & DOMAIN ARCHITECTURE AUDIT
+
+IMPORTANT:
+This is an ANALYSIS-ONLY task.
+
+DO NOT modify, delete, migrate, refactor, rename, or rewrite any project files.
+
+DO NOT install packages.
+
+DO NOT change the database.
+
+DO NOT change the UI.
+
+DO NOT change existing functionality.
+
+Your only job is to deeply inspect the existing Naghme project and produce a precise technical audit and migration plan.
+
+--------------------------------------------------
+PROJECT CONTEXT
+--------------------------------------------------
+
+Naghme is a personal digital music archive.
+
+It is NOT intended to become a Spotify clone.
+
+The long-term vision is a serious personal music archive combining:
+
+- music library
+- cultural/music archive
+- artist encyclopedia
+- work and recording catalog
+- personal music journal
+- listening history
+- music relationships
+- visual music graph
+- AI assistant
+- artwork/poster archive
+
+The existing project is already functional and must NOT be rebuilt from scratch.
+
+The current stack must remain:
+
+- Expo React Native
+- TypeScript
+- Expo Router
+- SQLite
+- local/offline-first architecture
+- Android-first
+
+No backend or authentication should be introduced.
+
+--------------------------------------------------
+1. INSPECT THE PROJECT
+--------------------------------------------------
+
+Inspect the actual repository thoroughly.
+
+At minimum inspect:
+
+- package.json
+- database initialization
+- all SQLite schema definitions
+- migrations if any
+- database queries/repositories
+- TypeScript domain types
+- models/interfaces
+- Home
+- Archive
+- Search
+- Artist screens
+- Album screens
+- Track screens
+- Player/audio architecture
+- Journal
+- Listening history
+- Graph
+- Gemini/AI context
+- Recommendation system
+- Backup/export
+- Restore/import
+- Postcard Studio
+
+Do not assume that a feature is missing because its name is not obvious.
+
+Trace the actual implementation.
+
+--------------------------------------------------
+2. DOCUMENT THE CURRENT DATA MODEL
+--------------------------------------------------
+
+Create a clear description of the CURRENT database model.
+
+For every existing table/entity identify:
+
+- table name
+- fields
+- field types
+- primary keys
+- foreign keys
+- indexes
+- relationships
+- nullable fields
+- important constraints
+
+Especially inspect:
+
+- Artists
+- Albums
+- Tracks
+- PersonalRelationships
+- JournalEntries
+- ListeningHistory
+
+Also identify any other relevant tables.
+
+--------------------------------------------------
+3. DOCUMENT THE CURRENT DOMAIN MODEL
+--------------------------------------------------
+
+Identify the existing TypeScript types/interfaces/models for:
+
+- Artist
+- Album
+- Track
+- PersonalRelationship
+- JournalEntry
+- ListeningHistory
+- Audio/playback state
+- Graph entities
+- AI context
+
+Explain where domain models are duplicated or coupled to database rows.
+
+--------------------------------------------------
+4. IDENTIFY CURRENT RELATIONSHIPS
+--------------------------------------------------
+
+Map the relationships that CURRENTLY exist.
+
+For example:
+
+Artist → Track
+Artist → Album
+Album → Track
+Track → JournalEntry
+Track → ListeningHistory
+
+Do not invent relationships.
+
+Only document relationships that actually exist in the current implementation.
+
+--------------------------------------------------
+5. COMPARE CURRENT MODEL WITH TARGET MODEL
+--------------------------------------------------
+
+Now compare the current implementation against this target conceptual model:
+
+PERSON
+ARTIST
+WORK
+TRACK / RECORDING
+VERSION
+ALBUM
+ROLE
+CREDIT
+SOURCE
+ARTWORK
+RELATIONSHIP
+COLLECTION
+PERSONAL RELATIONSHIP
+JOURNAL ENTRY
+LISTENING EVENT
+
+The goal is NOT to blindly implement every entity.
+
+For each target entity answer:
+
+1. Does it already exist?
+2. Is it partially represented?
+3. Is it missing?
+4. Is it actually necessary at this stage?
+5. What existing data would need migration?
+
+--------------------------------------------------
+6. MUSIC DOMAIN REQUIREMENTS
+--------------------------------------------------
+
+The future architecture must eventually support:
+
+A person can have multiple musical roles.
+
+Examples:
+
+- vocalist
+- composer
+- lyricist
+- arranger
+- musician
+- conductor
+- producer
+- ensemble/group
+- other
+
+A single track may have many credits.
+
+Example:
+
+Track
+├── vocalist → Person A
+├── composer → Person B
+├── lyricist → Person C
+├── arranger → Person D
+└── musician → Person E
+
+Do NOT design around a single artistId field.
+
+--------------------------------------------------
+7. WORK VS RECORDING
+--------------------------------------------------
+
+Evaluate how the current system could distinguish:
+
+WORK
+= the underlying musical composition
+
+TRACK / RECORDING
+= a concrete recording/library item
+
+VERSION
+= a particular interpretation/version of a work
+
+Example:
+
+WORK
+└── "Example Work"
+
+TRACK / RECORDING
+├── studio recording
+├── live recording
+├── radio recording
+└── remastered recording
+
+Determine the minimum practical architecture needed to support this later without over-engineering the current project.
+
+--------------------------------------------------
+8. ALBUM REQUIREMENTS
+--------------------------------------------------
+
+Evaluate whether the current Album model can support:
+
+- title
+- alternate titles
+- release year
+- release date
+- cover
+- description
+- genre
+- label
+- notes
+- timestamps
+- official track ordering
+
+Pay particular attention to track ordering.
+
+Determine whether the current schema relies on implicit SQLite row order.
+
+--------------------------------------------------
+9. TRACK REQUIREMENTS
+--------------------------------------------------
+
+Evaluate support for:
+
+- title
+- alternate titles
+- duration
+- year
+- album
+- work
+- language
+- genre
+- lyrics
+- sheet music
+- audio URI
+- cover
+- version
+- description
+- notes
+- timestamps
+
+Identify which already exist and which do not.
+
+--------------------------------------------------
+10. PERSONAL MUSIC RELATIONSHIP
+--------------------------------------------------
+
+Inspect the current implementation of personal music relationships.
+
+Determine whether it supports:
+
+- personal note
+- emotional tags
+- rating
+- favorite
+- first heard date
+- memories
+- associations
+- listening count
+- last listened time
+
+Also inspect the journal system.
+
+IMPORTANT:
+
+The journal must remain free-form.
+
+Do NOT design it as a rigid questionnaire.
+
+The user must be able to create multiple personal entries about the same track at different times.
+
+--------------------------------------------------
+11. LISTENING HISTORY
+--------------------------------------------------
+
+Inspect the current listening history implementation.
+
+Determine whether it can eventually support:
+
+- trackId
+- timestamp
+- listening duration
+- completion percentage
+- context/source
+
+Do not fabricate data.
+
+Clearly distinguish:
+
+AVAILABLE NOW
+vs.
+CAN BE ADDED LATER
+
+--------------------------------------------------
+12. SOURCES / PROVENANCE
+--------------------------------------------------
+
+Evaluate how the archive could eventually store references such as:
+
+- source title
+- URL
+- source type
+- author
+- publication date
+- notes
+
+Do NOT add a source system yet.
+
+Only recommend the appropriate architecture.
+
+--------------------------------------------------
+13. ARTWORK
+--------------------------------------------------
+
+Inspect how the current application stores:
+
+- cover images
+- profile images
+- gallery images
+- posters
+- other artwork
+
+Determine whether the current model is sufficient or needs a future Artwork abstraction.
+
+Do NOT implement it yet.
+
+--------------------------------------------------
+14. ARTIST ↔ ARTIST RELATIONSHIPS
+--------------------------------------------------
+
+Evaluate how the architecture could eventually support relationships such as:
+
+- collaborator
+- teacher
+- student
+- ensemble member
+- related artist
+- other
+
+Do not implement this yet.
+
+Recommend a minimal extensible structure.
+
+--------------------------------------------------
+15. COLLECTIONS
+--------------------------------------------------
+
+Evaluate how user-created collections should differ from canonical albums.
+
+IMPORTANT:
+
+Album = an actual released/published album.
+
+Collection = the user's own grouping of tracks.
+
+They must NOT be conflated.
+
+--------------------------------------------------
+16. MIGRATION RISK ANALYSIS
+--------------------------------------------------
+
+This is critical.
+
+Identify:
+
+- current data that must be preserved
+- current IDs that should remain stable
+- fields that require transformation
+- relationships that could break
+- backup/restore compatibility risks
+- possible migration ordering problems
+- nullable/default-value problems
+- duplicate-data risks
+
+Do NOT modify anything.
+
+--------------------------------------------------
+17. ARCHITECTURE RECOMMENDATION
+--------------------------------------------------
+
+Based on the actual project, propose a practical Naghme 2.0 domain architecture.
+
+Separate your recommendation into:
+
+A. MUST IMPLEMENT NOW
+B. SHOULD IMPLEMENT SOON
+C. FUTURE / DO NOT IMPLEMENT YET
+
+Avoid over-engineering.
+
+The architecture must remain suitable for:
+
+- local SQLite
+- thousands of tracks
+- offline use
+- Android
+- TypeScript
+- maintainability
+
+--------------------------------------------------
+18. PROPOSED SCHEMA
+--------------------------------------------------
+
+Provide a proposed schema at the conceptual level.
+
+For every NEW or MODIFIED entity provide:
+
+- name
+- purpose
+- important fields
+- primary key
+- foreign keys
+- important indexes
+- relationships
+
+Do NOT write migration code yet.
+
+--------------------------------------------------
+19. MIGRATION STRATEGY
+--------------------------------------------------
+
+Propose a safe migration sequence.
+
+Example conceptually:
+
+current schema
+→ schema version X
+→ migration A
+→ migration B
+→ new domain model
+
+But base the actual sequence on the existing project.
+
+The database must NEVER simply be deleted and recreated.
+
+--------------------------------------------------
+20. FILE-BY-FILE IMPACT ANALYSIS
+--------------------------------------------------
+
+Identify which existing files are likely to require changes during implementation.
+
+Group them as:
+
+DATABASE
+DOMAIN TYPES
+QUERIES / REPOSITORIES
+SERVICES
+SCREENS
+GRAPH
+AI
+BACKUP / RESTORE
+TESTS
+
+Do not modify these files yet.
+
+--------------------------------------------------
+21. FINAL OUTPUT
+--------------------------------------------------
+
+Return a detailed but organized report with these exact sections:
+
+1. EXECUTIVE SUMMARY
+2. CURRENT DATABASE MODEL
+3. CURRENT DOMAIN MODEL
+4. CURRENT RELATIONSHIPS
+5. GAPS AGAINST NAGHME 2.0
+6. PROPOSED DOMAIN MODEL
+7. PROPOSED DATABASE SCHEMA
+8. MIGRATION STRATEGY
+9. FILE IMPACT MAP
+10. RISKS
+11. MUST / SHOULD / FUTURE
+12. RECOMMENDED IMPLEMENTATION ORDER
+
+IMPORTANT:
+
+This task is ANALYSIS ONLY.
+
+DO NOT MODIFY THE PROJECT.
+
+At the end explicitly confirm:
+
+"NO PROJECT FILES WERE MODIFIED."

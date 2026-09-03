@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 import { SQLiteDatabase, openDatabaseAsync } from 'expo-sqlite';
+import { migrateDatabase } from '@/src/db/migrations';
+import { verifyDatabaseFoundation } from '@/src/db/verification';
 
 let databasePromise: Promise<SQLiteDatabase | null> | null = null;
 
@@ -74,51 +76,36 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
   if (!databasePromise) {
     databasePromise = openDatabaseAsync('naghme.db')
       .then(async (database) => {
-        await database.execAsync(schema);
-        const tables = [
-          {
-            name: 'Artists',
-            columns: [
-              ['profileImage', 'TEXT'],
-              ['galleryImages', 'TEXT'],
-            ],
-          },
-          {
-            name: 'Albums',
-            columns: [
-              ['coverImage', 'TEXT'],
-            ],
-          },
-          {
-            name: 'Tracks',
-            columns: [
-              ['artistId', 'TEXT'],
-              ['lyrics', 'TEXT'],
-              ['sheetMusicUri', 'TEXT'],
-              ['versionName', 'TEXT'],
-            ],
-          },
-        ] as const;
+        await database.execAsync('PRAGMA foreign_keys = ON;');
+        const foreignKeyState = await database.getFirstAsync<{ foreign_keys: number }>(
+          'PRAGMA foreign_keys',
+        );
+        if (foreignKeyState?.foreign_keys !== 1) {
+          throw new Error('فعال‌سازی یکپارچگی رابطه‌های SQLite انجام نشد.');
+        }
 
-        for (const table of tables) {
-          const columns = await database.getAllAsync<{ name: string }>(
-            `PRAGMA table_info(${table.name})`,
-            [],
-          );
-          for (const [name, type] of table.columns) {
-            if (!columns.some((column) => column.name === name)) {
-              try {
-                await database.execAsync(`ALTER TABLE ${table.name} ADD COLUMN ${name} ${type};`);
-              } catch {
-                // A concurrent/previous migration may have added the column already.
-              }
+        await database.execAsync(schema);
+
+        await migrateDatabase(database);
+
+        if (__DEV__) {
+          try {
+            const report = await verifyDatabaseFoundation(database);
+            if (!report.ok) {
+              console.warn('Naghme database integrity check found issues', report);
             }
+          } catch (error: unknown) {
+            console.warn('Naghme database integrity check failed', error);
           }
         }
+
         return database;
       })
       .catch((error: unknown) => {
         databasePromise = null;
+        if (__DEV__) {
+          console.error('Naghme database initialization failed', error);
+        }
         throw error;
       });
   }

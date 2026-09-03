@@ -2,16 +2,19 @@ import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
+import { CreditsManager, PendingCreditDraft } from '@/components/CreditsManager';
 import { useColors } from '@/hooks/useColors';
 import {
   addTrack,
   AlbumRecord,
   ArtistRecord,
+  createTrackWithCredits,
   getArtists,
   getAlbums,
+  getAlbumsForArtist,
   getTrackById,
   updateTrack,
 } from '@/src/db/queries';
@@ -31,13 +34,17 @@ export default function AddTrackScreen() {
   const [artists, setArtists] = useState<ArtistRecord[]>([]);
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
+  const [allAlbums, setAllAlbums] = useState<AlbumRecord[]>([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [pendingCredits, setPendingCredits] = useState<PendingCreditDraft[]>([]);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [artistPickerOpen, setArtistPickerOpen] = useState<boolean>(false);
+  const [loadingAlbums, setLoadingAlbums] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [loadingRecord, setLoadingRecord] = useState<boolean>(editing);
+  const albumFilterRequest = useRef<number>(0);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +52,7 @@ export default function AddTrackScreen() {
       .then(([artistItems, albumItems, track]) => {
         if (!mounted) return;
         setArtists(artistItems);
+        setAllAlbums(albumItems);
         setAlbums(albumItems);
         if (id) {
           if (!track) {
@@ -75,8 +83,51 @@ export default function AddTrackScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedArtistId) {
+      setLoadingAlbums(false);
+      setAlbums(allAlbums);
+      return;
+    }
+
+    const requestId = ++albumFilterRequest.current;
+    setLoadingAlbums(true);
+    getAlbumsForArtist(selectedArtistId)
+      .then((filteredAlbums) => {
+        if (requestId !== albumFilterRequest.current) return;
+        setAlbums(filteredAlbums);
+        setSelectedAlbumId((currentAlbumId) =>
+          currentAlbumId && filteredAlbums.some((album) => album.id === currentAlbumId)
+            ? currentAlbumId
+            : null,
+        );
+      })
+      .catch((filterError: unknown) => {
+        if (requestId !== albumFilterRequest.current) return;
+        setAlbums([]);
+        setSelectedAlbumId(null);
+        setError(
+          filterError instanceof Error
+            ? filterError.message
+            : 'فهرست آلبوم‌های این هنرمند خوانده نشد.',
+        );
+      })
+      .finally(() => {
+        if (requestId === albumFilterRequest.current) setLoadingAlbums(false);
+      });
+  }, [allAlbums, selectedArtistId]);
+
   const selectedAlbum = albums.find((album) => album.id === selectedAlbumId);
   const selectedArtist = artists.find((artist) => artist.id === selectedArtistId);
+
+  const handleArtistSelect = (artistId: string | null) => {
+    setSelectedArtistId(artistId);
+    setArtistPickerOpen(false);
+    setPickerOpen(false);
+    setError('');
+    setSelectedAlbumId(null);
+    if (!artistId) setAlbums(allAlbums);
+  };
 
   const pickAudio = async () => {
     if (Platform.OS === 'web') {
@@ -158,22 +209,25 @@ export default function AddTrackScreen() {
           artistId: selectedArtistId,
           albumId: selectedAlbumId,
           audioUri,
-           versionName: versionName.trim() || null,
-           lyrics: lyrics.trim() || null,
-           sheetMusicUri,
+          versionName: versionName.trim() || null,
+          lyrics: lyrics.trim() || null,
+          sheetMusicUri,
         });
       } else {
-        await addTrack({
-          title,
-          duration: parsedDuration,
-          artistId: selectedArtistId,
-          albumId: selectedAlbumId,
-          audioUri,
-          coverImage: null,
-           versionName: versionName.trim() || null,
-           lyrics: lyrics.trim() || null,
-           sheetMusicUri,
-        });
+        await createTrackWithCredits(
+          {
+            title,
+            duration: parsedDuration,
+            artistId: selectedArtistId,
+            albumId: selectedAlbumId,
+            audioUri,
+            coverImage: null,
+            versionName: versionName.trim() || null,
+            lyrics: lyrics.trim() || null,
+            sheetMusicUri,
+          },
+          pendingCredits.map(({ id: _id, ...credit }) => credit),
+        );
       }
       setSuccess(editing ? 'تغییرات قطعه ذخیره شد.' : 'قطعه با موفقیت به آرشیو اضافه شد.');
       setTimeout(() => router.back(), 650);
@@ -241,8 +295,7 @@ export default function AddTrackScreen() {
           <View style={styles.menu}>
             <Pressable
               onPress={() => {
-                setSelectedArtistId(null);
-                setArtistPickerOpen(false);
+                handleArtistSelect(null);
               }}
               style={styles.menuItem}
             >
@@ -253,8 +306,7 @@ export default function AddTrackScreen() {
                 <Pressable
                   key={artist.id}
                   onPress={() => {
-                    setSelectedArtistId(artist.id);
-                    setArtistPickerOpen(false);
+                    handleArtistSelect(artist.id);
                   }}
                   style={styles.menuItem}
                 >
@@ -295,7 +347,9 @@ export default function AddTrackScreen() {
             >
               <Text style={styles.menuText} numberOfLines={1}>بدون آلبوم</Text>
             </Pressable>
-            {albums.length > 0 ? (
+            {loadingAlbums ? (
+              <Text style={styles.noAlbums}>در حال یافتن آلبوم‌های این هنرمند…</Text>
+            ) : albums.length > 0 ? (
               albums.map((album) => (
                 <Pressable
                   key={album.id}
@@ -309,7 +363,11 @@ export default function AddTrackScreen() {
                 </Pressable>
               ))
             ) : (
-              <Text style={styles.noAlbums}>هنوز آلبومی ثبت نشده است.</Text>
+              <Text style={styles.noAlbums}>
+                {selectedArtistId
+                  ? 'برای این هنرمند هنوز آلبومی ثبت نشده'
+                  : 'هنوز آلبومی ثبت نشده است.'}
+              </Text>
             )}
           </View>
         ) : null}
@@ -388,6 +446,13 @@ export default function AddTrackScreen() {
           </Text>
         </Pressable>
       </View>
+
+      <CreditsManager
+        targetId={id}
+        targetType="track"
+        pendingCredits={pendingCredits}
+        onPendingCreditsChange={setPendingCredits}
+      />
 
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی قطعه'}

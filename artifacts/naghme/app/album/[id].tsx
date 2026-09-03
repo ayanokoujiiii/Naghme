@@ -17,8 +17,10 @@ import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components
 import { useColors } from '@/hooks/useColors';
 import {
   AlbumRecord,
+  CreditViewRecord,
   deleteAlbum,
   getAlbumById,
+  getCreditsForAlbum,
   getTracksByAlbumId,
   TrackRecord,
   updateAlbum,
@@ -31,6 +33,7 @@ export default function AlbumDetailScreen() {
   const albumId = Array.isArray(id) ? id[0] : id;
   const [album, setAlbum] = useState<AlbumRecord | null>(null);
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
+  const [credits, setCredits] = useState<CreditViewRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [savingCover, setSavingCover] = useState<boolean>(false);
@@ -45,15 +48,17 @@ export default function AlbumDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundAlbum, albumTracks] = await Promise.all([
+      const [foundAlbum, albumTracks, albumCredits] = await Promise.all([
         getAlbumById(albumId),
         getTracksByAlbumId(albumId),
+        getCreditsForAlbum(albumId),
       ]);
       if (!foundAlbum) {
         setError('آلبوم پیدا نشد.');
       } else {
         setAlbum(foundAlbum);
         setTracks(albumTracks);
+        setCredits(albumCredits);
       }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن آلبوم انجام نشد.');
@@ -302,6 +307,22 @@ export default function AlbumDetailScreen() {
           <Text style={styles.mutedText}>هنوز قطعه‌ای به این آلبوم وصل نشده است.</Text>
         )}
       </DetailCard>
+
+      {credits.length > 0 ? (
+        <>
+          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
+          <DetailCard>
+            {credits.map((credit) => (
+              <View key={credit.id} style={styles.creditRow}>
+                <View style={styles.creditCopy}>
+                  <Text style={styles.creditRole}>{credit.roleName}</Text>
+                  <Text style={styles.creditArtist}>{credit.artistName}</Text>
+                </View>
+              </View>
+            ))}
+          </DetailCard>
+        </>
+      ) : null}
     </DetailShell>
   );
 }
@@ -374,6 +395,16 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 14,
       textAlign: 'right',
     },
+    creditRow: {
+      minHeight: 52,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    creditCopy: { flex: 1, alignItems: 'flex-end' },
+    creditRole: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    creditArtist: { color: colors.foreground, fontSize: 13, textAlign: 'right', marginTop: 3 },
     mutedText: {
       color: colors.mutedForeground,
       fontSize: 13,

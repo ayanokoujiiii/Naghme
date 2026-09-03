@@ -3,3 +3,6 @@
 - [Music graph schema boundary](music-graph-schema-boundary.md) — seeded artist–album links stay outside SQLite until an explicit schema migration is planned.
 - [Gemini key ownership](gemini-key-ownership.md) — Naghme’s user-owned Gemini key is optional, local-only, and the local recommender must remain the fallback.
 - [Cover color extraction](cover-color-extraction.md) — native color extraction must be lazy and keep an image-parser fallback for Expo Go and web.
+- [GitHub connector transfer](github-connector-transfer.md) — some content uploads hit proxy WAFs; verify response type and preserve bytes with a safe encoding variation.
+- [Album track ordering](album-track-ordering.md) — preserve membership separately from official positions; never infer album order from insertion order or rowid.
+- [Work and Version foundation](work-version-foundation.md) — keep domain links optional and provenance-safe; never infer Work identity from titles.
