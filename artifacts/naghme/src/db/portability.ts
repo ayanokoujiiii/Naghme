@@ -3,9 +3,11 @@ import type {
   AlbumRecord,
   AlbumTrackRecord,
   ArtistRecord,
+  CreditRecord,
   JournalEntryRecord,
   ListeningHistoryRecord,
   PersonalRelationshipRecord,
+  RoleRecord,
   TrackRecord,
   VersionRecord,
   WorkRecord,
@@ -17,6 +19,10 @@ export interface ArchiveBackup {
   exportedAt: string;
   artists: ArtistRecord[];
   albums: AlbumRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  roles?: RoleRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  credits?: CreditRecord[];
   tracks: TrackRecord[];
   personalRelationships: PersonalRelationshipRecord[];
   journalEntries: JournalEntryRecord[];
@@ -39,11 +45,16 @@ export interface RestoreSummary {
   albumTracks: number;
   works: number;
   versions: number;
+  roles: number;
+  credits: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
   'id, name, type, biography, genres, image, profileImage, galleryImages';
 const ALBUM_BACKUP_COLUMNS = 'id, title, releaseYear, coverImage';
+const ROLE_BACKUP_COLUMNS = 'id, name, key, description';
+const CREDIT_BACKUP_COLUMNS =
+  'id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt';
 const TRACK_BACKUP_COLUMNS =
   'id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName, workId, versionId';
 const WORK_BACKUP_COLUMNS =
@@ -79,6 +90,8 @@ export async function createArchiveBackup(): Promise<string> {
   const [
     artists,
     albums,
+    roles,
+    credits,
     tracks,
     personalRelationships,
     journalEntries,
@@ -93,6 +106,14 @@ export async function createArchiveBackup(): Promise<string> {
     ),
     database.getAllAsync<AlbumRecord>(
       `SELECT ${ALBUM_BACKUP_COLUMNS} FROM Albums ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<RoleRecord>(
+      `SELECT ${ROLE_BACKUP_COLUMNS} FROM Roles ORDER BY rowid ASC`,
+      [],
+    ),
+    database.getAllAsync<CreditRecord>(
+      `SELECT ${CREDIT_BACKUP_COLUMNS} FROM Credits ORDER BY rowid ASC`,
       [],
     ),
     database.getAllAsync<TrackRecord>(
@@ -136,6 +157,8 @@ export async function createArchiveBackup(): Promise<string> {
     exportedAt: new Date().toISOString(),
     artists,
     albums,
+    roles,
+    credits,
     tracks,
     personalRelationships,
     journalEntries,
@@ -152,6 +175,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   const database = await requireDatabase();
   const backup = parseBackup(json);
   const artistIds = new Set(backup.artists.map((artist) => artist.id));
+  const roleIds = new Set((backup.roles ?? []).map((role) => role.id));
   const albumIds = new Set(backup.albums.map((album) => album.id));
   const trackIds = new Set(backup.tracks.map((track) => track.id));
   const workIds = new Set((backup.works ?? []).map((work) => work.id));
@@ -174,6 +198,29 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     const version = track.versionId ? versionsById.get(track.versionId) : undefined;
     if (version && track.workId && version.workId !== track.workId) {
       throw new Error(`اثر و نسخهٔ قطعه‌ی «${track.title}» با هم سازگار نیستند.`);
+    }
+  }
+  for (const credit of backup.credits ?? []) {
+    if (!artistIds.has(credit.artistId)) {
+      throw new Error('یکی از مشارکت‌ها به هنرمند نامعتبر اشاره می‌کند.');
+    }
+    if (!roleIds.has(credit.roleId)) {
+      throw new Error('یکی از مشارکت‌ها به نقش نامعتبر اشاره می‌کند.');
+    }
+    const targetCount = [credit.workId, credit.trackId, credit.albumId].filter(
+      (value) => value !== null,
+    ).length;
+    if (targetCount !== 1) {
+      throw new Error('هر مشارکت در فایل پشتیبان باید دقیقاً یک مقصد داشته باشد.');
+    }
+    if (credit.workId && !workIds.has(credit.workId)) {
+      throw new Error('یکی از مشارکت‌ها به اثر نامعتبر اشاره می‌کند.');
+    }
+    if (credit.trackId && !trackIds.has(credit.trackId)) {
+      throw new Error('یکی از مشارکت‌ها به قطعهٔ نامعتبر اشاره می‌کند.');
+    }
+    if (credit.albumId && !albumIds.has(credit.albumId)) {
+      throw new Error('یکی از مشارکت‌ها به آلبوم نامعتبر اشاره می‌کند.');
     }
   }
   for (const version of backup.versions ?? []) {
@@ -242,6 +289,18 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
            releaseYear = excluded.releaseYear,
            coverImage = excluded.coverImage`,
         [album.id, album.title, album.releaseYear, album.coverImage],
+      );
+    }
+
+    for (const role of backup.roles ?? []) {
+      await database.runAsync(
+        `INSERT INTO Roles (id, name, key, description)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           key = excluded.key,
+           description = excluded.description`,
+        [role.id, role.name, role.key, role.description],
       );
     }
 
@@ -406,6 +465,33 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
         [entry.id, entry.trackId, entry.listenedAt],
       );
     }
+
+    for (const credit of backup.credits ?? []) {
+      await database.runAsync(
+        `INSERT INTO Credits
+           (id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           artistId = excluded.artistId,
+           roleId = excluded.roleId,
+           workId = excluded.workId,
+           trackId = excluded.trackId,
+           albumId = excluded.albumId,
+           notes = excluded.notes,
+           updatedAt = excluded.updatedAt`,
+        [
+          credit.id,
+          credit.artistId,
+          credit.roleId,
+          credit.workId,
+          credit.trackId,
+          credit.albumId,
+          credit.notes,
+          credit.createdAt,
+          credit.updatedAt,
+        ],
+      );
+    }
   });
 
   return {
@@ -418,6 +504,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     albumTracks: backup.albumTracks?.length ?? 0,
     works: backup.works?.length ?? 0,
     versions: backup.versions?.length ?? 0,
+    roles: backup.roles?.length ?? 0,
+    credits: backup.credits?.length ?? 0,
   };
 }
 
@@ -435,6 +523,8 @@ function parseBackup(json: string): ArchiveBackup {
 
   const artists = parseArtists(parsed.artists);
   const albums = parseAlbums(parsed.albums);
+  const roles = parseRoles(parsed.roles);
+  const credits = parseCredits(parsed.credits);
   const works = parseWorks(parsed.works);
   const versions = parseVersions(parsed.versions);
   const tracks = parseTracks(parsed.tracks);
@@ -445,6 +535,8 @@ function parseBackup(json: string): ArchiveBackup {
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
+  assertUniqueIds(roles, 'نقش‌ها');
+  assertUniqueIds(credits, 'مشارکت‌ها');
   assertUniqueIds(works, 'آثار');
   assertUniqueIds(versions, 'نسخه‌ها');
   assertUniqueIds(tracks, 'قطعه‌ها');
@@ -452,6 +544,7 @@ function parseBackup(json: string): ArchiveBackup {
   assertUniqueIds(journalEntries, 'یادداشت‌های دفترچه');
   assertUniqueIds(listeningHistory, 'تاریخچهٔ شنیدن');
   assertUniqueAlbumTrackMemberships(albumTracks);
+  assertUniqueCreditTargets(credits);
 
   return {
     format: 'naghme-archive',
@@ -459,6 +552,8 @@ function parseBackup(json: string): ArchiveBackup {
     exportedAt: requiredString(parsed.exportedAt, 'تاریخ خروجی'),
     artists,
     albums,
+    roles,
+    credits,
     works,
     versions,
     tracks,
@@ -483,6 +578,37 @@ function parseWorks(value: unknown): WorkRecord[] {
       notes: nullableString(record.notes, 'یادداشت اثر'),
       createdAt: requiredString(record.createdAt, 'زمان ایجاد اثر'),
       updatedAt: requiredString(record.updatedAt, 'زمان ویرایش اثر'),
+    };
+  });
+}
+
+function parseRoles(value: unknown): RoleRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'نقش‌ها').map((item, index) => {
+    const record = recordValue(item, `نقش شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ نقش'),
+      name: requiredString(record.name, 'نام نقش'),
+      key: requiredString(record.key, 'کلید نقش'),
+      description: nullableString(record.description, 'توضیح نقش'),
+    };
+  });
+}
+
+function parseCredits(value: unknown): CreditRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'مشارکت‌ها').map((item, index) => {
+    const record = recordValue(item, `مشارکت شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ مشارکت'),
+      artistId: requiredString(record.artistId, 'شناسهٔ هنرمند مشارکت'),
+      roleId: requiredString(record.roleId, 'شناسهٔ نقش مشارکت'),
+      workId: nullableString(record.workId, 'شناسهٔ اثر مشارکت'),
+      trackId: nullableString(record.trackId, 'شناسهٔ قطعهٔ مشارکت'),
+      albumId: nullableString(record.albumId, 'شناسهٔ آلبوم مشارکت'),
+      notes: nullableString(record.notes, 'یادداشت مشارکت'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد مشارکت'),
+      updatedAt: requiredString(record.updatedAt, 'زمان ویرایش مشارکت'),
     };
   });
 }
@@ -556,7 +682,7 @@ function parseAlbumTracks(value: unknown): AlbumTrackRecord[] {
 }
 
 function assertUniqueIds(
-  records: Array<{ id?: string; trackId?: string }>,
+  records: Array<{ id?: string; trackId?: string | null }>,
   label: string,
   key: 'id' | 'trackId' = 'id',
 ): void {
@@ -576,6 +702,24 @@ function assertUniqueAlbumTrackMemberships(records: AlbumTrackRecord[]): void {
     const key = `${record.albumTrackAlbumId}:${record.id}`;
     if (seen.has(key)) {
       throw new Error('رابطه‌های آلبوم و قطعه در فایل پشتیبان تکراری هستند.');
+    }
+    seen.add(key);
+  }
+}
+
+function assertUniqueCreditTargets(records: CreditRecord[]): void {
+  const seen = new Set<string>();
+  for (const record of records) {
+    const targetCount = [record.workId, record.trackId, record.albumId].filter(
+      (value) => value !== null,
+    ).length;
+    if (targetCount !== 1) {
+      throw new Error('مشارکت‌های فایل پشتیبان باید دقیقاً یک مقصد داشته باشند.');
+    }
+    const target = record.workId ?? record.trackId ?? record.albumId;
+    const key = `${record.artistId}:${record.roleId}:${target}`;
+    if (seen.has(key)) {
+      throw new Error('مشارکت‌های فایل پشتیبان تکراری هستند.');
     }
     seen.add(key);
   }

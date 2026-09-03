@@ -18,6 +18,34 @@ export interface AlbumRecord {
   coverImage: string | null;
 }
 
+export interface RoleRecord {
+  id: string;
+  name: string;
+  key: string;
+  description: string | null;
+}
+
+export interface CreditRecord {
+  id: string;
+  artistId: string;
+  roleId: string;
+  workId: string | null;
+  trackId: string | null;
+  albumId: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreditViewRecord extends CreditRecord {
+  artistName: string;
+  roleName: string;
+  roleKey: string;
+  workTitle: string | null;
+  trackTitle: string | null;
+  albumTitle: string | null;
+}
+
 export interface WorkRecord {
   id: string;
   title: string;
@@ -187,6 +215,17 @@ export type NewArtist = Omit<ArtistRecord, 'id' | 'galleryImages'> & {
   galleryImages?: string | null;
 };
 export type NewAlbum = Omit<AlbumRecord, 'id'>;
+export type NewRole = Pick<RoleRecord, 'name' | 'key'> &
+  Partial<Pick<RoleRecord, 'description'>>;
+export type NewCredit = {
+  artistId: string;
+  roleId: string;
+  workId?: string | null;
+  trackId?: string | null;
+  albumId?: string | null;
+  notes?: string | null;
+};
+export type UpdateCredit = Partial<Pick<CreditRecord, 'notes'>>;
 export type NewWork = Pick<WorkRecord, 'title'> &
   Partial<Omit<WorkRecord, 'id' | 'title' | 'createdAt' | 'updatedAt'>>;
 export type UpdateWork = Partial<Omit<NewWork, 'title'>> & { title?: string };
@@ -242,6 +281,25 @@ const TRACK_COLUMNS =
 const WORK_COLUMNS =
   'id, title, alternateTitles, description, language, genre, notes, createdAt, updatedAt';
 const VERSION_COLUMNS = 'id, workId, name, kind, description, notes, createdAt, updatedAt';
+const ROLE_COLUMNS = 'id, name, key, description';
+const CREDIT_COLUMNS =
+  'id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt';
+const CREDIT_VIEW_COLUMNS = `
+  Credits.id,
+  Credits.artistId,
+  Credits.roleId,
+  Credits.workId,
+  Credits.trackId,
+  Credits.albumId,
+  Credits.notes,
+  Credits.createdAt,
+  Credits.updatedAt,
+  Artists.name AS artistName,
+  Roles.name AS roleName,
+  Roles.key AS roleKey,
+  Works.title AS workTitle,
+  Tracks.title AS trackTitle,
+  Albums.title AS albumTitle`;
 // ListeningHistory is authoritative. The legacy relationship column remains
 // only for schema compatibility and is intentionally not used for runtime counts.
 const LISTENING_COUNT_JOIN = `
@@ -367,6 +425,240 @@ export async function getAlbumById(id: string): Promise<AlbumRecord | null> {
     'SELECT id, title, releaseYear, coverImage FROM Albums WHERE id = ?',
     [id],
   );
+}
+
+export async function getRoles(): Promise<RoleRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<RoleRecord>(
+    `SELECT ${ROLE_COLUMNS} FROM Roles ORDER BY name COLLATE NOCASE ASC`,
+    [],
+  );
+}
+
+export async function getRoleById(id: string): Promise<RoleRecord | null> {
+  const database = await requireDatabase();
+  return database.getFirstAsync<RoleRecord>(
+    `SELECT ${ROLE_COLUMNS} FROM Roles WHERE id = ?`,
+    [id],
+  );
+}
+
+export async function createRole(input: NewRole): Promise<RoleRecord> {
+  const name = input.name.trim();
+  const key = input.key.trim();
+  if (!name) throw new Error('نام نقش الزامی است.');
+  if (!key) throw new Error('کلید نقش الزامی است.');
+
+  const role: RoleRecord = {
+    id: createId('role'),
+    name,
+    key,
+    description: trimNullable(input.description),
+  };
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO Roles (id, name, key, description) VALUES (?, ?, ?, ?)`,
+    [role.id, role.name, role.key, role.description],
+  );
+  return role;
+}
+
+export async function getCreditsForWork(workId: string): Promise<CreditViewRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CreditViewRecord>(
+    `SELECT ${CREDIT_VIEW_COLUMNS}
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       LEFT JOIN Works ON Works.id = Credits.workId
+       LEFT JOIN Tracks ON Tracks.id = Credits.trackId
+       LEFT JOIN Albums ON Albums.id = Credits.albumId
+      WHERE Credits.workId = ?
+      ORDER BY Roles.name COLLATE NOCASE ASC, Artists.name COLLATE NOCASE ASC`,
+    [workId],
+  );
+}
+
+export async function getCreditsForTrack(trackId: string): Promise<CreditViewRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CreditViewRecord>(
+    `SELECT ${CREDIT_VIEW_COLUMNS}
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       LEFT JOIN Works ON Works.id = Credits.workId
+       LEFT JOIN Tracks ON Tracks.id = Credits.trackId
+       LEFT JOIN Albums ON Albums.id = Credits.albumId
+      WHERE Credits.trackId = ?
+      ORDER BY Roles.name COLLATE NOCASE ASC, Artists.name COLLATE NOCASE ASC`,
+    [trackId],
+  );
+}
+
+export async function getCreditsForAlbum(albumId: string): Promise<CreditViewRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CreditViewRecord>(
+    `SELECT ${CREDIT_VIEW_COLUMNS}
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       LEFT JOIN Works ON Works.id = Credits.workId
+       LEFT JOIN Tracks ON Tracks.id = Credits.trackId
+       LEFT JOIN Albums ON Albums.id = Credits.albumId
+      WHERE Credits.albumId = ?
+      ORDER BY Roles.name COLLATE NOCASE ASC, Artists.name COLLATE NOCASE ASC`,
+    [albumId],
+  );
+}
+
+export async function getCreditsForArtist(artistId: string): Promise<CreditViewRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CreditViewRecord>(
+    `SELECT ${CREDIT_VIEW_COLUMNS}
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       LEFT JOIN Works ON Works.id = Credits.workId
+       LEFT JOIN Tracks ON Tracks.id = Credits.trackId
+       LEFT JOIN Albums ON Albums.id = Credits.albumId
+      WHERE Credits.artistId = ?
+      ORDER BY Roles.name COLLATE NOCASE ASC,
+        COALESCE(Works.title, Tracks.title, Albums.title) COLLATE NOCASE ASC`,
+    [artistId],
+  );
+}
+
+export async function addWorkCredit(
+  input: Omit<NewCredit, 'trackId' | 'albumId'> & { workId: string },
+): Promise<CreditRecord> {
+  return insertCredit({ ...input, trackId: null, albumId: null });
+}
+
+export async function addTrackCredit(
+  input: Omit<NewCredit, 'workId' | 'albumId'> & { trackId: string },
+): Promise<CreditRecord> {
+  return insertCredit({ ...input, workId: null, albumId: null });
+}
+
+export async function addAlbumCredit(
+  input: Omit<NewCredit, 'workId' | 'trackId'> & { albumId: string },
+): Promise<CreditRecord> {
+  return insertCredit({ ...input, workId: null, trackId: null });
+}
+
+export async function updateCredit(id: string, input: UpdateCredit): Promise<CreditRecord> {
+  const database = await requireDatabase();
+  const current = await database.getFirstAsync<CreditRecord>(
+    `SELECT ${CREDIT_COLUMNS} FROM Credits WHERE id = ?`,
+    [id],
+  );
+  if (!current) throw new Error('مشارکت پیدا نشد.');
+
+  const credit: CreditRecord = {
+    ...current,
+    notes: input.notes === undefined ? current.notes : trimNullable(input.notes),
+    updatedAt: new Date().toISOString(),
+  };
+  await database.runAsync('UPDATE Credits SET notes = ?, updatedAt = ? WHERE id = ?', [
+    credit.notes,
+    credit.updatedAt,
+    id,
+  ]);
+  return credit;
+}
+
+export async function removeCredit(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Credits WHERE id = ?', [id]);
+}
+
+async function insertCredit(input: NewCredit): Promise<CreditRecord> {
+  const database = await requireDatabase();
+  const target = await validateCreditInput(database, input);
+  const now = new Date().toISOString();
+  const credit: CreditRecord = {
+    id: createId('credit'),
+    artistId: target.artistId,
+    roleId: target.roleId,
+    workId: target.workId,
+    trackId: target.trackId,
+    albumId: target.albumId,
+    notes: trimNullable(input.notes),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await database.runAsync(
+    `INSERT INTO Credits
+       (id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      credit.id,
+      credit.artistId,
+      credit.roleId,
+      credit.workId,
+      credit.trackId,
+      credit.albumId,
+      credit.notes,
+      credit.createdAt,
+      credit.updatedAt,
+    ],
+  );
+  return credit;
+}
+
+async function validateCreditInput(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  input: NewCredit,
+): Promise<Pick<CreditRecord, 'artistId' | 'roleId' | 'workId' | 'trackId' | 'albumId'>> {
+  const artistId = input.artistId.trim();
+  const roleId = input.roleId.trim();
+  const workId = input.workId?.trim() || null;
+  const trackId = input.trackId?.trim() || null;
+  const albumId = input.albumId?.trim() || null;
+  if (!artistId) throw new Error('هنرمند مشارکت الزامی است.');
+  if (!roleId) throw new Error('نقش مشارکت الزامی است.');
+
+  const targetCount = [workId, trackId, albumId].filter((value) => value !== null).length;
+  if (targetCount !== 1) {
+    throw new Error('هر مشارکت باید دقیقاً به یک اثر، قطعه یا آلبوم متصل باشد.');
+  }
+
+  const artist = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Artists WHERE id = ?',
+    [artistId],
+  );
+  if (!artist) throw new Error('هنرمند مشارکت پیدا نشد.');
+
+  const role = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Roles WHERE id = ?',
+    [roleId],
+  );
+  if (!role) throw new Error('نقش مشارکت پیدا نشد.');
+
+  if (workId) {
+    const work = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Works WHERE id = ?',
+      [workId],
+    );
+    if (!work) throw new Error('اثر مشارکت پیدا نشد.');
+  }
+  if (trackId) {
+    const track = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Tracks WHERE id = ?',
+      [trackId],
+    );
+    if (!track) throw new Error('قطعهٔ مشارکت پیدا نشد.');
+  }
+  if (albumId) {
+    const album = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Albums WHERE id = ?',
+      [albumId],
+    );
+    if (!album) throw new Error('آلبوم مشارکت پیدا نشد.');
+  }
+
+  return { artistId, roleId, workId, trackId, albumId };
 }
 
 export async function createWork(input: NewWork): Promise<WorkRecord> {

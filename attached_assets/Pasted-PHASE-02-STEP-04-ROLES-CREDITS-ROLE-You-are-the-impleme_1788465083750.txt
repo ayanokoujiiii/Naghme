@@ -1,0 +1,891 @@
+PHASE 02 — STEP 04
+ROLES & CREDITS
+
+ROLE
+You are the implementation agent for the Naghme project.
+
+Work directly on the existing Naghme codebase.
+
+This is Phase 02 — Step 04.
+
+Previous completed steps:
+
+- Phase 01 — Stability Foundation
+- Phase 02 Step 01 — Listening Data Consistency
+- Phase 02 Step 02 — Album Integrity
+- Phase 02 Step 03 — Work / Recording / Version Foundation
+
+Do NOT rebuild the application.
+
+Do NOT reset the database.
+
+Do NOT delete existing user data.
+
+Do NOT redesign the application UI.
+
+Do NOT introduce unrelated features.
+
+Do NOT create another development phase or additional verification stage.
+
+Complete this step, run the necessary tests, and stop.
+
+==================================================
+1. GOAL
+==================================================
+
+The current Naghme data model does not properly represent the different roles people can have in creating a musical work or recording.
+
+For example, one musical item may involve:
+
+- vocalist
+- composer
+- lyricist
+- arranger
+- musician
+- conductor
+- ensemble/group
+- producer
+- other contributor
+
+The current single artist relationship is not sufficient.
+
+The goal of this step is to introduce a flexible:
+
+ROLE + CREDIT
+
+model without destroying the existing Artist / Track relationships.
+
+==================================================
+2. IMPORTANT DOMAIN RULE
+==================================================
+
+Do NOT assume:
+
+Artist = vocalist.
+
+Do NOT assume:
+
+Track.artistId = composer.
+
+Do NOT assume:
+
+Track.artistId = lyricist.
+
+Do NOT infer credits from names, titles, albums, or existing seed data.
+
+Existing artist relationships must remain intact.
+
+New Credits should only be created when explicitly provided by existing structured data or through the new data model.
+
+Unknown credits remain unknown.
+
+==================================================
+3. INSPECT FIRST
+==================================================
+
+Before editing, inspect the actual implementation of:
+
+- Artists
+- Tracks
+- Albums
+- AlbumTracks
+- Works
+- Versions
+- Track.artistId
+- all artist-related queries
+- artist detail page
+- track detail page
+- album detail page
+- graph queries
+- seed data
+- backup/restore
+- integrity checker
+- TypeScript models
+
+Especially inspect how the current:
+
+artistId
+
+is being used.
+
+Do not assume its meaning.
+
+Determine whether it currently represents the primary artist, vocalist, creator, or simply the displayed artist.
+
+Preserve its current behavior for compatibility.
+
+==================================================
+4. ROLE MODEL
+==================================================
+
+Create a flexible Roles model.
+
+Suggested table:
+
+Roles
+
+Fields:
+
+- id
+- name
+- key
+- description
+
+Examples:
+
+- vocalist
+- composer
+- lyricist
+- arranger
+- musician
+- conductor
+- ensemble
+- producer
+- other
+
+Do not hard-code the entire future taxonomy.
+
+The model must allow additional roles later.
+
+Use the project's existing ID and timestamp conventions where appropriate.
+
+Do not create unnecessary fields.
+
+==================================================
+5. CREDIT MODEL
+==================================================
+
+Create a Credits table representing:
+
+PERSON / ARTIST
++
+ROLE
++
+MUSICAL ENTITY
+
+The credit should be capable of attaching an Artist to:
+
+- Work
+- Recording/Track
+- Album
+
+without creating three unrelated systems.
+
+A practical model may contain:
+
+- id
+- artistId
+- roleId
+- workId nullable
+- trackId nullable
+- albumId nullable
+- notes
+- createdAt
+- updatedAt
+
+At least ONE target must be present:
+
+workId
+OR
+trackId
+OR
+albumId
+
+A single Credit must not point to multiple unrelated targets unless the model explicitly and safely supports that meaning.
+
+Do not invent a polymorphic system that cannot be validated.
+
+Prefer explicit nullable foreign keys if that fits the existing SQLite architecture.
+
+==================================================
+6. TARGET SEMANTICS
+==================================================
+
+Credits should support:
+
+WORK CREDIT
+
+Example:
+
+Artist A
+→ composer
+→ Work X
+
+TRACK / RECORDING CREDIT
+
+Example:
+
+Artist B
+→ vocalist
+→ Track X
+
+Artist C
+→ arranger
+→ Track X
+
+Artist D
+→ musician
+→ Track X
+
+ALBUM CREDIT
+
+Example:
+
+Artist E
+→ producer
+→ Album X
+
+These are different relationships.
+
+Do not collapse them into a single artist field.
+
+==================================================
+7. WORK / TRACK RELATIONSHIP
+==================================================
+
+Use the Work / Version foundation created in Step 03.
+
+Do not redesign Work, Version, Track, or AlbumTracks.
+
+Credits should complement the existing model.
+
+Do NOT create:
+
+ComposerWork
+LyricistWork
+VocalistTrack
+etc.
+
+as separate tables.
+
+Use the general Role + Credit model.
+
+==================================================
+8. ARTIST TYPES
+==================================================
+
+Inspect the current Artist model.
+
+If it already supports types such as:
+
+- person
+- group
+- ensemble
+
+preserve the existing model.
+
+Do not force all credits to represent individual people.
+
+An ensemble/group should also be able to receive a valid Credit.
+
+==================================================
+9. LEGACY artistId
+==================================================
+
+DO NOT remove:
+
+Tracks.artistId
+
+Do NOT automatically convert it into a Credit.
+
+Do NOT delete it.
+
+Do NOT change its current behavior.
+
+It remains for backward compatibility.
+
+The new Credit system becomes the extensible source for explicit role-based relationships.
+
+Do not duplicate the legacy artist relationship unless there is explicit data supporting that Credit.
+
+==================================================
+10. DATABASE MIGRATION
+==================================================
+
+Current database version after Step 03:
+
+4
+
+Create the next migration:
+
+Migration 5
+
+The migration must:
+
+- create Roles
+- create Credits
+- create necessary indexes
+- create foreign keys
+- preserve all existing tables
+- preserve all existing records
+- preserve all IDs
+- preserve Track.artistId
+- preserve AlbumTracks
+- preserve Works
+- preserve Versions
+- preserve personal relationships
+- preserve JournalEntries
+- preserve ListeningHistory
+
+The migration must be:
+
+- non-destructive
+- transactional
+- compatible with the existing migration system
+- safe for existing databases
+
+Do NOT fabricate Credits for existing Artists or Tracks.
+
+Existing Credits should initially be empty unless explicit structured credit data already exists.
+
+==================================================
+11. FOREIGN KEYS
+==================================================
+
+Credits.artistId → Artists.id
+
+Credits.roleId → Roles.id
+
+Credits.workId → Works.id
+
+Credits.trackId → Tracks.id
+
+Credits.albumId → Albums.id
+
+Optional target references should use safe behavior.
+
+Deleting an Artist must not accidentally delete the Track itself.
+
+Deleting a Role must not delete Artists, Tracks, Albums, or Works.
+
+Deleting a Work must not delete Tracks.
+
+Deleting an Album must not delete Tracks.
+
+Follow the existing project's safe deletion conventions.
+
+==================================================
+12. VALIDATION
+==================================================
+
+Credit creation must validate:
+
+- valid artistId
+- valid roleId
+- at least one target
+- target exists
+- target combination is valid
+
+Examples:
+
+VALID:
+
+Artist + composer + Work
+
+Artist + vocalist + Track
+
+Artist + arranger + Track
+
+Artist + producer + Album
+
+INVALID:
+
+Artist + role + no target
+
+Artist + role + nonexistent Track
+
+Artist + role + nonexistent Work
+
+Artist + role + nonexistent Album
+
+Do not silently create invalid credits.
+
+==================================================
+13. DUPLICATE CREDITS
+==================================================
+
+Prevent accidental duplicate credits.
+
+For example:
+
+Artist A
++ composer
++ Work X
+
+should not be inserted twice accidentally.
+
+Use an appropriate uniqueness strategy.
+
+However, do not over-restrict legitimate situations.
+
+If notes or future metadata make two identical-looking credits meaningfully different, document the decision.
+
+Keep the model simple for this step.
+
+==================================================
+14. QUERY LAYER
+==================================================
+
+Update:
+
+src/db/queries.ts
+
+Add practical operations such as:
+
+- getRoles
+- getRoleById
+- createRole
+
+- getCreditsForWork
+- getCreditsForTrack
+- getCreditsForAlbum
+
+- addWorkCredit
+- addTrackCredit
+- addAlbumCredit
+
+- removeCredit
+- updateCredit
+
+Use the project's existing naming conventions.
+
+Do not build a large abstraction framework.
+
+==================================================
+15. ARTIST QUERIES
+==================================================
+
+Add the ability to retrieve an Artist's credits.
+
+For example:
+
+- works composed by the artist
+- works written by the artist
+- tracks performed by the artist
+- tracks arranged by the artist
+- albums produced by the artist
+
+Do not build separate hard-coded database systems for each role.
+
+Use the Role + Credit model.
+
+==================================================
+16. UI
+==================================================
+
+This is primarily a data-model step.
+
+Do NOT redesign the application.
+
+Do NOT create a large credit-management interface.
+
+Only make minimal UI changes that are useful and safe.
+
+If practical, expose role-based credits in existing:
+
+- Artist detail
+- Track detail
+- Album detail
+- Work-related views if one already exists
+
+The UI should not become a large new feature.
+
+A simple display such as:
+
+Composer:
+Artist A
+
+Lyricist:
+Artist B
+
+Vocal:
+Artist C
+
+Arranger:
+Artist D
+
+is sufficient if the existing screen structure supports it.
+
+If proper UI editing would significantly expand scope, keep the query/database layer ready and document that the full editor is not part of this step.
+
+==================================================
+17. ARTIST DETAIL
+==================================================
+
+Do not replace the existing Artist page.
+
+If practical, add a small section showing role-based credits.
+
+For example:
+
+نقش‌ها و مشارکت‌ها
+
+آهنگساز
+...
+
+ترانه‌سرا
+...
+
+خواننده
+...
+
+تنظیم‌کننده
+...
+
+Only show roles for which actual Credits exist.
+
+Do not show empty role categories unnecessarily.
+
+==================================================
+18. TRACK DETAIL
+==================================================
+
+Preserve the existing Track detail page.
+
+If practical, display explicit Credits separately from the legacy artist field.
+
+For example:
+
+هنرمند اصلی
+...
+
+اعتبارات
+آواز: ...
+آهنگساز: ...
+تنظیم: ...
+
+Do not reinterpret the old artistId as a Credit.
+
+==================================================
+19. ALBUM DETAIL
+==================================================
+
+Do not redesign Album detail.
+
+If practical, expose Album Credits separately.
+
+Example:
+
+تهیه‌کننده:
+Artist A
+
+گروه:
+Artist B
+
+Only show actual credits.
+
+==================================================
+20. GRAPH
+==================================================
+
+Do NOT redesign the graph.
+
+Do not create a new graph visualization.
+
+Only ensure the data/query architecture can expose:
+
+Artist → Role → Work
+
+Artist → Role → Track
+
+Artist → Role → Album
+
+If adding a very small number of new edges is straightforward and safe, it is allowed.
+
+Otherwise leave graph visualization unchanged.
+
+Document the limitation.
+
+==================================================
+21. SEARCH
+==================================================
+
+Do not redesign Search.
+
+Do not create a new search screen.
+
+If the existing search architecture can naturally include credited artist names without major changes, it may be added.
+
+Otherwise leave Search unchanged.
+
+==================================================
+22. BACKUP / RESTORE
+==================================================
+
+Inspect the current backup format.
+
+Preserve compatibility with existing backups.
+
+Do NOT break old backup files.
+
+If safely possible, extend the current backup structure with optional:
+
+roles
+credits
+
+Old backups without these fields must remain valid.
+
+Restore must preserve:
+
+- Artist IDs
+- Role IDs
+- Credit IDs
+- Work IDs
+- Track IDs
+- Album IDs
+
+Restore must remain merge/upsert according to the existing implementation.
+
+Do not silently change restore into overwrite.
+
+Do not fabricate Credits during restore.
+
+==================================================
+23. INTEGRITY CHECKER
+==================================================
+
+Update:
+
+src/db/integrity.ts
+
+Add checks for:
+
+- orphan artistId
+- orphan roleId
+- orphan workId
+- orphan trackId
+- orphan albumId
+- Credit without any target
+- invalid Credit target
+- duplicate Credits
+- duplicate Role IDs
+- duplicate Credit IDs
+- empty required Role fields
+- missing indexes
+- foreign-key violations
+
+The checker should report problems.
+
+It must NOT automatically delete or rewrite user data.
+
+==================================================
+24. SEED DATA
+==================================================
+
+Inspect seed.ts.
+
+Do not fabricate historical credits.
+
+Do not automatically convert seed artist relationships into Credits.
+
+If seed data already contains explicit role information, preserve it.
+
+Otherwise Roles may exist as available definitions without attaching them to existing sample data.
+
+==================================================
+25. TYPESCRIPT
+==================================================
+
+Add proper TypeScript types for:
+
+Role
+Credit
+
+Update Work, Track, and Album types only where necessary.
+
+Represent nullable targets explicitly.
+
+Do not use any.
+
+Do not use unsafe casts.
+
+Keep existing callers compiling.
+
+==================================================
+26. INDEXES
+==================================================
+
+Add only justified indexes.
+
+Likely:
+
+- Credits.artistId
+- Credits.roleId
+- Credits.workId
+- Credits.trackId
+- Credits.albumId
+
+Use existing project naming conventions.
+
+Do not create speculative indexes.
+
+==================================================
+27. TESTING
+==================================================
+
+Run representative SQLite tests.
+
+At minimum verify:
+
+1. Migration 4 → 5 succeeds.
+
+2. Existing data remains intact.
+
+3. Roles can be created.
+
+4. Credits can be created for a Work.
+
+5. Credits can be created for a Track.
+
+6. Credits can be created for an Album.
+
+7. Invalid Artist references are rejected.
+
+8. Invalid Role references are rejected.
+
+9. Invalid Work references are rejected.
+
+10. Invalid Track references are rejected.
+
+11. Invalid Album references are rejected.
+
+12. Credit without a target is rejected.
+
+13. Duplicate Credits are prevented.
+
+14. Existing Track.artistId remains intact.
+
+15. Existing AlbumTracks remain intact.
+
+16. Existing Works remain intact.
+
+17. Existing Versions remain intact.
+
+18. Deleting a Work does not delete Tracks.
+
+19. Deleting an Album does not delete Tracks.
+
+20. Backup/restore preserves Credits when present.
+
+21. Old backups remain readable.
+
+22. Integrity checker detects intentionally broken Credits.
+
+Also run the normal project checks:
+
+- Naghme typecheck
+- workspace typecheck
+- git diff --check
+- Expo dependency check
+- Expo Doctor if practical
+- Metro startup
+- Web Preview if practical
+
+Do NOT claim Android-native testing unless an actual Android device/emulator was used.
+
+==================================================
+28. SCOPE CONTROL
+==================================================
+
+This step MUST NOT implement:
+
+- advanced artist biography system
+- composer-specific tables
+- lyricist-specific tables
+- arranger-specific tables
+- musician-specific tables
+- conductor-specific tables
+- genealogy
+- music map
+- historical timeline
+- advanced graph visualization
+- recommendation redesign
+- AI redesign
+- cloud sync
+- authentication
+- full credit editor
+- major UI redesign
+
+Those are outside this step.
+
+==================================================
+29. DATA PRESERVATION
+==================================================
+
+This is a critical requirement.
+
+Never:
+
+- reset the database
+- delete existing records
+- regenerate IDs
+- rewrite AlbumTracks
+- rewrite ListeningHistory
+- rewrite JournalEntries
+- rewrite PersonalRelationships
+- fabricate Credits
+- reinterpret existing artistId relationships without explicit evidence
+
+The existing application must continue functioning.
+
+==================================================
+30. FINAL REPORT
+==================================================
+
+After implementation, provide a concise but sufficiently detailed report using exactly these sections:
+
+1. Current problem
+2. Existing implementation inspected
+3. Role model
+4. Credit model
+5. Migration
+6. Existing data preservation
+7. Relationship and validation rules
+8. Query changes
+9. UI changes
+10. Backup/Restore
+11. Integrity checker
+12. Graph/Search impact
+13. Tests
+14. Verification
+15. Remaining limitations
+16. Next step recommendation
+
+Keep the report medium-length.
+
+Do not write an unnecessarily long report.
+
+For testing, clearly distinguish:
+
+- Actually executed
+- Source-level verified
+- Unavailable
+
+Do not claim Android-native testing unless it was actually performed.
+
+==================================================
+31. DEFINITION OF DONE
+==================================================
+
+This step is DONE when:
+
+- Roles exist as a first-class model.
+- Credits exist as a first-class model.
+- Artists can have explicit roles.
+- Roles can attach Artists to Works.
+- Roles can attach Artists to Tracks.
+- Roles can attach Artists to Albums.
+- Existing Track.artistId remains intact.
+- Existing data is preserved.
+- Migration 4 → 5 works.
+- Backup compatibility is preserved.
+- Integrity checker covers Credits.
+- Representative SQLite tests pass.
+- TypeScript checks pass.
+- No unrelated domain systems are introduced.
+
+STOP after completing this step.
+
+Do NOT continue to Phase 02 Step 05.
+
+Do NOT create additional phases or verification loops.

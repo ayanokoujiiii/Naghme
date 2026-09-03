@@ -26,8 +26,10 @@ import {
 } from '@/src/audio/audioManager';
 import {
   addJournalEntry,
+  CreditViewRecord,
   deleteJournalEntry,
   getAlbumById,
+  getCreditsForTrack,
   getJournalEntries,
   getListeningHistory,
   deleteTrack,
@@ -75,6 +77,7 @@ export default function TrackDetailScreen() {
   const [journalEntries, setJournalEntries] = useState<JournalEntryRecord[]>([]);
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
   const [otherVersions, setOtherVersions] = useState<VersionTrackRecord[]>([]);
+  const [credits, setCredits] = useState<CreditViewRecord[]>([]);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
   const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
@@ -106,14 +109,16 @@ export default function TrackDetailScreen() {
       }
 
       setTrack(foundTrack);
-      const [album, artist, versions] = await Promise.all([
+      const [album, artist, versions, trackCredits] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
         getOtherTracksWithSameTitle(foundTrack.id, foundTrack.title),
+        getCreditsForTrack(foundTrack.id),
       ]);
       setAlbumTitle(foundTrack.albumId ? album?.title ?? 'آلبوم پیدا نشد' : 'بدون آلبوم');
       setArtistName(foundTrack.artistId ? artist?.name ?? 'هنرمند پیدا نشد' : 'بدون هنرمند');
       setOtherVersions(versions);
+      setCredits(trackCredits);
 
       const [savedRelationship, savedJournalEntries, savedListeningHistory] =
         await Promise.all([
@@ -360,6 +365,22 @@ export default function TrackDetailScreen() {
           value={track.duration === null ? 'ثبت نشده' : formatDuration(track.duration)}
         />
       </DetailCard>
+
+      {credits.length > 0 ? (
+        <>
+          <SectionHeading title="اعتبارات صریح" caption={`${credits.length} مشارکت`} />
+          <DetailCard>
+            {credits.map((credit) => (
+              <View key={credit.id} style={styles.creditRow}>
+                <View style={styles.creditCopy}>
+                  <Text style={styles.creditRole}>{credit.roleName}</Text>
+                  <Text style={styles.creditArtist}>{credit.artistName}</Text>
+                </View>
+              </View>
+            ))}
+          </DetailCard>
+        </>
+      ) : null}
 
       {otherVersions.length ? (
         <>
@@ -1138,6 +1159,16 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    creditRow: {
+      minHeight: 52,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    creditCopy: { flex: 1, alignItems: 'flex-end' },
+    creditRole: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    creditArtist: { color: colors.foreground, fontSize: 13, textAlign: 'right', marginTop: 3 },
     preferenceLabel: {
       color: colors.foreground,
       fontSize: 14,

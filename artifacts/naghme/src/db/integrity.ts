@@ -25,6 +25,14 @@ export const REQUIRED_INDEXES = [
   'idx_journal_created',
   'idx_history_track_listened',
   'idx_history_listened',
+  'idx_credits_artist',
+  'idx_credits_role',
+  'idx_credits_work',
+  'idx_credits_track',
+  'idx_credits_album',
+  'idx_credits_unique_work',
+  'idx_credits_unique_track',
+  'idx_credits_unique_album',
 ] as const;
 
 export async function runDatabaseIntegrityCheck(
@@ -99,6 +107,73 @@ export async function runDatabaseIntegrityCheck(
     ),
     countIssue(
       database,
+      'orphaned_credit_artist',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       LEFT JOIN Artists ON Artists.id = Credits.artistId
+       WHERE Credits.artistId IS NULL OR Artists.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_credit_role',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       LEFT JOIN Roles ON Roles.id = Credits.roleId
+       WHERE Credits.roleId IS NULL OR Roles.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_credit_work',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       LEFT JOIN Works ON Works.id = Credits.workId
+       WHERE Credits.workId IS NOT NULL AND Works.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_credit_track',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       LEFT JOIN Tracks ON Tracks.id = Credits.trackId
+       WHERE Credits.trackId IS NOT NULL AND Tracks.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_credit_album',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       LEFT JOIN Albums ON Albums.id = Credits.albumId
+       WHERE Credits.albumId IS NOT NULL AND Albums.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'credit_without_target',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       WHERE (workId IS NOT NULL) + (trackId IS NOT NULL) + (albumId IS NOT NULL) != 1`,
+    ),
+    countIssue(
+      database,
+      'invalid_credit_target',
+      `SELECT COUNT(*) AS count
+       FROM Credits
+       WHERE (workId IS NOT NULL AND trackId IS NOT NULL)
+          OR (workId IS NOT NULL AND albumId IS NOT NULL)
+          OR (trackId IS NOT NULL AND albumId IS NOT NULL)`,
+    ),
+    countIssue(
+      database,
+      'duplicate_credit',
+      `SELECT COUNT(*) AS count
+       FROM (
+         SELECT artistId, roleId, workId, trackId, albumId
+         FROM Credits
+         GROUP BY artistId, roleId, workId, trackId, albumId
+         HAVING COUNT(*) > 1
+       )`,
+    ),
+    countIssue(
+      database,
       'invalid_album_track_order',
       `SELECT COUNT(*) AS count
        FROM AlbumTracks
@@ -168,6 +243,16 @@ export async function runDatabaseIntegrityCheck(
     ),
     countIssue(
       database,
+      'duplicate_role_id',
+      'SELECT COUNT(*) AS count FROM (SELECT id FROM Roles GROUP BY id HAVING COUNT(*) > 1)',
+    ),
+    countIssue(
+      database,
+      'duplicate_credit_id',
+      'SELECT COUNT(*) AS count FROM (SELECT id FROM Credits GROUP BY id HAVING COUNT(*) > 1)',
+    ),
+    countIssue(
+      database,
       'duplicate_personal_relationship_track_id',
       `SELECT COUNT(*) AS count
        FROM (
@@ -221,6 +306,24 @@ export async function runDatabaseIntegrityCheck(
        WHERE id IS NULL OR trim(id) = ''
           OR workId IS NULL OR trim(workId) = ''
           OR name IS NULL OR trim(name) = ''
+          OR createdAt IS NULL OR trim(createdAt) = ''
+          OR updatedAt IS NULL OR trim(updatedAt) = ''`,
+    ),
+    countIssue(
+      database,
+      'missing_role_required_fields',
+      `SELECT COUNT(*) AS count FROM Roles
+       WHERE id IS NULL OR trim(id) = ''
+          OR name IS NULL OR trim(name) = ''
+          OR key IS NULL OR trim(key) = ''`,
+    ),
+    countIssue(
+      database,
+      'missing_credit_required_fields',
+      `SELECT COUNT(*) AS count FROM Credits
+       WHERE id IS NULL OR trim(id) = ''
+          OR artistId IS NULL OR trim(artistId) = ''
+          OR roleId IS NULL OR trim(roleId) = ''
           OR createdAt IS NULL OR trim(createdAt) = ''
           OR updatedAt IS NULL OR trim(updatedAt) = ''`,
     ),

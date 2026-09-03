@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export interface AppliedMigration {
   version: number;
@@ -99,6 +99,11 @@ const migrations: readonly Migration[] = [
     version: 4,
     description: 'افزودن پایهٔ Work و Version بدون تغییر داده‌های موجود',
     migrate: addWorkVersionFoundation,
+  },
+  {
+    version: 5,
+    description: 'افزودن مدل عمومی نقش‌ها و مشارکت‌های هنری',
+    migrate: addRolesAndCredits,
   },
 ];
 
@@ -303,5 +308,65 @@ async function addWorkVersionFoundation(database: SQLiteDatabase): Promise<void>
 
     CREATE INDEX IF NOT EXISTS idx_versions_work
       ON Versions (workId);
+  `);
+}
+
+async function addRolesAndCredits(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS Roles (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      key TEXT NOT NULL UNIQUE,
+      description TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS Credits (
+      id TEXT PRIMARY KEY NOT NULL,
+      artistId TEXT NOT NULL,
+      roleId TEXT NOT NULL,
+      workId TEXT,
+      trackId TEXT,
+      albumId TEXT,
+      notes TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE RESTRICT,
+      FOREIGN KEY (roleId) REFERENCES Roles(id) ON DELETE RESTRICT,
+      FOREIGN KEY (workId) REFERENCES Works(id) ON DELETE RESTRICT,
+      FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE RESTRICT,
+      FOREIGN KEY (albumId) REFERENCES Albums(id) ON DELETE RESTRICT,
+      CHECK (
+        (workId IS NOT NULL) + (trackId IS NOT NULL) + (albumId IS NOT NULL) = 1
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_credits_artist ON Credits (artistId);
+    CREATE INDEX IF NOT EXISTS idx_credits_role ON Credits (roleId);
+    CREATE INDEX IF NOT EXISTS idx_credits_work ON Credits (workId);
+    CREATE INDEX IF NOT EXISTS idx_credits_track ON Credits (trackId);
+    CREATE INDEX IF NOT EXISTS idx_credits_album ON Credits (albumId);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_credits_unique_work
+      ON Credits (artistId, roleId, workId)
+      WHERE workId IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_credits_unique_track
+      ON Credits (artistId, roleId, trackId)
+      WHERE trackId IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_credits_unique_album
+      ON Credits (artistId, roleId, albumId)
+      WHERE albumId IS NOT NULL;
+  `);
+
+  await database.execAsync(`
+    INSERT OR IGNORE INTO Roles (id, name, key, description) VALUES
+      ('role_vocalist', 'خواننده', 'vocalist', 'اجرای آوازی یا خوانندگی'),
+      ('role_composer', 'آهنگساز', 'composer', 'ساخت یا تصنیف موسیقی'),
+      ('role_lyricist', 'ترانه‌سرا', 'lyricist', 'نوشتن متن یا شعر'),
+      ('role_arranger', 'تنظیم‌کننده', 'arranger', 'تنظیم یا بازآفرینی موسیقی'),
+      ('role_musician', 'نوازنده', 'musician', 'نواختن ساز'),
+      ('role_conductor', 'رهبر', 'conductor', 'رهبری اجرا یا گروه'),
+      ('role_ensemble', 'گروه / ارکستر', 'ensemble', 'همکاری گروهی یا ارکسترال'),
+      ('role_producer', 'تهیه‌کننده', 'producer', 'تهیه یا تولید اثر'),
+      ('role_other', 'مشارکت‌کنندهٔ دیگر', 'other', 'نقشی که در فهرست پایه نیست');
   `);
 }
