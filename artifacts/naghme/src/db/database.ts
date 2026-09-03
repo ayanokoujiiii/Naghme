@@ -13,6 +13,7 @@ const schema = `
     biography TEXT,
     genres TEXT,
     image TEXT,
+    profileImage TEXT,
     galleryImages TEXT
   );
 
@@ -78,6 +79,7 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
           {
             name: 'Artists',
             columns: [
+              ['profileImage', 'TEXT'],
               ['galleryImages', 'TEXT'],
             ],
           },

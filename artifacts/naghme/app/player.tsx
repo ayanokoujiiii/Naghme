@@ -36,6 +36,7 @@ import {
 } from '@/src/audio/audioManager';
 import { getLatestJournalMood } from '@/src/db/queries';
 import { getDominantCoverColor, withAlpha } from '@/src/player/coverColors';
+import { PostcardStudio } from '@/src/components/PostcardStudio';
 
 type SleepTimerMinutes = 5 | 15 | 30 | 45 | 60;
 
@@ -56,6 +57,7 @@ export default function PlayerScreen() {
   const [sleepTimerVisible, setSleepTimerVisible] = useState<boolean>(false);
   const [coverColor, setCoverColor] = useState<string>(colors.primary);
   const [latestMood, setLatestMood] = useState<string | null>(null);
+  const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
   const posterMotionStyle = useMoodPosterStyle(latestMood);
 
   useEffect(() => subscribeToAudio(setAudio), []);
@@ -306,8 +308,22 @@ export default function PlayerScreen() {
 
         <View style={styles.lyricsSection}>
           <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>متن ترانه</Text>
-            <Feather name="book-open" size={19} color={colors.primary} />
+            <View style={styles.lyricsHeadingCopy}>
+              <Text style={styles.sectionTitle}>متن ترانه</Text>
+              <Feather name="book-open" size={19} color={colors.primary} />
+            </View>
+            {audio.track.lyrics ? (
+              <Pressable
+                testID="player-open-postcard"
+                accessibilityRole="button"
+                accessibilityLabel="ساخت عکس‌نوشته از متن ترانه"
+                onPress={() => setPostcardVisible(true)}
+                style={({ pressed }) => [styles.lyricsStudioButton, pressed && styles.pressed]}
+              >
+                <Feather name="image" size={15} color={colors.primary} />
+                <Text style={styles.lyricsStudioButtonText}>عکس‌نوشته</Text>
+              </Pressable>
+            ) : null}
           </View>
           {audio.track.lyrics ? (
             <Text style={styles.lyrics}>{audio.track.lyrics}</Text>
@@ -376,6 +392,14 @@ export default function PlayerScreen() {
           </View>
         </Pressable>
       </Modal>
+      <PostcardStudio
+        visible={postcardVisible}
+        title={audio.track.title}
+        lyrics={audio.track.lyrics ?? ''}
+        coverImage={audio.track.coverImage}
+        artistName={audio.track.artistName ?? undefined}
+        onClose={() => setPostcardVisible(false)}
+      />
     </View>
   );
 }
@@ -688,6 +712,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    lyricsHeadingCopy: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+    lyricsStudioButton: { minHeight: 34, flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 10, borderRadius: 11, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.border },
+    lyricsStudioButtonText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
     sectionHeading: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
     sectionTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', textAlign: 'right' },
     lyrics: { color: colors.cardForeground, fontSize: 16, lineHeight: 32, textAlign: 'right' },

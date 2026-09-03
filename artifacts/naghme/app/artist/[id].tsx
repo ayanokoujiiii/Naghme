@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Linking,
   Modal,
@@ -38,6 +39,8 @@ export default function ArtistDetailScreen() {
   const [savingGallery, setSavingGallery] = useState<boolean>(false);
   const [galleryMessage, setGalleryMessage] = useState<string>('');
   const [selectedGalleryUri, setSelectedGalleryUri] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState<boolean>(false);
+  const [profileMessage, setProfileMessage] = useState<string>('');
 
   const loadArtist = useCallback(async () => {
     if (!artistId) {
@@ -150,6 +153,85 @@ export default function ArtistDetailScreen() {
     }
   };
 
+  const pickProfileImage = async () => {
+    if (!artist || savingProfile) return;
+    setProfileMessage('');
+    try {
+      let permission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      }
+      if (!permission.granted) {
+        if (!permission.canAskAgain && Platform.OS !== 'web') {
+          Alert.alert(
+            'مجوز تصاویر لازم است',
+            'برای انتخاب عکس اصلی، دسترسی تصاویر را از تنظیمات دستگاه فعال کن.',
+            [
+              { text: 'لغو', style: 'cancel' },
+              { text: 'باز کردن تنظیمات', onPress: () => void Linking.openSettings() },
+            ],
+          );
+        } else {
+          setProfileMessage('برای انتخاب عکس اصلی، اجازه‌ی دسترسی به تصاویر را فعال کن.');
+        }
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.92,
+      });
+      if (result.canceled || !result.assets[0]?.uri) return;
+
+      setSavingProfile(true);
+      const savedArtist = await updateArtist(artist.id, {
+        profileImage: result.assets[0].uri,
+      });
+      setArtist(savedArtist);
+      setProfileMessage('عکس اصلی هنرمند ذخیره شد.');
+    } catch (pickError: unknown) {
+      setProfileMessage(
+        pickError instanceof Error ? pickError.message : 'ذخیره‌ی عکس اصلی انجام نشد.',
+      );
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const removeProfileImage = () => {
+    if (!artist || savingProfile || !artist.profileImage) return;
+    Alert.alert(
+      'حذف عکس اصلی',
+      'عکس اصلی این هنرمند حذف شود؟',
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setSavingProfile(true);
+              setProfileMessage('');
+              try {
+                const savedArtist = await updateArtist(artist.id, { profileImage: null });
+                setArtist(savedArtist);
+                setProfileMessage('عکس اصلی حذف شد.');
+              } catch (removeError: unknown) {
+                setProfileMessage(
+                  removeError instanceof Error ? removeError.message : 'حذف عکس اصلی انجام نشد.',
+                );
+              } finally {
+                setSavingProfile(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   if (loading) {
     return (
       <DetailShell eyebrow="در حال خواندن" title="هنرمند" icon="mic">
@@ -184,6 +266,71 @@ export default function ArtistDetailScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
+      <View style={styles.profileCard}>
+        <View style={styles.profileAvatarFrame}>
+          {artist.profileImage || artist.image ? (
+            <Image
+              source={{ uri: artist.profileImage ?? artist.image ?? '' }}
+              style={styles.profileAvatar}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.profileAvatarFallback}>
+              <Feather name="mic" size={38} color={colors.primary} />
+            </View>
+          )}
+        </View>
+        <View style={styles.profileCopy}>
+          <Text style={styles.profileEyebrow}>تصویر اصلی هنرمند</Text>
+          <Text style={styles.profileTitle}>چهره‌ای برای این صدا</Text>
+          <Text style={styles.profileText}>
+            یک تصویر مرجع انتخاب کن تا در پروفایل و نقشه‌ی موسیقی دیده شود.
+          </Text>
+          <View style={styles.profileActions}>
+            <Pressable
+              testID="artist-pick-profile-image"
+              accessibilityRole="button"
+              accessibilityLabel="انتخاب عکس اصلی هنرمند"
+              disabled={savingProfile}
+              onPress={() => void pickProfileImage()}
+              style={({ pressed }) => [
+                styles.profileAction,
+                styles.profileActionPrimary,
+                (pressed || savingProfile) && styles.pressed,
+              ]}
+            >
+              {savingProfile ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Feather name="upload" size={15} color={colors.primaryForeground} />
+                  <Text style={styles.profileActionPrimaryText}>
+                    {artist.profileImage ? 'تغییر عکس' : 'انتخاب عکس'}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+            {artist.profileImage ? (
+              <Pressable
+                testID="artist-remove-profile-image"
+                accessibilityRole="button"
+                accessibilityLabel="حذف عکس اصلی هنرمند"
+                disabled={savingProfile}
+                onPress={removeProfileImage}
+                style={({ pressed }) => [
+                  styles.profileAction,
+                  styles.profileActionSecondary,
+                  (pressed || savingProfile) && styles.pressed,
+                ]}
+              >
+                <Feather name="trash-2" size={15} color={colors.mutedForeground} />
+                <Text style={styles.profileActionSecondaryText}>حذف</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      </View>
+      {profileMessage ? <Text style={styles.profileMessage}>{profileMessage}</Text> : null}
       <SectionHeading title="اطلاعات هنرمند" caption="جزئیات ثبت‌شده" />
       <DetailCard>
         <DetailRow label="نام" value={artist.name} />
@@ -226,14 +373,14 @@ export default function ArtistDetailScreen() {
       </View>
       <DetailCard>
         {galleryUris.length ? (
-          <ScrollView
+          <FlatList
+            data={galleryUris}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.galleryRow}
-          >
-            {galleryUris.map((uri, index) => (
+            keyExtractor={(uri, index) => `${uri}-${index}`}
+            renderItem={({ item: uri, index }) => (
               <Pressable
-                key={`${uri}-${index}`}
                 testID={`artist-gallery-image-${index}`}
                 accessibilityRole="button"
                 accessibilityLabel={`نمایش تصویر ${index + 1} گالری`}
@@ -245,8 +392,8 @@ export default function ArtistDetailScreen() {
                   <Feather name="maximize-2" size={14} color={colors.primaryForeground} />
                 </View>
               </Pressable>
-            ))}
-          </ScrollView>
+            )}
+          />
         ) : (
           <View style={styles.emptyGallery}>
             <View style={styles.emptyGalleryIcon}>
@@ -345,6 +492,49 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       lineHeight: 24,
       textAlign: 'right',
     },
+    profileCard: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 15,
+      padding: 15,
+      borderRadius: 22,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    profileAvatarFrame: {
+      width: 104,
+      height: 104,
+      borderRadius: 52,
+      padding: 4,
+      backgroundColor: colors.accent,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.38,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 7,
+    },
+    profileAvatar: { width: '100%', height: '100%', borderRadius: 48 },
+    profileAvatarFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 48,
+      backgroundColor: colors.secondary,
+    },
+    profileCopy: { flex: 1, alignItems: 'flex-end' },
+    profileEyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'right' },
+    profileTitle: { color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right', marginTop: 4 },
+    profileText: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 5 },
+    profileActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 7, marginTop: 10 },
+    profileAction: { minHeight: 34, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 11, paddingHorizontal: 10 },
+    profileActionPrimary: { backgroundColor: colors.primary },
+    profileActionPrimaryText: { color: colors.primaryForeground, fontSize: 11, fontWeight: '700' },
+    profileActionSecondary: { backgroundColor: colors.secondary },
+    profileActionSecondaryText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600' },
+    profileMessage: { color: colors.primary, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 8 },
     trackRow: {
       minHeight: 46,
       flexDirection: 'row-reverse',
@@ -397,10 +587,17 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     galleryImageButton: {
       width: 142,
       height: 176,
-      borderRadius: 18,
+      borderRadius: 4,
       overflow: 'hidden',
-      backgroundColor: colors.secondary,
+      backgroundColor: colors.galleryFrame,
+      borderWidth: 8,
+      borderColor: colors.galleryFrame,
       position: 'relative',
+      shadowColor: '#000000',
+      shadowOpacity: 0.46,
+      shadowRadius: 9,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 6,
     },
     galleryImage: { width: '100%', height: '100%' },
     galleryZoomBadge: {

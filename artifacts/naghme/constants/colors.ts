@@ -31,6 +31,7 @@ const darkPalette = {
   destructiveForeground: '#FFFFFF',
   border: '#342E2B',
   input: '#342E2B',
+  galleryFrame: '#F5F5DC',
 };
 
 const colors = {

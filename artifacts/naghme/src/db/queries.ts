@@ -7,6 +7,7 @@ export interface ArtistRecord {
   biography: string | null;
   genres: string | null;
   image: string | null;
+  profileImage: string | null;
   galleryImages: string | null;
 }
 
@@ -185,12 +186,13 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
     ...input,
     id: createId('artist'),
     name,
+    profileImage: input.profileImage ?? null,
     galleryImages: input.galleryImages ?? null,
   };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO Artists (id, name, type, biography, genres, image, galleryImages)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       artist.id,
       artist.name,
@@ -198,6 +200,7 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
       artist.biography,
       artist.genres,
       artist.image,
+      artist.profileImage,
       artist.galleryImages,
     ],
   );
@@ -207,7 +210,7 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
 export async function getArtists(): Promise<ArtistRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image, galleryImages FROM Artists ORDER BY name COLLATE NOCASE ASC',
+    'SELECT id, name, type, biography, genres, image, profileImage, galleryImages FROM Artists ORDER BY name COLLATE NOCASE ASC',
     [],
   );
 }
@@ -215,7 +218,7 @@ export async function getArtists(): Promise<ArtistRecord[]> {
 export async function getArtistById(id: string): Promise<ArtistRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image, galleryImages FROM Artists WHERE id = ?',
+    'SELECT id, name, type, biography, genres, image, profileImage, galleryImages FROM Artists WHERE id = ?',
     [id],
   );
 }
@@ -237,7 +240,7 @@ export async function updateArtist(
   const database = await requireDatabase();
   await database.runAsync(
     `UPDATE Artists
-     SET name = ?, type = ?, biography = ?, genres = ?, image = ?, galleryImages = ?
+     SET name = ?, type = ?, biography = ?, genres = ?, image = ?, profileImage = ?, galleryImages = ?
      WHERE id = ?`,
     [
       artist.name,
@@ -245,6 +248,7 @@ export async function updateArtist(
       artist.biography,
       artist.genres,
       artist.image,
+      artist.profileImage,
       artist.galleryImages,
       id,
     ],
@@ -436,6 +440,7 @@ export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
     `SELECT
        Artists.id AS artistId,
        Artists.name AS artistName,
+       Artists.profileImage AS artistProfileImage,
        Albums.id AS albumId,
        Albums.title AS albumTitle,
        Albums.releaseYear AS albumReleaseYear,

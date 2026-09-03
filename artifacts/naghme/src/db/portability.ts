@@ -104,14 +104,15 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   await database.withTransactionAsync(async () => {
     for (const artist of backup.artists) {
       await database.runAsync(
-        `INSERT INTO Artists (id, name, type, biography, genres, image, galleryImages)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            type = excluded.type,
            biography = excluded.biography,
            genres = excluded.genres,
            image = excluded.image,
+           profileImage = excluded.profileImage,
            galleryImages = excluded.galleryImages`,
         [
           artist.id,
@@ -120,6 +121,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
           artist.biography,
           artist.genres,
           artist.image,
+          artist.profileImage ?? null,
           artist.galleryImages,
         ],
       );
@@ -292,7 +294,8 @@ function parseArtists(value: unknown): ArtistRecord[] {
       biography: nullableString(record.biography, 'زندگی‌نامه'),
       genres: nullableString(record.genres, 'سبک‌ها'),
       image: nullableString(record.image, 'تصویر هنرمند'),
-        galleryImages: nullableString(record.galleryImages, 'گالری تصاویر هنرمند'),
+      profileImage: nullableString(record.profileImage, 'تصویر اصلی هنرمند'),
+      galleryImages: nullableString(record.galleryImages, 'گالری تصاویر هنرمند'),
     };
   });
 }

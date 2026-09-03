@@ -66,6 +66,7 @@ export default function AddArtistScreen() {
           genres: genres.trim() || null,
           biography: biography.trim() || null,
           image: null,
+          profileImage: null,
         });
       }
       setSuccess(editing ? 'تغییرات هنرمند ذخیره شد.' : 'هنرمند با موفقیت به آرشیو اضافه شد.');

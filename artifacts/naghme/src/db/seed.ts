@@ -50,6 +50,7 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     genres: 'موسیقی دستگاهی، آواز ایرانی',
     image:
       'https://upload.wikimedia.org/wikipedia/commons/8/88/Mohamdreza_Shajarian_1.jpg',
+    profileImage: null,
     galleryImages: null,
   },
   {
@@ -60,6 +61,7 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
       'کیهان کلهر آهنگساز و نوازندهٔ نامدار کمانچه است. آثار او ریشه‌های موسیقی ایرانی را با بداهه‌نوازی و گفت‌وگوی موسیقایی میان فرهنگ‌ها همراه می‌کند.',
     genres: 'موسیقی ایرانی، موسیقی تلفیقی',
     image: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/Kayhan_Kalhor.jpg',
+    profileImage: null,
     galleryImages: null,
   },
   {
@@ -70,6 +72,7 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
       'حسین علیزاده آهنگساز، پژوهشگر و نوازندهٔ تار و سه‌تار است. او با آفرینش قطعات ماندگار و موسیقی فیلم، از چهره‌های اثرگذار موسیقی معاصر ایران به شمار می‌رود.',
     genres: 'موسیقی دستگاهی، موسیقی فیلم',
     image: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Hosein_alizadeh2.jpg',
+    profileImage: null,
     galleryImages: null,
   },
 ];
@@ -246,8 +249,8 @@ export async function injectSampleData(): Promise<SeedResult> {
 
   for (const artist of SAMPLE_ARTISTS) {
     await database.runAsync(
-      `INSERT INTO Artists (id, name, type, biography, genres, image, galleryImages)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          type = excluded.type,
@@ -261,6 +264,7 @@ export async function injectSampleData(): Promise<SeedResult> {
         artist.biography,
         artist.genres,
         artist.image,
+      artist.profileImage,
         artist.galleryImages,
       ],
     );

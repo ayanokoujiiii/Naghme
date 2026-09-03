@@ -337,8 +337,11 @@ function ArtistNode({
         style={({ pressed }) => [styles.artistNodeContent, pressed && styles.pressed]}
       >
       <View style={styles.artistAvatarGlow}>
-        {artist.image ? (
-          <Image source={{ uri: artist.image }} style={styles.artistAvatar} />
+        {artist.profileImage || artist.image ? (
+          <Image
+            source={{ uri: artist.profileImage ?? artist.image ?? undefined }}
+            style={styles.artistAvatar}
+          />
         ) : (
           <View style={styles.artistAvatarFallback}>
             <Feather name="mic" size={22} color={colors.primary} />
