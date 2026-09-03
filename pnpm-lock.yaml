@@ -402,6 +402,36 @@ importers:
 
   artifacts/naghme:
     dependencies:
+      '@expo-google-fonts/amiri':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/aref-ruqaa':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/cairo':
+        specifier: ^0.4.2
+        version: 0.4.2
+      '@expo-google-fonts/el-messiri':
+        specifier: ^0.4.2
+        version: 0.4.2
+      '@expo-google-fonts/lalezar':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/lateef':
+        specifier: ^0.4.2
+        version: 0.4.2
+      '@expo-google-fonts/noto-sans-arabic':
+        specifier: ^0.4.3
+        version: 0.4.3
+      '@expo-google-fonts/rakkas':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/tajawal':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/vazirmatn':
+        specifier: ^0.4.1
+        version: 0.4.1
       expo-av:
         specifier: ~16.0.8
         version: 16.0.8(expo@54.0.37)(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -1155,8 +1185,38 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@expo-google-fonts/amiri@0.4.1':
+    resolution: {integrity: sha512-JTZUZ4olyqGeXu5UBWVEerrbym/MD9U3wU8qzSg8z4qEtHFKAI3uPg2DuytfeRmJ6EppaHLYsYqpGerMOrpJeA==}
+
+  '@expo-google-fonts/aref-ruqaa@0.4.1':
+    resolution: {integrity: sha512-LiFV81WxeFsgJ5Nc8admfW+HEpMLr8Q2k9QZ6L40O3+W2vXxJLH/Bka3UaQLP/GWRUQ/YsotaVKnAMYLE6Mkmw==}
+
+  '@expo-google-fonts/cairo@0.4.2':
+    resolution: {integrity: sha512-iWXHgE4MH6BfFqs8IxhbjNphAboUsb8NSEVIf1kWVGkiwCkAXDHxotgASabuPhhM1SQQXrgOPdmjT9VyeakM3Q==}
+
+  '@expo-google-fonts/el-messiri@0.4.2':
+    resolution: {integrity: sha512-T6Vd8G8GfqxRq1Anth7KWOXAAzJ4Aq47JhAm4i62OhfSK9LZr49WzSHbA/jtjHPyyTp2EFmJ75Yovz9FVASXiw==}
+
   '@expo-google-fonts/inter@0.4.2':
     resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
+
+  '@expo-google-fonts/lalezar@0.4.1':
+    resolution: {integrity: sha512-1bSXcPR+lO+BB8k2Zuz3oPWAmt4TXRyhNsEwnBTvzPqijqaZ6fPJwpWNbkBd9uMWaStF0yLt/q6WT1RJajdYiw==}
+
+  '@expo-google-fonts/lateef@0.4.2':
+    resolution: {integrity: sha512-3ZVk5MNEPVzYfsj/UHYR2v8gE6KZ/JOF1GlXGKqq/rHQrrLVHvi5aut+kgnLYMpK8Bo13nVak/pyzQ19OFLA0w==}
+
+  '@expo-google-fonts/noto-sans-arabic@0.4.3':
+    resolution: {integrity: sha512-YvtxyuegxPegu2g5urXJ+gQxRp8i798nQswTmEjwXOWR/fqy0Gvey6h5IoNRBrc43SxRxPezqCiR9ivpfPAXSg==}
+
+  '@expo-google-fonts/rakkas@0.4.1':
+    resolution: {integrity: sha512-5KRizMJoxOfEajIeldl92rGrkMvBwPY8I13Li9oR8OGyi1Zly/WAE1FnN3iyz/8k7FwOR9YTTlvejoZILEbg4Q==}
+
+  '@expo-google-fonts/tajawal@0.4.1':
+    resolution: {integrity: sha512-cxbpKCUn8784UwrUQz/YLz8eHbqXN1vWjx5oyvf481pxho+CQR8QfoaeCS0LJ03Op2HG8SMCxRbPopNHebPR5Q==}
+
+  '@expo-google-fonts/vazirmatn@0.4.1':
+    resolution: {integrity: sha512-sznMvxt99C4bsEcWCebs3XWb/av8z9a/Y4OQo8F7VPFT0xzzn7Whkkw6dqxcAyLYEiNNpTpa3/vp8t1/koK6Jw==}
 
   '@expo/cli@54.0.23':
     resolution: {integrity: sha512-km0h72SFfQCmVycH/JtPFTVy69w6Lx1cHNDmfLfQqgKFYeeHTjx7LVDP4POHCtNxFP2UeRazrygJhlh4zz498g==}
@@ -6386,7 +6446,27 @@ snapshots:
   '@esbuild/linux-x64@0.27.3':
     optional: true
 
+  '@expo-google-fonts/amiri@0.4.1': {}
+
+  '@expo-google-fonts/aref-ruqaa@0.4.1': {}
+
+  '@expo-google-fonts/cairo@0.4.2': {}
+
+  '@expo-google-fonts/el-messiri@0.4.2': {}
+
   '@expo-google-fonts/inter@0.4.2': {}
+
+  '@expo-google-fonts/lalezar@0.4.1': {}
+
+  '@expo-google-fonts/lateef@0.4.2': {}
+
+  '@expo-google-fonts/noto-sans-arabic@0.4.3': {}
+
+  '@expo-google-fonts/rakkas@0.4.1': {}
+
+  '@expo-google-fonts/tajawal@0.4.1': {}
+
+  '@expo-google-fonts/vazirmatn@0.4.1': {}
 
   '@expo/cli@54.0.23(expo-router@6.0.24)(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)':
     dependencies:

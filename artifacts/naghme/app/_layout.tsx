@@ -10,8 +10,18 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
-  useFonts,
 } from '@expo-google-fonts/inter';
+import { Lalezar_400Regular } from '@expo-google-fonts/lalezar';
+import { Vazirmatn_400Regular } from '@expo-google-fonts/vazirmatn';
+import { Amiri_400Regular } from '@expo-google-fonts/amiri';
+import { Cairo_400Regular } from '@expo-google-fonts/cairo';
+import { Rakkas_400Regular } from '@expo-google-fonts/rakkas';
+import { ElMessiri_400Regular } from '@expo-google-fonts/el-messiri';
+import { Tajawal_400Regular } from '@expo-google-fonts/tajawal';
+import { Lateef_400Regular } from '@expo-google-fonts/lateef';
+import { ArefRuqaa_400Regular } from '@expo-google-fonts/aref-ruqaa';
+import { NotoSansArabic_400Regular } from '@expo-google-fonts/noto-sans-arabic';
+import { useFonts } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -67,6 +77,16 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Lalezar_400Regular,
+    Vazirmatn_400Regular,
+    Amiri_400Regular,
+    Cairo_400Regular,
+    Rakkas_400Regular,
+    ElMessiri_400Regular,
+    Tajawal_400Regular,
+    Lateef_400Regular,
+    ArefRuqaa_400Regular,
+    NotoSansArabic_400Regular,
   });
 
   useEffect(() => {

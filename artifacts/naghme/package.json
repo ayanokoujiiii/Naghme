@@ -56,6 +56,16 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@expo-google-fonts/amiri": "^0.4.1",
+    "@expo-google-fonts/aref-ruqaa": "^0.4.1",
+    "@expo-google-fonts/cairo": "^0.4.2",
+    "@expo-google-fonts/el-messiri": "^0.4.2",
+    "@expo-google-fonts/lalezar": "^0.4.1",
+    "@expo-google-fonts/lateef": "^0.4.2",
+    "@expo-google-fonts/noto-sans-arabic": "^0.4.3",
+    "@expo-google-fonts/rakkas": "^0.4.1",
+    "@expo-google-fonts/tajawal": "^0.4.1",
+    "@expo-google-fonts/vazirmatn": "^0.4.1",
     "expo-av": "~16.0.8",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
