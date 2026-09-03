@@ -1,0 +1,34 @@
+MASTER PROMPT: NAGHME - PHASE 14 (STUDIO PERFECTION: DRAGGABLE TEXT/STICKERS, EXPORT DEBUG & UI DECLUTTER)
+
+You are a Senior React Native Architect. The user provided screenshots and a detailed UX review of Phase 13.7. The Postcard Studio is cluttered, lyrics text and stickers are completely stuck/immovable, the blur slider does not work, fonts are fake, and the export to gallery fails. Fix these with surgical precision.
+
+CRITICAL RULES:
+1. Native Android priority. RTL & Dark Theme.
+2. DO NOT clutter bottom menus. Use nested sub-menus.
+3. MUST use `react-native-gesture-handler` (GestureDetector) for ALL movement.
+
+PHASE 14 OBJECTIVES TO IMPLEMENT:
+
+1. CRITICAL: True Draggable Lyrics Text & Stickers:
+- **Lyrics Text Bug:** The main lyrics text is currently stuck. 
+- **Stickers Bug:** Uploaded stickers are also static.
+- **The Fix:** You MUST wrap both the main Lyrics Text and any added Stickers in a robust `GestureDetector` (Pan and Pinch). Each element must have independent `useSharedValue` for `translateX`, `translateY`, and `scale`. The user MUST be able to drag the main text and stickers ANYWHERE on the canvas freely.
+- **Sticker Micro-Menu:** When a custom sticker is tapped, show a small menu with two sliders: a) Opacity (0.1 to 1.0) and b) Border Radius (0 to 100px).
+
+2. CRITICAL EXPORT BUG FIX ("ذخیره نشد"):
+- Fix the `captureRef` or `MediaLibrary.saveToLibraryAsync` failure. Ensure permissions are requested BEFORE capturing. Ensure the `ref` is attached to a wrapper `View` that has `collapsable={false}`. Add detailed `console.error` logs to debug.
+
+3. UI Declutter - Nested Menus & Predefined Palettes:
+- **Text Menu:** Sub-tabs: [رنگ (Color), فونت (Font), چینش (Alignment)].
+- **Background Menu:** Sub-tabs: [نوع (Type), رنگ‌ها (Colors), تنظیمات (Settings)].
+- **Color Palettes:** Replace the unclickable gradient bar with a horizontally scrollable list of 10-15 predefined elegant solid colors. Add ONE button labeled "سفارشی" (Custom) that opens a real Color Wheel modal.
+
+4. Fix Blur Slider & Custom Canvas Dimensions:
+- Fix the `blurRadius` state so the background image actually blurs dynamically.
+- In the "ابعاد" (Dimensions) menu, add a "سفارشی" (Custom) button showing two text inputs (Width & Height) to dynamically resize the canvas.
+
+5. Massive REAL Font Expansion:
+- Use `@expo-google-fonts` to install real fonts (e.g., `@expo-google-fonts/lalezar`, `@expo-google-fonts/vazirmatn`, `@expo-google-fonts/amiri`, `@expo-google-fonts/cairo`, `@expo-google-fonts/rakkas`). 
+- Load them with `useFonts`. Display them in the Font menu with their actual names. Provide at least 10 real options.
+
+ACTION: Execute these exact fixes. 1. Make Main Text and Stickers freely draggable. 2. Fix Export and Blur. 3. Declutter menus into sub-tabs and elegant color palettes. 4. Add Custom Dimensions. 5. Install REAL Google Fonts. Test gestures thoroughly.

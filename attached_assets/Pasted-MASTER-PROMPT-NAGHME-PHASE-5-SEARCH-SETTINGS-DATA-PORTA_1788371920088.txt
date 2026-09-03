@@ -1,0 +1,30 @@
+MASTER PROMPT: NAGHME - PHASE 5 (SEARCH, SETTINGS & DATA PORTABILITY)
+
+You are the Expert React Native Engineer. Phase 4 was excellent. 
+
+CRITICAL REQUEST FROM USER:
+The user is having trouble finding the `exp://` link or QR code to test the app in Expo Go on their Android device. 
+-> IMMEDIATE ACTION: Before doing anything else, print the direct `exp://` URL to the terminal/chat clearly, or explain exactly where the user can find the QR code/link in the current Replit UI so they can open it in Expo Go right now.
+
+CRITICAL RULES:
+1. Continue prioritizing Native Android functionality. 
+2. Maintain strict RTL, Persian UI, and Dark Theme.
+
+PHASE 5 OBJECTIVES:
+1. Deep Local Search (`app/(tabs)/search.tsx`):
+- Implement the Search tab UI with a large, elegant dark-mode text input.
+- Create a SQLite query in your DAL that searches for the input text across Tracks (title), Albums (title), and Artists (name) using `LIKE %query%`.
+- Display the results elegantly, grouped by type (قطعه‌ها، آلبوم‌ها، هنرمندان).
+- Ensure the results are clickable and navigate to their respective detail screens.
+
+2. Settings & Data Portability (`app/settings.tsx`):
+- Create a new Settings screen. Add a settings icon (⚙️) to the header of the Home screen to navigate to it.
+- Implement "Data Management" (مدیریت داده‌ها).
+- Export Archive (خروجی گرفتن از آرشیو):
+  * Install `expo-file-system` and `expo-sharing` if not already installed.
+  * Write a function that reads ALL data from the SQLite tables (Artists, Albums, Tracks, PersonalRelationships).
+  * Convert the entire dataset into a single JSON string.
+  * Save it locally as `naghme_backup.json` using `FileSystem`.
+  * Use `Sharing.shareAsync` to open the Android native share sheet, allowing the user to save the JSON backup to their phone's files or email it to themselves.
+
+ACTION: Execute Phase 5 step-by-step. First, help the user with the Expo Go link. Then install required Expo packages for file system and sharing. Build the unified search logic, settings screen, and the JSON export pipeline. Ensure `expo-sharing` is conditionally handled for web, but strictly functional for native Android. Stop and wait for my instruction when Phase 5 is fully functional.

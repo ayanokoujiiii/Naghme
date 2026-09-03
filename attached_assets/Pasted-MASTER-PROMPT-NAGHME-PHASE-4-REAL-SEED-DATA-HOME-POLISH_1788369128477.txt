@@ -1,0 +1,30 @@
+MASTER PROMPT: NAGHME - PHASE 4 (REAL SEED DATA, HOME POLISH & MUSIC GRAPH)
+
+You are the Expert React Native Engineer. Phase 3 is perfect. Do NOT alter the native/web SQLite adapter or existing routing. 
+
+CRITICAL RULES:
+1. NATIVE FOCUS: Everything must remain Android/EAS build compatible.
+2. Maintain RTL, Persian UI, and Dark Theme.
+
+PHASE 4 OBJECTIVES:
+1. Real Iranian Music Seed Data:
+- The user requested real sample data to test the UI.
+- Create a utility file `src/db/seed.ts` containing high-quality sample data of traditional Iranian music. 
+- Example Data to include:
+  * Artists: محمدرضا شجریان (Mohammad-Reza Shajarian), کیهان کلهر (Kayhan Kalhor), حسین علیزاده (Hossein Alizadeh). Include their real biographies and valid public image URLs (e.g., from Wikipedia or reliable sources).
+  * Albums: بیداد (Bidad), شب، سکوت، کویر (Shab, Sokout, Kavir). Include cover image URLs.
+  * Tracks: تصنیف بیداد (Tasnif Bidad), بارون (Baroun).
+- Create a function `injectSampleData()` that safely inserts these into the SQLite database.
+- Add a temporary but elegant button on the Home screen or a new Settings screen: "تزریق داده‌های آزمایشی" (Inject Sample Data) that runs this function.
+
+2. Home Screen Polish (`app/(tabs)/index.tsx`):
+- Fetch and display actual statistics from SQLite: تعداد قطعه‌ها (Tracks count), تعداد آلبوم‌ها (Albums count), تعداد خوانندگان (Artists count).
+- Display a "Recently Added" (اخیراً اضافه‌شده) horizontal list of tracks or albums.
+- Display a "Favorites" (علاقه‌مندی‌ها) list fetching tracks where `favorite` is true in `PersonalRelationships`.
+
+3. The Music Graph - First Version (`app/(tabs)/graph.tsx`):
+- Add a new Tab called "نقشه" (Graph).
+- Since complex D3/SVG graphs might crash React Native, build a stable, elegant, interactive Native-friendly relational tree view. 
+- It should visually demonstrate how Artists connect to their Albums, and Albums connect to Tracks. Users should be able to tap a node to go to its detail screen.
+
+ACTION: Execute Phase 4 step-by-step. Focus on injecting REAL Iranian music data and updating the Home screen to reflect SQLite data. Build a stable Music Graph tab. Verify that data injection works without crashing. Stop and wait for my instruction when Phase 4 is fully functional.

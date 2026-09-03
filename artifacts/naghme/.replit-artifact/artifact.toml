@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/naghme/"
+title = "نغمه | آرشیو موسیقی شخصی"
+description = "اپ آفلاین‌محور اندروید برای آرشیو شخصی موسیقی و نگهداری ارتباطات و یادداشت‌های شنیداری کاربر به زبان فارسی."
+version = "1.0.0"
+id = "artifacts/naghme"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/naghme/" ]
+localPort = 18607
+
+[services.development]
+run = "pnpm --filter @workspace/naghme run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/naghme", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/naghme", "run", "serve" ]
+
+[services.env]
+PORT = "18607"
+BASE_PATH = "/naghme/"

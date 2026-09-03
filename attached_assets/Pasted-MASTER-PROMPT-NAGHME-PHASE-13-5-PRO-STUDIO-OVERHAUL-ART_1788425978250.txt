@@ -1,0 +1,33 @@
+MASTER PROMPT: NAGHME - PHASE 13.5 (PRO STUDIO OVERHAUL, ARTIST PROFILES & FRAMED GALLERY)
+
+You are a Senior UI/UX Engineer and React Native Architect. The functional code from Phase 13 works, but the visual execution of the Postcard Studio was "amateurish, misaligned, and artificial." We are completely overhauling the Postcard Studio into a professional Canva-like editor, adding Main Profile Pictures for Artists, and upgrading the Gallery.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Safe SQLite migrations ONLY. Do not drop tables.
+3. The Postcard Studio must look WORLD-CLASS (perfect flexbox centering, premium margins, professional typography).
+
+PHASE 13.5 OBJECTIVES TO IMPLEMENT:
+
+1. Artist Main Profile Picture & Graph Sync (Database & UI):
+- **DB Migration:** Safely add a `profileImage` (TEXT) column to the `Artists` table.
+- **Artist UI (`app/artist/[id].tsx`):** Add an elegant, large circular `Image` at the top of the screen with an "Edit/Upload" button (`expo-image-picker`) to set the artist's main reference photo. Add a "Remove" option.
+- **Graph UI (`app/(tabs)/graph.tsx`):** Sync the Artist nodes to display this `profileImage` inside the circular avatars instead of generic icons. Ensure proper fallback if null.
+
+2. Premium Framed Gallery (`app/artist/[id].tsx`):
+- Upgrade the `galleryImages` UI. When the user has many images, it shouldn't break the layout.
+- Use a `FlatList` (horizontal) or a Masonry grid. 
+- **Aesthetic:** Make them look like physical art gallery frames. Add `borderWidth: 8`, `borderColor: '#f5f5dc'` (off-white/matte), `borderRadius: 4`, and a strong `shadowColor` to give a realistic framed painting/photo vibe.
+
+3. The "Postcard Studio V2" Overhaul (`app/player.tsx` & Postcard Component):
+- **Lyric Selector Step:** When the user taps "ساخت عکس‌نوشته", DO NOT just dump the entire lyrics into the studio. First, show a selector or an editable text input pre-filled with the lyrics so the user can easily delete the parts they don't want and keep ONLY the specific verse/line they want.
+- **Studio Canvas UI:** Fix the alignment. The text must be perfectly centered vertically and horizontally inside the 1:1 or 4:5 capture area.
+- **Bottom Toolbar (Canva-style Editor):** Add a sleek scrollable toolbar below the canvas with these tools:
+  * **Backgrounds:** Options to use the Track Cover, pick a Custom Image from the phone gallery (`expo-image-picker`), or solid elegant colors.
+  * **Typography & Layout:** A font selector (Provide 3-4 elegant options, even if simulating with default serif/sans-serif bold/italic, but style them beautifully for Persian). Add text alignment options (Right, Center, Left).
+  * **Decorations (Stickers):** A mini-menu to add elegant decorative icons/emojis (🌸, 🎶, 🍂, 🌿, 🕊️) onto the canvas. (Users can place them at the top/bottom).
+  * **Retro/Vintage Filters:** Toggles for "Old Paper", "Sepia", or "Grain". (Implement by overlaying an absolute `View` with semi-transparent vintage colors like `rgba(112, 66, 20, 0.2)` or noise patterns).
+  * **Export Settings:** A switch/toggle to choose export format: **JPG** or **PNG**.
+- **ViewShot Capture:** Pass the selected format (jpg/png) and high quality (1.0) to `captureRef`. Save to device gallery flawlessly.
+
+ACTION: Execute these upgrades step-by-step. 1. Migrate DB for Artist Profile Image. 2. Build the Framed Gallery and Graph sync. 3. Overhaul the Postcard Studio with the lyric selector, Canva-like toolbar, decorations, filters, and JPG/PNG export. Test alignment perfectly. Wait for my instruction.

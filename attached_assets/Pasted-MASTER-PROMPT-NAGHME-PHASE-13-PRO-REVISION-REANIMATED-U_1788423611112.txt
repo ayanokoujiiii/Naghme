@@ -1,0 +1,38 @@
+MASTER PROMPT: NAGHME - PHASE 13 (PRO REVISION: REANIMATED UX OVERHAUL, POSTCARD STUDIO & MEDIA NOTIFICATIONS)
+
+You are a Senior React Native & Expo Software Architect. The previous implementations were functionally correct but lacked the hyper-polished, premium visual fidelity expected of a world-class application. You will now execute a massive UI/UX overhaul using industry-standard libraries.
+
+CRITICAL ARCHITECTURE RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Use `react-native-reanimated` for ALL animations to ensure 60fps native performance. Do not use basic React state for complex animations.
+3. DO NOT use `expo-haptics` (the user explicitly rejected vibration).
+4. Do NOT break existing SQLite queries or audio logic.
+
+PHASE 13 OBJECTIVES TO IMPLEMENT:
+
+1. OS-Level Media Notifications & Timer Update (`app/player.tsx` & Audio Manager):
+- Add a "5 minutes" (5m) option to the Sleep Timer Modal.
+- Enhance `Audio.setAudioModeAsync`: Ensure `staysActiveInBackground: true` and `playThroughEarpieceAndroid: false`. 
+- Note: If Expo Go's `expo-av` limits lock-screen controls, implement the maximum allowed background audio config so the OS recognizes the media session.
+
+2. Premium "Spotify-Canvas" Mood Animations (`app/player.tsx`):
+- Replace the basic CSS/state animations with a `react-native-reanimated` visual engine.
+- Create an overlay container on top of the Poster image.
+- "آرام" (Calm): Implement a slow, breathing mesh-gradient or a radial glow using `expo-linear-gradient` and Reanimated. Opacity should cycle between 0.3 and 0.7 over a 4-second duration.
+- "غمگین" (Sad): Create lightweight, floating SVG or View dust particles that slowly drift downwards (translateY) with varying opacities, simulating a cinematic, moody rain/dust effect.
+- "پرانرژی" (Energetic): Implement a subtle, rhythmic scale-bounce (1.0 to 1.02) tied to the Reanimated shared values, giving the poster a heartbeat effect.
+
+3. The "Art Gallery" Music Graph Overhaul (`app/(tabs)/graph.tsx`):
+- Overhaul the node rendering. Abandon basic text boxes.
+- **Artist Nodes:** Render as perfect circles (circular avatars) with a subtle glowing border and drop shadow.
+- **Album/Track Nodes:** Render as elegant, dark-glass pill shapes (`borderRadius: 20`, dark grey background, semi-transparent if blurred).
+- **Custom Toast:** Remove the basic `Alert` on long-press. Create a custom Reanimated sliding Toast notification (a sleek dark pill at the bottom of the screen) that says "در حال پخش..." (Playing...) when a track is long-pressed.
+
+4. "Poetry Postcard" Export Studio (کارت‌پستال نستعلیق):
+- In the Lyrics section, add a sleek icon/button: "ساخت عکس‌نوشته" (Create Postcard).
+- Tapping it opens a Full-Screen Modal (`PostcardStudio`).
+- **Layout:** A centered 1:1 or 4:5 aspect ratio View. The background MUST be the track's `coverImage` heavily blurred (using Expo Image `blurRadius={50}` or an overlay gradient). Center the text with a large, premium Persian font style, and add a small "Naghme" watermark logo/text at the bottom center.
+- **Export Logic:** Wrap this postcard View in a `<ViewShot>` component from `react-native-view-shot`. Add a "ذخیره در گالری" (Save to Gallery) button below it.
+- **Permission Flow:** Request `expo-media-library` permissions. Capture the ViewShot URI, then use `MediaLibrary.saveToLibraryAsync(uri)`. Show a success Custom Toast.
+
+ACTION: Execute this architecture document sequentially. Use Reanimated for performance. Build the Postcard Studio with ViewShot and MediaLibrary. Overhaul the Graph aesthetics. Test thoroughly on Android and wait for my instruction.

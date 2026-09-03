@@ -1,0 +1,29 @@
+MASTER PROMPT: NAGHME - PHASE 10 (THE VISUAL MUSEUM, AUDIO LIFECYCLE FIX & FINAL POLISH)
+
+You are an Expert React Native & Expo Software Architect. We are entering the final aesthetic phase ("The Visual Museum"), but you MUST fix three critical bugs the user found in Phase 9.7 first.
+
+CRITICAL RULES:
+1. Native Android priority. Maintain strict RTL, Persian UI, and Dark Theme.
+2. Do NOT break existing SQLite queries.
+
+PHASE 10 OBJECTIVES:
+
+1. Audio Lifecycle Bug Fix (CRITICAL):
+- Issue: Navigating to a different Track Detail screen unloads/stops the currently playing track immediately.
+- Fix: Inspect `app/track/[id].tsx` and your global audio manager. Remove any `useEffect` cleanup function that unloads the audio simply because the component unmounts. The audio MUST continue playing in the background when the user navigates around the app. It should ONLY change or stop if the user explicitly presses "Play" on a *new* track or manually pauses it.
+
+2. Search "All" Filter Crash Fix:
+- Issue: Selecting the "همه" (All) filter in `search.tsx` and typing a query throws an error.
+- Fix: Inspect the DAL query and `search.tsx` logic for the "همه" filter. Fix the SQL statement or state logic to ensure it safely queries across Tracks, Albums, Artists, and Journals without crashing (e.g., fix broken joins, undefined variables, or malformed SQL clauses).
+
+3. Player UI Button Swap (`app/player.tsx`):
+- Issue: The user wants standard music player control placement.
+- Fix: Swap the positions of the secondary controls. Move the "Skip Backward 10s" (Rewind) button to the LEFT of the main Play/Pause button. Move the "Repeat" toggle button to the RIGHT of the main Play/Pause button.
+
+4. The "Visual Museum" Polish (Aesthetic Upgrade):
+- Transform the Home, Archive, and Track Detail screens to feel like a premium art gallery.
+- Increase the size of cover images and posters (make them prominent and high-quality).
+- Use elegant `borderRadius`, refined padding/margins, and subtle dark-theme appropriate shadows/elevation for cards.
+- Polish the typography: Make titles slightly larger and bolder. Ensure Persian text looks premium, readable, and beautifully spaced, distancing the UI from a "basic database app" look.
+
+ACTION: Execute these steps sequentially. 1. Fix the audio unmount bug. 2. Fix the "All" search SQL error. 3. Swap the player buttons. 4. Apply the premium visual polish across the app. Test thoroughly and wait for my instruction.

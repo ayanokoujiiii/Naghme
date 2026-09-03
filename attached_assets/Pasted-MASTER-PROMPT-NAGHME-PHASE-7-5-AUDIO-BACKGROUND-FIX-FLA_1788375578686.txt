@@ -1,0 +1,25 @@
+MASTER PROMPT: NAGHME - PHASE 7.5 (AUDIO BACKGROUND FIX, FLAC SUPPORT, DATA SEEDING & DIARY REFINEMENT)
+
+You are the Expert React Native Engineer. Phase 7 added the dynamic diary and listening history, but the user noticed crucial real-world usability flaws that must be fixed immediately.
+
+CRITICAL RULES:
+1. Native Android priority. Keep RTL, Persian UI, and Dark Theme intact.
+2. Do NOT break existing SQLite queries or routing.
+
+FIXES & OBJECTIVES TO IMPLEMENT:
+
+1. Real Background Audio Playback & High-Quality FLAC Support:
+- Update the audio configuration in code (using `Audio.setAudioModeAsync`) to explicitly allow background playback: `{ playsInSilentModeIOS: true, staysActiveInBackground: true, shouldDuckAndroid: true }`.
+- Ensure the audio player does NOT stop or unload immediately when navigating away from the Track Detail screen, allowing true background playback.
+- FLAC & High-Res Formats Support: Ensure the audio loading logic (`Audio.Sound.createAsync`) handles high-quality lossless formats like `.flac`, `.wav`, and `.m4a` smoothly on Android by configuring proper headers/options if required by Expo-AV, ensuring robust playback for audiophile formats.
+
+2. Automated Test Data Seeding for Diary & History:
+- Update `src/db/seed.ts` (or create a seed function for journal entries) so that whenever sample data is injected or checked, it automatically populates realistic mock `JournalEntries` (with moods like "آرام", "متفکر") and `ListeningHistory` for the sample tracks. The user should immediately see pre-existing diary entries and listening counts without manually writing them.
+
+3. Refine Diary vs. Personal Notes UI (`app/track/[id].tsx`):
+- Clearly separate the two concepts on the Track Detail screen:
+  * **بخش اول:** «یادداشت کلی اثر» (The general/static personal note for the track, editable as before).
+  * **بخش دوم:** «دفترچه خاطرات لحظه‌ای» (The chronological timeline of past mood entries and timestamps, where clicking "ثبت حالِ الان" adds a *new* entry to the history without overwriting the general note).
+- Ensure past journal entries are neatly displayed in a chronological list showing date, mood tag, and note text, and they never get lost or overwritten.
+
+ACTION: Execute these fixes step-by-step. Fix the background audio mode and FLAC compatibility, update the seed script to include mock diary items, and clean up the UI separation between general notes and chronological journal entries. Test and verify. Stop and wait for my instruction when complete.

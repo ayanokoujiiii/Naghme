@@ -1,0 +1,24 @@
+MASTER PROMPT: NAGHME - PHASE 16 (ALBUM POSTERS & PRO GALLERY MANAGEMENT)
+
+You are a Senior React Native Architect. The user reminded us to stick to the original roadmap. We need to finalize two specific missing features: Dedicated Album Posters and Artist Gallery Management (Delete & Save).
+
+CRITICAL RULES:
+1. Native Android priority. RTL layout, dark theme.
+2. Safe SQLite migrations ONLY.
+3. Use the exact `MediaLibrary.requestPermissionsAsync(true)` logic we perfected in Phase 14.8 to avoid audio permission crashes on Android 13+.
+
+PHASE 16 OBJECTIVES TO IMPLEMENT:
+
+1. Pro Gallery Management (Delete & Save):
+- **Target:** `app/artist/[id].tsx` (Inside the Full-Screen Image Viewer Modal).
+- **UI:** When viewing a full-screen photo, add a sleek bottom toolbar inside the Modal with two elegant icon buttons: "حذف از آرشیو" (Delete) and "ذخیره در گوشی" (Save).
+- **Delete Logic:** Remove the current image URI from the Artist's `galleryImages` JSON array. Run an `UPDATE Artists SET galleryImages = ? WHERE id = ?`. Instantly update the React state so the image disappears from the grid/modal gracefully.
+- **Save Logic:** Request write-only permission: `const { status } = await MediaLibrary.requestPermissionsAsync(true);`. Then use `MediaLibrary.saveToLibraryAsync(currentImageUri)`. Show a success `Toast` (using `console.log` internally, NEVER `console.error`).
+
+2. Dedicated Album Posters (پوستر اختصاصی آلبوم‌ها):
+- **DB Migration:** Ensure the `Albums` table has a `coverImage` (TEXT) column. Use safe migration logic.
+- **Album Screen (`app/album/[id].tsx`):** Currently, albums might only show track covers or generic icons. Add a large, elegant square/rounded `Image` at the top of the Album details screen.
+- **Upload UI:** Add an "Edit/Upload" button (`expo-image-picker`) next to the Album cover to let the user select a specific poster for the Album itself. Add a "Remove" option.
+- **Graph Sync (`app/(tabs)/graph.tsx`):** Update the Music Graph nodes so that Album bubbles display their dedicated `coverImage` (if available) instead of generic glass-pills or fallback icons.
+
+ACTION: Execute sequentially. 1. Build the Gallery Delete/Save bottom bar with exact DB updates. 2. Ensure Albums have `coverImage` support. 3. Build the Album upload UI. 4. Sync Album covers with the Graph. Test state updates rigorously.

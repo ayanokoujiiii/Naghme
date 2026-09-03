@@ -1,0 +1,38 @@
+MASTER PROMPT: NAGHME - PHASE 14.7 (SURGICAL BUG FIXES: GESTURES, EXPORT, UI STATES)
+
+You are a Senior React Native Architect. The user QA tested the Studio and found 6 critical integration bugs. The UI was built, but the underlying state, gesture handlers, and refs were NOT connected properly. You must fix these exact bugs with surgical precision.
+
+CRITICAL RULES:
+1. Native Android priority. RTL & Dark Theme.
+2. If a state variable exists, it MUST be bound to its corresponding UI component prop.
+
+BUG FIXES TO IMPLEMENT:
+
+1. GESTURES ARE DEAD (CRITICAL FIX):
+- **Cause:** You did not wrap the screen in a gesture root, so Android ignores all touches.
+- **Fix:** You MUST wrap the ENTIRE `PostcardStudio` component UI inside `<GestureHandlerRootView style={{flex: 1}}>`. 
+- **Implementation:** Ensure both the Main Lyrics Text and `<DraggableSticker>` use `Gesture.Pan()` and `Gesture.Pinch()`. Bind the resulting `useSharedValue`s to an `<Animated.View>` using `useAnimatedStyle` for `transform: [{translateX}, {translateY}, {scale}]`.
+
+2. EXPORT TO GALLERY FAILS ("ذخیره نشد"):
+- **Cause:** Incorrect `captureRef` config or missing `collapsable={false}` wrapper.
+- **Fix:** 
+  a) The main canvas wrapper MUST be `<View collapsable={false} ref={canvasRef}>`.
+  b) Use this exact capture logic: `const uri = await captureRef(canvasRef, { format: exportFormat, quality: 1.0, result: 'tmpfile' });`
+  c) Request permissions: `const { status } = await MediaLibrary.requestPermissionsAsync(); if (status !== 'granted') return;`
+  d) Save: `await MediaLibrary.saveToLibraryAsync(uri);`
+  e) **Error Handling:** Add a `catch(error)` block that displays `Alert.alert("خطا در ذخیره", error.message)`.
+
+3. STICKER SLIDERS DO NOTHING:
+- **Cause:** Opacity and Border Radius sliders are not bound to the sticker's style.
+- **Fix:** Inside `<DraggableSticker>`, map the slider `onValueChange` to local states (e.g., `opacity`, `borderRadius`), and apply them directly to the `<Animated.Image>` style: `style={[..., { opacity, borderRadius }]}`.
+
+4. BLUR & CUSTOM COLORS DO NOTHING:
+- **Cause:** States are updating, but the UI isn't consuming them.
+- **Fix Blur:** Apply the blur state to the background: `<Image source={...} blurRadius={blurState} />`.
+- **Fix Colors:** Ensure the Color Picker's `onChange` event explicitly calls `setTextColor(hex)` or `setBackgroundColor(hex)`. Verify that the text and canvas wrapper actually use these state variables in their `style` props.
+
+5. CUSTOM DIMENSIONS JITTER:
+- **Cause:** Typing numbers changes the canvas size on every keystroke, breaking the UI.
+- **Fix:** Create local states `tempWidth` and `tempHeight` for the text inputs. Add a `<Pressable>` button labeled "اعمال" (Apply). Only update the main canvas `width` and `height` states when the "اعمال" button is pressed.
+
+ACTION: Execute these 5 surgical fixes. 1. Add GestureHandlerRootView. 2. Fix Export flow + add Alert errors. 3. Connect Sticker slider styles. 4. Connect Blur & Color Picker states. 5. Add Apply button for dimensions. Test meticulously.

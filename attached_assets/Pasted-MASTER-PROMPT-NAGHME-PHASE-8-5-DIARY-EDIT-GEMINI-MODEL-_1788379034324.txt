@@ -1,0 +1,24 @@
+MASTER PROMPT: NAGHME - PHASE 8.5 (DIARY EDIT, GEMINI MODEL FETCHER & API FIX)
+
+You are the Expert React Native Engineer. Phase 8 added the smart recommendation, but the user caught three crucial UX & API improvements that must be fixed right away.
+
+CRITICAL RULES:
+1. Native Android priority. Keep RTL, Persian UI, and Dark Theme intact.
+2. Do NOT break existing SQLite queries or routing.
+
+FIXES & OBJECTIVES TO IMPLEMENT:
+
+1. Edit Capability for Journal/Diary Entries (`app/track/[id].tsx`):
+- Next to the delete button on each timeline journal entry, add an **Edit (ویرایش)** button.
+- When clicked, load the entry's note and mood into the existing modal or an inline edit state, allowing the user to update the note/mood and save changes back to SQLite (`updateJournalEntry`).
+
+2. Gemini API Connection Fix & Model Fetcher (`app/settings.tsx` & Recommendation Logic):
+- **Model Fetcher in Settings:** 
+  * In the Settings screen, right below the Gemini API Key input, add a button titled "استعلام مدل‌های در دسترس" (Fetch Available Models).
+  * Use fetch to call Google's Gemini endpoint (`https://generativelanguage.googleapis.com/v1beta/models?key=API_KEY`).
+  * Parse the response, extract available model names (filtering for text models like `gemini-...`), and display them in a clean selector/dropdown so the user can choose which model to use (and save the selected model name to AsyncStorage).
+- **Gemini API Fix for Recommendations:**
+  * Fix the recommendation API call in the smart recommendation feature to use the user-selected model (or fallback safely to a stable current model like `gemini-1.5-flash`).
+  * Ensure proper error handling, so if the API fails or returns an error, it prints the exact error for debugging and gracefully falls back to the local algorithm without crashing or throwing a generic "unavailable" error blindly.
+
+ACTION: Execute these fixes step-by-step. Add edit functionality to diary entries. Build the Gemini model fetcher in Settings with an API call. Fix the recommendation logic to use the chosen model reliably. Test and verify. Stop and wait for my instruction when complete.
