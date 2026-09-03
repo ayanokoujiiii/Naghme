@@ -1,0 +1,74 @@
+Phase 10.5 را اجرا می‌کنم. ابتدا Mini-Player، audio manager و تمام ScrollView/FlatListهای اصلی را پیدا می‌کنم تا padding فقط وقتی Mini-Player فعال است اعمال شود و هیچ صفحه‌ای از قلم نیفتد؛ سپس دکمهٔ توقف کامل صدا را به manager سراسری وصل می‌کنم.
+
+Mini-Player را به‌عنوان یک overlay واقعی نگه می‌دارم اما فضای انتهای همهٔ اسکرول‌های اصلی را از همان state سراسری audio manager می‌گیرم. برای دکمهٔ بستن هم layout داخلی را از Pressable تو‌در‌تو جدا می‌کنم تا با زدن X ناخواسته Player باز نشود و stop/unload به‌طور کامل اجرا شود.
+
+برای padding سراسری، یک hook کوچک بر پایهٔ subscription فعلی audio manager اضافه می‌کنم و آن را به wrapper اسکرول‌های کیبوردی + FlatList/ScrollViewهای اصلی وصل می‌کنم. در نتیجه با فعال شدن Mini-Player، حدود ۹۶ پیکسل فضای امن انتهای محتوا اضافه می‌شود و با بستن آن خودکار حذف می‌گردد.
+
+padding سراسری اکنون برای Home، Archive، Search، Graph و Recommendation فعال است و wrapper مشترک هم Track Detail، فرم‌های افزودن و Settings را پوشش می‌دهد. حالا typecheck و bundle را اجرا می‌کنم تا هم stop/unload جدید و هم استایل‌های responsive بررسی شوند.
+
+Bundle اندروید و typecheck هر دو موفق‌اند. یک بررسی نهایی بصری و کدی انجام می‌دهم تا مطمئن شوم دکمهٔ X روی خود Mini-Player قرار گرفته، مسیرهای بدون داده هم سالم‌اند، و padding پویا به همهٔ اسکرول‌های اصلی رسیده است.
+
+در preview یک warning واقعی پیدا شد: direction استایل معتبر React Native نیست و باید حذف شود. برای حفظ جای دقیق دکمهٔ X، آن را به‌صورت absolute در سمت راست Mini-Player می‌گذارم؛ ردیف کنترل‌های Player هم بدون این property و با ترتیب صریح rewind، play، repeat می‌ماند.
+
+Preview نهایی بدون خطای direction بالا آمد و workflow هم سالم است؛ فقط warningهای شناخته‌شدهٔ expo-av و shadow باقی مانده‌اند. برای پایان، artifact به‌روزشده را دوباره ثبت می‌کنم و سپس خلاصهٔ تغییرات و مسیر تست Expo Go را می‌دهم.
+
+Phase 10.5 تکمیل شد.
+
+تغییرات اصلی:
+
+جلوگیری از پوشاندن انتهای لیست‌ها توسط Mini-Player:
+Home
+Archive
+Search
+Graph
+Recommendation
+Track/Album/Artist Detail
+Settings
+فرم‌های افزودن
+افزودن padding پویا حدود ۹۶ پیکسل که فقط هنگام فعال بودن Mini-Player اضافه می‌شود.
+افزودن دکمهٔ X در سمت راست Mini-Player.
+جدا شدن ناحیهٔ بازکردن Player از دکمهٔ توقف؛ بستن دیگر باعث navigation ناخواسته نمی‌شود.
+افزودن stopAndUnloadAudio برای:
+توقف کامل صدا
+unload کردن Audio.Sound
+پاک‌کردن track، URI، loading و error
+مخفی شدن Mini-Player
+هیچ تغییری در schema دیتابیس انجام نشد.
+خطای direction در React Native نیز اصلاح شد.
+بررسی‌ها:
+
+Typecheck موفق
+git diff --check موفق
+Expo workflow ری‌استارت و bundle شد
+مسیرهای Home، Archive و Search در preview بررسی شدند
+فقط warningهای شناخته‌شدهٔ deprecated بودن expo-av و shadow باقی مانده‌اند
+برای تست واقعی پخش صدا و دکمهٔ X، تست اصلی را در Expo Go روی Android انجام دهید:
+
+exp://1a551ce0-0ec9-4384-b43e-ba0481e4e525-00-zaj29u0sbrfh.expo.picard.replit.dev
+نسخهٔ وب:
+
+https://1a551ce0-0ec9-4384-b43e-ba0481e4e525-00-zaj29u0sbrfh.expo.picard.replit.dev/
+مسیرهای تست:
+
+/search
+/archive
+/player
+ابتدا یک قطعه را پخش کنید، سپس از صفحهٔ دیگری نزدیک انتهای لیست اسکرول کنید و در نهایت دکمهٔ X Mini-Player را بزنید؛ صدا باید کاملاً متوقف شود و Mini-Player ناپدید شود.
+
+n-gmh-or-arshyw-mwsyqy-shkh-sy--ema2028de2wp5hl
+اون علامت ضربدر با بستن رو نوار و بردار زشته ، الان با دادن فاصله دیگه مشکلی باهاش ندارم و درسته
+
+متوجه شدم؛ دکمهٔ X و رفتار بستن را از خود نوار Mini-Player حذف می‌کنم و فاصلهٔ پایینی اسکرول‌ها را نگه می‌دارم. بعد preview و typecheck را دوباره بررسی می‌کنم.
+
+دکمهٔ ضربدر و فاصلهٔ اضافهٔ آن حذف شد؛ padding انتهای محتوا دست‌نخورده باقی ماند. حالا نسخهٔ به‌روزشده را یک‌بار build و preview می‌کنم.
+
+انجام شد. علامت ضربدر و رفتار بستن از Mini-Player حذف شد و فقط فاصلهٔ پایینی اسکرول‌ها باقی ماند.
+
+Typecheck، bundle و preview هم با موفقیت بررسی شدند.
+
+کد Expo Go برای تست:
+
+exp://1a551ce0-0ec9-4384-b43e-ba0481e4e525-00-zaj29u0sbrfh.expo.picard.replit.dev
+نسخهٔ وب:
+
+https://1a551ce0-0ec9-4384-b43e-ba0481e4e525-00-zaj29u0sbrfh.expo.picard.replit.dev/
