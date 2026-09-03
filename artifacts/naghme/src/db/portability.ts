@@ -3,6 +3,7 @@ import type {
   AlbumRecord,
   AlbumTrackRecord,
   ArtistRecord,
+  ArtistRelationshipRecord,
   CreditRecord,
   JournalEntryRecord,
   ListeningHistoryRecord,
@@ -33,6 +34,8 @@ export interface ArchiveBackup {
   works?: WorkRecord[];
   /** Optional extension to Version 1; absent in older backups. */
   versions?: VersionRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  artistRelationships?: ArtistRelationshipRecord[];
 }
 
 export interface RestoreSummary {
@@ -47,6 +50,7 @@ export interface RestoreSummary {
   versions: number;
   roles: number;
   credits: number;
+  artistRelationships: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
@@ -61,6 +65,8 @@ const WORK_BACKUP_COLUMNS =
   'id, title, alternateTitles, description, language, genre, notes, createdAt, updatedAt';
 const VERSION_BACKUP_COLUMNS =
   'id, workId, name, kind, description, notes, createdAt, updatedAt';
+const ARTIST_RELATIONSHIP_BACKUP_COLUMNS =
+  'id, artistId, relatedArtistId, description, createdAt';
 const RELATIONSHIP_BACKUP_COLUMNS = `
   trackId, rating, favorite, emotionalTags, personalNote,
   (
@@ -99,6 +105,7 @@ export async function createArchiveBackup(): Promise<string> {
     albumTracks,
     works,
     versions,
+    artistRelationships,
   ] = await Promise.all([
     database.getAllAsync<ArtistRecord>(
       `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
@@ -149,6 +156,11 @@ export async function createArchiveBackup(): Promise<string> {
       `SELECT ${VERSION_BACKUP_COLUMNS} FROM Versions ORDER BY rowid ASC`,
       [],
     ),
+    database.getAllAsync<ArtistRelationshipRecord>(
+      `SELECT ${ARTIST_RELATIONSHIP_BACKUP_COLUMNS}
+         FROM ArtistRelationships ORDER BY rowid ASC`,
+      [],
+    ),
   ]);
 
   const backup: ArchiveBackup = {
@@ -166,6 +178,7 @@ export async function createArchiveBackup(): Promise<string> {
     albumTracks,
     works,
     versions,
+    artistRelationships,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -181,6 +194,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   const workIds = new Set((backup.works ?? []).map((work) => work.id));
   const versionIds = new Set((backup.versions ?? []).map((version) => version.id));
   const versionsById = new Map((backup.versions ?? []).map((version) => [version.id, version]));
+  const relationshipIds = new Set(
+    (backup.artistRelationships ?? []).map((relationship) => relationship.id),
+  );
 
   for (const track of backup.tracks) {
     if (track.artistId && !artistIds.has(track.artistId)) {
@@ -226,6 +242,14 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   for (const version of backup.versions ?? []) {
     if (!workIds.has(version.workId)) {
       throw new Error(`اثر مرتبط با نسخهٔ «${version.name}» در فایل پیدا نشد.`);
+    }
+  }
+  for (const relationship of backup.artistRelationships ?? []) {
+    if (!artistIds.has(relationship.artistId) || !artistIds.has(relationship.relatedArtistId)) {
+      throw new Error('یکی از ارتباط‌های هنرمندان به هنرمند نامعتبر اشاره می‌کند.');
+    }
+    if (relationship.artistId === relationship.relatedArtistId) {
+      throw new Error('ارتباط هنرمند با خودش معتبر نیست.');
     }
   }
   for (const relationship of backup.personalRelationships) {
@@ -422,6 +446,25 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
       );
     }
 
+    for (const relationship of backup.artistRelationships ?? []) {
+      await database.runAsync(
+        `INSERT INTO ArtistRelationships
+           (id, artistId, relatedArtistId, description, createdAt)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           artistId = excluded.artistId,
+           relatedArtistId = excluded.relatedArtistId,
+           description = excluded.description`,
+        [
+          relationship.id,
+          relationship.artistId,
+          relationship.relatedArtistId,
+          relationship.description,
+          relationship.createdAt,
+        ],
+      );
+    }
+
     for (const relationship of backup.personalRelationships) {
       await database.runAsync(
         `INSERT INTO PersonalRelationships
@@ -506,6 +549,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     versions: backup.versions?.length ?? 0,
     roles: backup.roles?.length ?? 0,
     credits: backup.credits?.length ?? 0,
+    artistRelationships: backup.artistRelationships?.length ?? 0,
   };
 }
 
@@ -532,6 +576,7 @@ function parseBackup(json: string): ArchiveBackup {
   const journalEntries = parseJournalEntries(parsed.journalEntries);
   const listeningHistory = parseListeningHistory(parsed.listeningHistory);
   const albumTracks = parseAlbumTracks(parsed.albumTracks);
+  const artistRelationships = parseArtistRelationships(parsed.artistRelationships);
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
@@ -544,6 +589,7 @@ function parseBackup(json: string): ArchiveBackup {
   assertUniqueIds(journalEntries, 'یادداشت‌های دفترچه');
   assertUniqueIds(listeningHistory, 'تاریخچهٔ شنیدن');
   assertUniqueAlbumTrackMemberships(albumTracks);
+  assertUniqueIds(artistRelationships, 'ارتباط‌های هنرمندان');
   assertUniqueCreditTargets(credits);
 
   return {
@@ -561,7 +607,27 @@ function parseBackup(json: string): ArchiveBackup {
     journalEntries,
     listeningHistory,
     albumTracks,
+    artistRelationships,
   };
+}
+
+function parseArtistRelationships(value: unknown): ArtistRelationshipRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'ارتباط‌های هنرمندان').map((item, index) => {
+    const record = recordValue(item, `ارتباط هنرمندان شمارهٔ ${index + 1}`);
+    const artistId = requiredString(record.artistId, 'شناسهٔ هنرمند');
+    const relatedArtistId = requiredString(record.relatedArtistId, 'شناسهٔ هنرمند مرتبط');
+    if (artistId === relatedArtistId) throw new Error('ارتباط هنرمند با خودش معتبر نیست.');
+    return {
+      id: requiredString(record.id, 'شناسهٔ ارتباط هنرمندان'),
+      artistId,
+      relatedArtistId,
+      relatedArtistName: nullableString(record.relatedArtistName, 'نام هنرمند مرتبط') ?? '',
+      relatedArtistType: nullableString(record.relatedArtistType, 'نوع هنرمند مرتبط'),
+      description: nullableString(record.description, 'توضیح ارتباط'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد ارتباط'),
+    };
+  });
 }
 
 function parseWorks(value: unknown): WorkRecord[] {

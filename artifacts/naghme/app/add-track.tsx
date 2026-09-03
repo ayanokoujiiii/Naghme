@@ -15,8 +15,12 @@ import {
   getArtists,
   getAlbums,
   getAlbumsForArtist,
+  getVersionsByWorkId,
   getTrackById,
+  getWorks,
   updateTrack,
+  VersionRecord,
+  WorkRecord,
 } from '@/src/db/queries';
 
 export default function AddTrackScreen() {
@@ -27,6 +31,10 @@ export default function AddTrackScreen() {
   const [title, setTitle] = useState<string>('');
   const [duration, setDuration] = useState<string>('');
   const [versionName, setVersionName] = useState<string>('');
+  const [works, setWorks] = useState<WorkRecord[]>([]);
+  const [versions, setVersions] = useState<VersionRecord[]>([]);
+  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [lyrics, setLyrics] = useState<string>('');
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [audioName, setAudioName] = useState<string>('');
@@ -39,7 +47,10 @@ export default function AddTrackScreen() {
   const [pendingCredits, setPendingCredits] = useState<PendingCreditDraft[]>([]);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [artistPickerOpen, setArtistPickerOpen] = useState<boolean>(false);
+  const [workPickerOpen, setWorkPickerOpen] = useState<boolean>(false);
+  const [versionPickerOpen, setVersionPickerOpen] = useState<boolean>(false);
   const [loadingAlbums, setLoadingAlbums] = useState<boolean>(false);
+  const [loadingVersions, setLoadingVersions] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -48,12 +59,13 @@ export default function AddTrackScreen() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getArtists(), getAlbums(), id ? getTrackById(id) : Promise.resolve(null)])
-      .then(([artistItems, albumItems, track]) => {
+    Promise.all([getArtists(), getAlbums(), getWorks(), id ? getTrackById(id) : Promise.resolve(null)])
+      .then(([artistItems, albumItems, workItems, track]) => {
         if (!mounted) return;
         setArtists(artistItems);
         setAllAlbums(albumItems);
         setAlbums(albumItems);
+        setWorks(workItems);
         if (id) {
           if (!track) {
             setError('قطعه پیدا نشد.');
@@ -61,6 +73,8 @@ export default function AddTrackScreen() {
             setTitle(track.title);
             setDuration(track.duration?.toString() ?? '');
             setVersionName(track.versionName ?? '');
+            setSelectedWorkId(track.workId);
+            setSelectedVersionId(track.versionId);
             setLyrics(track.lyrics ?? '');
             setSelectedArtistId(track.artistId);
             setSelectedAlbumId(track.albumId);
@@ -82,6 +96,37 @@ export default function AddTrackScreen() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedWorkId) {
+      setVersions([]);
+      setLoadingVersions(false);
+      setSelectedVersionId(null);
+      return;
+    }
+    let mounted = true;
+    setLoadingVersions(true);
+    getVersionsByWorkId(selectedWorkId)
+      .then((items) => {
+        if (!mounted) return;
+        setVersions(items);
+        setSelectedVersionId((current) =>
+          current && items.some((version) => version.id === current) ? current : null,
+        );
+      })
+      .catch((loadError: unknown) => {
+        if (!mounted) return;
+        setVersions([]);
+        setSelectedVersionId(null);
+        setError(loadError instanceof Error ? loadError.message : 'نسخه‌های اثر خوانده نشد.');
+      })
+      .finally(() => {
+        if (mounted) setLoadingVersions(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedWorkId]);
 
   useEffect(() => {
     if (!selectedArtistId) {
@@ -119,6 +164,8 @@ export default function AddTrackScreen() {
 
   const selectedAlbum = albums.find((album) => album.id === selectedAlbumId);
   const selectedArtist = artists.find((artist) => artist.id === selectedArtistId);
+  const selectedWork = works.find((work) => work.id === selectedWorkId);
+  const selectedVersion = versions.find((version) => version.id === selectedVersionId);
 
   const handleArtistSelect = (artistId: string | null) => {
     setSelectedArtistId(artistId);
@@ -127,6 +174,14 @@ export default function AddTrackScreen() {
     setError('');
     setSelectedAlbumId(null);
     if (!artistId) setAlbums(allAlbums);
+  };
+
+  const handleWorkSelect = (workId: string | null) => {
+    setSelectedWorkId(workId);
+    setSelectedVersionId(null);
+    setWorkPickerOpen(false);
+    setVersionPickerOpen(false);
+    setError('');
   };
 
   const pickAudio = async () => {
@@ -209,7 +264,9 @@ export default function AddTrackScreen() {
           artistId: selectedArtistId,
           albumId: selectedAlbumId,
           audioUri,
-          versionName: versionName.trim() || null,
+            versionName: selectedVersionId ? null : versionName.trim() || null,
+            workId: selectedWorkId,
+            versionId: selectedVersionId,
           lyrics: lyrics.trim() || null,
           sheetMusicUri,
         });
@@ -222,7 +279,9 @@ export default function AddTrackScreen() {
             albumId: selectedAlbumId,
             audioUri,
             coverImage: null,
-            versionName: versionName.trim() || null,
+            versionName: selectedVersionId ? null : versionName.trim() || null,
+            workId: selectedWorkId,
+            versionId: selectedVersionId,
             lyrics: lyrics.trim() || null,
             sheetMusicUri,
           },
@@ -259,12 +318,95 @@ export default function AddTrackScreen() {
         onChangeText={setDuration}
         keyboardType="number-pad"
       />
-      <FormField
-        label="نسخه / اجرا"
-        placeholder="مثلاً اجرای زنده، نسخه‌ی استودیویی"
-        value={versionName}
-        onChangeText={setVersionName}
-      />
+      <View style={styles.field}>
+        <Text style={styles.label}>اثر (اختیاری)</Text>
+        <Pressable
+          testID="work-picker"
+          onPress={() => setWorkPickerOpen((open) => !open)}
+          style={({ pressed }) => [styles.picker, pressed && styles.pressed]}
+        >
+          <Feather
+            name={workPickerOpen ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.mutedForeground}
+          />
+          <Text style={[styles.pickerText, !selectedWork && styles.placeholder]} numberOfLines={1}>
+            {selectedWork?.title ?? 'بدون اثر'}
+          </Text>
+        </Pressable>
+        {workPickerOpen ? (
+          <View style={styles.menu}>
+            <Pressable onPress={() => handleWorkSelect(null)} style={styles.menuItem}>
+              <Text style={styles.menuText}>بدون اثر</Text>
+            </Pressable>
+            {works.length ? works.map((work) => (
+              <Pressable key={work.id} onPress={() => handleWorkSelect(work.id)} style={styles.menuItem}>
+                <Text style={styles.menuText} numberOfLines={1}>{work.title}</Text>
+              </Pressable>
+            )) : <Text style={styles.noAlbums}>هنوز اثری ثبت نشده است.</Text>}
+          </View>
+        ) : null}
+      </View>
+
+      {selectedWorkId ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>نسخه‌ی رسمی (اختیاری)</Text>
+          <Pressable
+            testID="version-picker"
+            onPress={() => setVersionPickerOpen((open) => !open)}
+            style={({ pressed }) => [styles.picker, pressed && styles.pressed]}
+          >
+            <Feather
+              name={versionPickerOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.mutedForeground}
+            />
+            <Text style={[styles.pickerText, !selectedVersion && styles.placeholder]} numberOfLines={1}>
+              {selectedVersion?.name ?? 'بدون نسخه‌ی رسمی'}
+            </Text>
+          </Pressable>
+          {versionPickerOpen ? (
+            <View style={styles.menu}>
+              <Pressable
+                onPress={() => {
+                  setSelectedVersionId(null);
+                  setVersionPickerOpen(false);
+                }}
+                style={styles.menuItem}
+              >
+                <Text style={styles.menuText}>بدون نسخه‌ی رسمی</Text>
+              </Pressable>
+              {loadingVersions ? (
+                <Text style={styles.noAlbums}>در حال خواندن نسخه‌های اثر…</Text>
+              ) : versions.length ? versions.map((version) => (
+                <Pressable
+                  key={version.id}
+                  onPress={() => {
+                    setSelectedVersionId(version.id);
+                    setVersionPickerOpen(false);
+                    setVersionName('');
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Text style={styles.menuText} numberOfLines={1}>{version.name}</Text>
+                </Pressable>
+              )) : <Text style={styles.noAlbums}>برای این اثر هنوز نسخه‌ای ثبت نشده است.</Text>}
+            </View>
+          ) : null}
+          {selectedVersion ? (
+            <Text style={styles.officialHint}>نسخه‌ی رسمی انتخاب شده؛ متن آزاد قدیمی غیرفعال است.</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {!selectedVersionId ? (
+        <FormField
+          label="نسخه / اجرای آزاد"
+          placeholder="مثلاً اجرای زنده، نسخه‌ی استودیویی"
+          value={versionName}
+          onChangeText={setVersionName}
+        />
+      ) : null}
       <FormField
         label="متن ترانه / تصنیف"
         placeholder="متن را اینجا بنویس یا جای‌گذاری کن…"
@@ -518,6 +660,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 13,
       textAlign: 'right',
       padding: 16,
+    },
+    officialHint: {
+      color: colors.primary,
+      fontSize: 11,
+      textAlign: 'right',
+      marginTop: 7,
     },
     audioPickerCard: {
       minHeight: 68,

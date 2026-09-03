@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 export interface AppliedMigration {
   version: number;
@@ -104,6 +104,11 @@ const migrations: readonly Migration[] = [
     version: 5,
     description: 'افزودن مدل عمومی نقش‌ها و مشارکت‌های هنری',
     migrate: addRolesAndCredits,
+  },
+  {
+    version: 6,
+    description: 'افزودن رابطهٔ قابل مدیریت بین هنرمندان',
+    migrate: addArtistRelationships,
   },
 ];
 
@@ -368,5 +373,26 @@ async function addRolesAndCredits(database: SQLiteDatabase): Promise<void> {
       ('role_ensemble', 'گروه / ارکستر', 'ensemble', 'همکاری گروهی یا ارکسترال'),
       ('role_producer', 'تهیه‌کننده', 'producer', 'تهیه یا تولید اثر'),
       ('role_other', 'مشارکت‌کنندهٔ دیگر', 'other', 'نقشی که در فهرست پایه نیست');
+  `);
+}
+
+async function addArtistRelationships(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS ArtistRelationships (
+      id TEXT PRIMARY KEY NOT NULL,
+      artistId TEXT NOT NULL,
+      relatedArtistId TEXT NOT NULL,
+      description TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE CASCADE,
+      FOREIGN KEY (relatedArtistId) REFERENCES Artists(id) ON DELETE CASCADE,
+      CHECK (artistId != relatedArtistId),
+      UNIQUE (artistId, relatedArtistId)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_artist_relationships_artist
+      ON ArtistRelationships (artistId);
+    CREATE INDEX IF NOT EXISTS idx_artist_relationships_related
+      ON ArtistRelationships (relatedArtistId);
   `);
 }

@@ -11,6 +11,16 @@ export interface ArtistRecord {
   galleryImages: string | null;
 }
 
+export interface ArtistRelationshipRecord {
+  id: string;
+  artistId: string;
+  relatedArtistId: string;
+  relatedArtistName: string;
+  relatedArtistType: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
 export interface AlbumRecord {
   id: string;
   title: string;
@@ -139,6 +149,11 @@ export interface VersionTrackRecord extends TrackRecord {
   albumTitle: string | null;
 }
 
+export interface WorkDetailRecord extends WorkRecord {
+  versions: VersionRecord[];
+  tracks: TrackRecord[];
+}
+
 export interface ChatArchiveContext {
   listeningHistory: Array<{
     trackTitle: string;
@@ -251,6 +266,11 @@ export type NewTrack = Omit<
 export type UpdateArtist = Partial<NewArtist>;
 export type UpdateAlbum = Partial<NewAlbum>;
 export type UpdateTrack = Partial<NewTrack>;
+export type NewArtistRelationship = Pick<
+  ArtistRelationshipRecord,
+  'artistId' | 'relatedArtistId'
+> &
+  Partial<Pick<ArtistRelationshipRecord, 'description'>>;
 
 export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
 export type UpdateJournalEntry = Pick<JournalEntryRecord, 'note' | 'mood'>;
@@ -354,6 +374,14 @@ export async function getArtists(): Promise<ArtistRecord[]> {
   );
 }
 
+export async function getWorks(): Promise<WorkRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<WorkRecord>(
+    `SELECT ${WORK_COLUMNS} FROM Works ORDER BY title COLLATE NOCASE ASC`,
+    [],
+  );
+}
+
 export async function getArtistById(id: string): Promise<ArtistRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<ArtistRecord>(
@@ -399,6 +427,89 @@ export async function deleteArtist(id: string): Promise<void> {
   const database = await requireDatabase();
   await database.runAsync('UPDATE Tracks SET artistId = NULL WHERE artistId = ?', [id]);
   await database.runAsync('DELETE FROM Artists WHERE id = ?', [id]);
+}
+
+export async function getArtistRelationships(
+  artistId: string,
+): Promise<ArtistRelationshipRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ArtistRelationshipRecord>(
+    `SELECT
+       ArtistRelationships.id,
+       ArtistRelationships.artistId,
+       ArtistRelationships.relatedArtistId,
+       Artists.name AS relatedArtistName,
+       Artists.type AS relatedArtistType,
+       ArtistRelationships.description,
+       ArtistRelationships.createdAt
+     FROM ArtistRelationships
+     INNER JOIN Artists ON Artists.id = ArtistRelationships.relatedArtistId
+     WHERE ArtistRelationships.artistId = ?
+     ORDER BY Artists.name COLLATE NOCASE ASC`,
+    [artistId],
+  );
+}
+
+export async function addArtistRelationship(
+  input: NewArtistRelationship,
+): Promise<ArtistRelationshipRecord> {
+  const artistId = input.artistId.trim();
+  const relatedArtistId = input.relatedArtistId.trim();
+  if (!artistId || !relatedArtistId) throw new Error('هر دو هنرمند را انتخاب کنید.');
+  if (artistId === relatedArtistId) throw new Error('یک هنرمند نمی‌تواند با خودش مرتبط شود.');
+
+  const database = await requireDatabase();
+  const [artist, relatedArtist] = await Promise.all([
+    database.getFirstAsync<{ id: string }>('SELECT id FROM Artists WHERE id = ?', [artistId]),
+    database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Artists WHERE id = ?',
+      [relatedArtistId],
+    ),
+  ]);
+  if (!artist || !relatedArtist) throw new Error('هنرمند انتخاب‌شده پیدا نشد.');
+
+  const relationship: ArtistRelationshipRecord = {
+    id: createId('artist_relation'),
+    artistId,
+    relatedArtistId,
+    relatedArtistName:
+      (await database.getFirstAsync<{ name: string }>(
+        'SELECT name FROM Artists WHERE id = ?',
+        [relatedArtistId],
+      ))?.name ?? 'هنرمند',
+    relatedArtistType:
+      (await database.getFirstAsync<{ type: string | null }>(
+        'SELECT type FROM Artists WHERE id = ?',
+        [relatedArtistId],
+      ))?.type ?? null,
+    description: trimNullable(input.description),
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await database.runAsync(
+      `INSERT INTO ArtistRelationships
+        (id, artistId, relatedArtistId, description, createdAt)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        relationship.id,
+        relationship.artistId,
+        relationship.relatedArtistId,
+        relationship.description,
+        relationship.createdAt,
+      ],
+    );
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.toLowerCase().includes('unique')) {
+      throw new Error('این ارتباط قبلاً برای این هنرمند ثبت شده است.');
+    }
+    throw error;
+  }
+  return relationship;
+}
+
+export async function deleteArtistRelationship(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM ArtistRelationships WHERE id = ?', [id]);
 }
 
 export async function addAlbum(input: NewAlbum): Promise<AlbumRecord> {
@@ -904,6 +1015,13 @@ export async function deleteWork(id: string): Promise<void> {
   if (Number(versionCount?.count ?? 0) > 0) {
     throw new Error('ابتدا نسخه‌های این اثر را حذف یا به اثر دیگری منتقل کنید.');
   }
+  const trackCount = await database.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM Tracks WHERE workId = ?',
+    [id],
+  );
+  if (Number(trackCount?.count ?? 0) > 0) {
+    throw new Error('ابتدا قطعه‌های متصل به این اثر را جدا کنید.');
+  }
   await database.runAsync('DELETE FROM Works WHERE id = ?', [id]);
 }
 
@@ -1027,6 +1145,27 @@ export async function getVersionsByWorkId(workId: string): Promise<VersionRecord
   );
 }
 
+export async function getTracksByWorkId(workId: string): Promise<TrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<TrackRecord>(
+    `SELECT ${TRACK_COLUMNS}
+       FROM Tracks
+      WHERE workId = ?
+      ORDER BY title COLLATE NOCASE ASC`,
+    [workId],
+  );
+}
+
+export async function getWorkDetail(id: string): Promise<WorkDetailRecord | null> {
+  const work = await getWorkById(id);
+  if (!work) return null;
+  const [versions, tracks] = await Promise.all([
+    getVersionsByWorkId(id),
+    getTracksByWorkId(id),
+  ]);
+  return { ...work, versions, tracks };
+}
+
 export async function getAlbumTracks(albumId: string): Promise<AlbumTrackRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<AlbumTrackRecord>(
@@ -1115,6 +1254,70 @@ export async function addAlbumTrack(input: NewAlbumTrack): Promise<AlbumTrackRec
   );
   if (!saved) throw new Error('رابطهٔ آلبوم و قطعه ذخیره نشد.');
   return saved;
+}
+
+export async function replaceAlbumTracks(
+  albumId: string,
+  entries: NewAlbumTrack[],
+): Promise<AlbumTrackRecord[]> {
+  const database = await requireDatabase();
+  const album = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Albums WHERE id = ?',
+    [albumId],
+  );
+  if (!album) throw new Error('آلبوم پیدا نشد.');
+
+  const trackIds = new Set<string>();
+  const positions = new Set<string>();
+  for (const entry of entries) {
+    if (entry.albumId !== albumId) throw new Error('رابطهٔ آلبوم و قطعه معتبر نیست.');
+    if (trackIds.has(entry.trackId)) throw new Error('یک قطعه را بیش از یک‌بار انتخاب کرده‌اید.');
+    trackIds.add(entry.trackId);
+    const discNumber = entry.discNumber ?? null;
+    const trackNumber = entry.trackNumber ?? null;
+    if ((discNumber === null) !== (trackNumber === null)) {
+      throw new Error('شمارهٔ دیسک و شمارهٔ قطعه باید هر دو ثبت شوند یا هر دو خالی باشند.');
+    }
+    if (
+      (discNumber !== null && (!Number.isInteger(discNumber) || discNumber < 1)) ||
+      (trackNumber !== null && (!Number.isInteger(trackNumber) || trackNumber < 1))
+    ) {
+      throw new Error('شمارهٔ دیسک و قطعه باید عدد صحیح مثبت باشند.');
+    }
+    if (discNumber !== null && trackNumber !== null) {
+      const position = `${discNumber}:${trackNumber}`;
+      if (positions.has(position)) throw new Error('دو قطعه نمی‌توانند جایگاه یکسان داشته باشند.');
+      positions.add(position);
+    }
+    const track = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Tracks WHERE id = ?',
+      [entry.trackId],
+    );
+    if (!track) throw new Error('یکی از قطعه‌های انتخاب‌شده پیدا نشد.');
+  }
+
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM AlbumTracks WHERE albumId = ?', [albumId]);
+    await database.runAsync('UPDATE Tracks SET albumId = NULL WHERE albumId = ?', [albumId]);
+    for (const entry of entries) {
+      const hasPosition = entry.discNumber != null && entry.trackNumber != null;
+      await database.runAsync(
+        `INSERT INTO AlbumTracks
+          (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          albumId,
+          entry.trackId,
+          entry.discNumber ?? null,
+          entry.trackNumber ?? null,
+          entry.titleOverride ?? null,
+          entry.notes ?? null,
+          hasPosition ? 'explicit' : 'unknown',
+        ],
+      );
+    }
+  });
+  return getAlbumTracks(albumId);
 }
 
 async function ensureLegacyAlbumMembership(
@@ -1313,6 +1516,18 @@ export async function getOtherTracksWithSameTitle(
 export async function getTracksByAlbumId(albumId: string): Promise<TrackRecord[]> {
   const albumTracks = await getAlbumTracks(albumId);
   return albumTracks.map(({ albumTrackAlbumId, discNumber, trackNumber, titleOverride, notes, orderSource, ...track }) => track);
+}
+
+export async function getAlbumsForTrack(trackId: string): Promise<AlbumRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<AlbumRecord>(
+    `SELECT Albums.id, Albums.title, Albums.releaseYear, Albums.coverImage
+       FROM Albums
+       INNER JOIN AlbumTracks ON AlbumTracks.albumId = Albums.id
+      WHERE AlbumTracks.trackId = ?
+      ORDER BY Albums.title COLLATE NOCASE ASC`,
+    [trackId],
+  );
 }
 
 export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {

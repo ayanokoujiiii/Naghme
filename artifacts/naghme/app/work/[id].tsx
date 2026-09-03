@@ -1,0 +1,199 @@
+import { Feather } from '@expo/vector-icons';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
+import { useColors } from '@/hooks/useColors';
+import {
+  deleteVersion,
+  deleteWork,
+  getWorkDetail,
+  TrackRecord,
+  VersionRecord,
+  WorkDetailRecord,
+} from '@/src/db/queries';
+
+export default function WorkDetailScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const workId = Array.isArray(id) ? id[0] : id;
+  const [work, setWork] = useState<WorkDetailRecord | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
+
+  const loadWork = useCallback(async () => {
+    if (!workId) {
+      setError('شناسه‌ی اثر معتبر نیست.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await getWorkDetail(workId);
+      setWork(result);
+      if (!result) setError('اثر پیدا نشد.');
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : 'خواندن اثر انجام نشد.');
+    } finally {
+      setLoading(false);
+    }
+  }, [workId]);
+
+  useFocusEffect(useCallback(() => { void loadWork(); }, [loadWork]));
+
+  const confirmDeleteWork = () => {
+    if (!work) return;
+    Alert.alert(
+      'حذف اثر',
+      `آیا از حذف «${work.title}» مطمئن هستید؟ فقط اثری که نسخه و قطعه‌ی متصل ندارد حذف می‌شود.`,
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void deleteWork(work.id)
+              .then(() => router.back())
+              .catch((deleteError: unknown) => {
+                setError(deleteError instanceof Error ? deleteError.message : 'حذف اثر انجام نشد.');
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmDeleteVersion = (version: VersionRecord) => {
+    Alert.alert(
+      'حذف نسخه',
+      `نسخه‌ی «${version.name}» حذف شود؟ قطعه‌ها باقی می‌مانند اما ارتباط نسخه‌شان برداشته می‌شود.`,
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void deleteVersion(version.id)
+              .then(loadWork)
+              .catch((deleteError: unknown) => {
+                setError(deleteError instanceof Error ? deleteError.message : 'حذف نسخه انجام نشد.');
+              });
+          },
+        },
+      ],
+    );
+  };
+
+  if (loading) {
+    return (
+      <DetailShell eyebrow="در حال خواندن" title="اثر" icon="book-open">
+        <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
+      </DetailShell>
+    );
+  }
+
+  if (!work) {
+    return (
+      <DetailShell eyebrow="آرشیو" title="اثر پیدا نشد" icon="alert-circle">
+        <DetailCard><Text style={styles.errorText}>{error || 'این اثر دیگر در آرشیو نیست.'}</Text></DetailCard>
+      </DetailShell>
+    );
+  }
+
+  return (
+    <DetailShell
+      eyebrow="جزئیات اثر"
+      title={work.title}
+      icon="book-open"
+      onEdit={() => router.push(`/add-work?id=${work.id}`)}
+      onDelete={confirmDeleteWork}
+    >
+      {error ? <View style={styles.errorBox}><Feather name="alert-circle" size={17} color={colors.destructive} /><Text style={styles.errorText}>{error}</Text></View> : null}
+      <SectionHeading title="اطلاعات اثر" caption="جزئیات ثبت‌شده" />
+      <DetailCard>
+        <DetailRow label="عنوان‌های جایگزین" value={work.alternateTitles ?? 'ثبت نشده'} />
+        <DetailRow label="زبان" value={work.language ?? 'ثبت نشده'} />
+        <DetailRow label="ژانر" value={work.genre ?? 'ثبت نشده'} />
+        <Text style={styles.description}>{work.description ?? 'هنوز توضیحی برای این اثر ثبت نشده است.'}</Text>
+      </DetailCard>
+
+      <View style={styles.headingWithAction}>
+        <SectionHeading title="نسخه‌ها" caption={`${work.versions.length} نسخه`} />
+        <Pressable
+          testID="work-add-version"
+          onPress={() => router.push(`/add-version?workId=${work.id}`)}
+          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+        >
+          <Feather name="plus" size={16} color={colors.primaryForeground} />
+          <Text style={styles.addButtonText}>افزودن نسخه</Text>
+        </Pressable>
+      </View>
+      <DetailCard>
+        {work.versions.length ? work.versions.map((version) => (
+          <View key={version.id} style={styles.versionRow}>
+            <View style={styles.rowActions}>
+              <Pressable
+                testID={`version-edit-${version.id}`}
+                onPress={() => router.push(`/add-version?id=${version.id}`)}
+                style={({ pressed }) => [styles.smallAction, pressed && styles.pressed]}
+              >
+                <Feather name="edit-2" size={15} color={colors.primary} />
+              </Pressable>
+              <Pressable
+                testID={`version-delete-${version.id}`}
+                onPress={() => confirmDeleteVersion(version)}
+                style={({ pressed }) => [styles.smallAction, pressed && styles.pressed]}
+              >
+                <Feather name="trash-2" size={15} color={colors.destructive} />
+              </Pressable>
+            </View>
+            <View style={styles.rowCopy}>
+              <Text style={styles.versionName}>{version.name}</Text>
+              <Text style={styles.versionMeta}>{version.kind ?? 'نوع نسخه ثبت نشده'}</Text>
+              {version.description ? <Text style={styles.versionDescription}>{version.description}</Text> : null}
+            </View>
+          </View>
+        )) : <Text style={styles.mutedText}>هنوز نسخه‌ای برای این اثر ثبت نشده است.</Text>}
+      </DetailCard>
+
+      <SectionHeading title="قطعه‌های متصل" caption={`${work.tracks.length} قطعه`} />
+      <DetailCard>
+        {work.tracks.length ? work.tracks.map((track) => <TrackRow key={track.id} track={track} styles={styles} onPress={() => router.push(`/track/${track.id}`)} />) : <Text style={styles.mutedText}>هنوز قطعه‌ای به این اثر متصل نشده است.</Text>}
+      </DetailCard>
+    </DetailShell>
+  );
+}
+
+function TrackRow({ track, styles, onPress }: { track: TrackRecord; styles: ReturnType<typeof createStyles>; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}>
+      <Feather name="chevron-left" size={18} color={styles.iconColor.color} />
+      <Text style={styles.trackTitle}>{track.title}</Text>
+    </Pressable>
+  );
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    loading: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
+    errorBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217, 107, 95, 0.14)', borderRadius: 14, padding: 12, marginBottom: 18 },
+    errorText: { flex: 1, color: colors.destructive, fontSize: 13, lineHeight: 21, textAlign: 'right' },
+    description: { color: colors.foreground, fontSize: 14, lineHeight: 23, textAlign: 'right', marginTop: 13 },
+    headingWithAction: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
+    addButton: { minHeight: 36, borderRadius: 12, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, marginBottom: 12 },
+    addButtonText: { color: colors.primaryForeground, fontSize: 11, fontWeight: '700' },
+    versionRow: { minHeight: 64, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+    rowActions: { flexDirection: 'row', gap: 2 },
+    smallAction: { width: 28, height: 30, alignItems: 'center', justifyContent: 'center' },
+    rowCopy: { flex: 1, alignItems: 'flex-end' },
+    versionName: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    versionMeta: { color: colors.primary, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    versionDescription: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    trackRow: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+    trackTitle: { flex: 1, color: colors.foreground, fontSize: 14, textAlign: 'right' },
+    mutedText: { color: colors.mutedForeground, fontSize: 13, lineHeight: 21, textAlign: 'right' },
+    iconColor: { color: colors.mutedForeground },
+    pressed: { opacity: 0.72 },
+  });
+}

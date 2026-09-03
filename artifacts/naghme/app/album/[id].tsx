@@ -17,9 +17,11 @@ import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components
 import { useColors } from '@/hooks/useColors';
 import {
   AlbumRecord,
+  AlbumTrackRecord,
   CreditViewRecord,
   deleteAlbum,
   getAlbumById,
+  getAlbumTracks,
   getCreditsForAlbum,
   getTracksByAlbumId,
   TrackRecord,
@@ -33,6 +35,7 @@ export default function AlbumDetailScreen() {
   const albumId = Array.isArray(id) ? id[0] : id;
   const [album, setAlbum] = useState<AlbumRecord | null>(null);
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
+  const [albumTrackEntries, setAlbumTrackEntries] = useState<AlbumTrackRecord[]>([]);
   const [credits, setCredits] = useState<CreditViewRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -48,16 +51,18 @@ export default function AlbumDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundAlbum, albumTracks, albumCredits] = await Promise.all([
+      const [foundAlbum, albumTracks, albumCredits, orderedAlbumTracks] = await Promise.all([
         getAlbumById(albumId),
         getTracksByAlbumId(albumId),
         getCreditsForAlbum(albumId),
+        getAlbumTracks(albumId),
       ]);
       if (!foundAlbum) {
         setError('آلبوم پیدا نشد.');
       } else {
         setAlbum(foundAlbum);
         setTracks(albumTracks);
+        setAlbumTrackEntries(orderedAlbumTracks);
         setCredits(albumCredits);
       }
     } catch (loadError: unknown) {
@@ -289,16 +294,36 @@ export default function AlbumDetailScreen() {
         />
       </DetailCard>
 
-      <SectionHeading title="قطعه‌های آلبوم" caption={`${tracks.length} قطعه`} />
+      <SectionHeading
+        title="قطعه‌های آلبوم"
+        caption={`${albumTrackEntries.length || tracks.length} قطعه  •  ${new Set(albumTrackEntries.map((track) => track.discNumber).filter((disc): disc is number => disc !== null)).size || 1} دیسک`}
+      />
       <DetailCard>
-        {tracks.length > 0 ? (
+        {albumTrackEntries.length > 0 ? (
+          groupAlbumTracks(albumTrackEntries).map((group) => (
+            <View key={group.discNumber ?? 'unknown'} style={styles.discGroup}>
+              <Text style={styles.discTitle}>
+                {group.discNumber === null ? 'ترتیب نامشخص' : `دیسک ${group.discNumber}`}
+              </Text>
+              {group.tracks.map((track, index) => (
+                <Pressable
+                  key={track.id}
+                  testID={`album-track-${track.id}`}
+                  onPress={() => router.push(`/track/${track.id}`)}
+                  style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
+                >
+                  <Text style={styles.trackNumber}>
+                    {track.trackNumber === null ? '—' : track.trackNumber}
+                  </Text>
+                  <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+                  <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ))
+        ) : tracks.length > 0 ? (
           tracks.map((track) => (
-            <Pressable
-              key={track.id}
-              testID={`album-track-${track.id}`}
-              onPress={() => router.push(`/track/${track.id}`)}
-              style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
-            >
+            <Pressable key={track.id} onPress={() => router.push(`/track/${track.id}`)} style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}>
               <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
               <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
             </Pressable>
@@ -325,6 +350,19 @@ export default function AlbumDetailScreen() {
       ) : null}
     </DetailShell>
   );
+}
+
+function groupAlbumTracks(entries: AlbumTrackRecord[]) {
+  const groups = new Map<number | null, AlbumTrackRecord[]>();
+  for (const entry of entries) {
+    const current = groups.get(entry.discNumber) ?? [];
+    current.push(entry);
+    groups.set(entry.discNumber, current);
+  }
+  return Array.from(groups.entries()).map(([discNumber, groupedTracks]) => ({
+    discNumber,
+    tracks: groupedTracks,
+  }));
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {
@@ -388,6 +426,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    discGroup: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 3, marginBottom: 7 },
+    discTitle: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right', paddingVertical: 9 },
+    trackNumber: { width: 22, color: colors.mutedForeground, fontSize: 12, textAlign: 'center' },
     trackTitle: {
       flex: 1,
       flexShrink: 1,

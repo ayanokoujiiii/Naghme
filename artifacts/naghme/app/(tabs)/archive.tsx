@@ -20,19 +20,22 @@ import {
 import {
   AlbumRecord,
   ArtistRecord,
+  WorkRecord,
   getAlbums,
   getArtists,
   getTracks,
+  getWorks,
   TrackRecord,
 } from '@/src/db/queries';
 
-type ArchiveView = 'tracks' | 'albums' | 'artists';
-type ArchiveRecord = TrackRecord | AlbumRecord | ArtistRecord;
+type ArchiveView = 'tracks' | 'albums' | 'artists' | 'works';
+type ArchiveRecord = TrackRecord | AlbumRecord | ArtistRecord | WorkRecord;
 
 const viewLabels: Record<ArchiveView, string> = {
   tracks: 'قطعه‌ها',
   albums: 'آلبوم‌ها',
   artists: 'هنرمندان',
+  works: 'آثار',
 };
 
 export default function ArchiveScreen() {
@@ -44,6 +47,7 @@ export default function ArchiveScreen() {
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
   const [albums, setAlbums] = useState<AlbumRecord[]>([]);
   const [artists, setArtists] = useState<ArtistRecord[]>([]);
+  const [works, setWorks] = useState<WorkRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -53,14 +57,16 @@ export default function ArchiveScreen() {
     else setLoading(true);
     setError('');
     try {
-      const [trackItems, albumItems, artistItems] = await Promise.all([
+      const [trackItems, albumItems, artistItems, workItems] = await Promise.all([
         getTracks(),
         getAlbums(),
         getArtists(),
+        getWorks(),
       ]);
       setTracks(trackItems);
       setAlbums(albumItems);
       setArtists(artistItems);
+      setWorks(workItems);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن آرشیو انجام نشد.');
     } finally {
@@ -79,6 +85,7 @@ export default function ArchiveScreen() {
     if (activeView === 'tracks') router.push('/add-track');
     if (activeView === 'albums') router.push('/add-album');
     if (activeView === 'artists') router.push('/add-artist');
+    if (activeView === 'works') router.push('/add-work');
   };
 
   const albumById = useMemo(
@@ -157,12 +164,37 @@ export default function ArchiveScreen() {
     </Pressable>
   );
 
+  const renderWork = ({ item }: { item: WorkRecord }) => (
+    <Pressable
+      testID={`work-${item.id}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/work/${item.id}`)}
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+    >
+      <View style={[styles.itemIcon, { backgroundColor: colors.accent }]}>
+        <Feather name="book-open" size={19} color={colors.accentForeground} />
+      </View>
+      <View style={styles.itemCopy}>
+        <Text style={styles.itemTitle}>{item.title}</Text>
+        <Text style={styles.itemSubtitle}>{item.genre || item.language || 'اثر موسیقایی'}</Text>
+      </View>
+      <Feather name="chevron-left" size={20} color={colors.mutedForeground} />
+    </Pressable>
+  );
+
   const activeData: ArchiveRecord[] =
-    activeView === 'tracks' ? tracks : activeView === 'albums' ? albums : artists;
+    activeView === 'tracks'
+      ? tracks
+      : activeView === 'albums'
+        ? albums
+        : activeView === 'artists'
+          ? artists
+          : works;
   const emptyTitle = {
     tracks: 'هنوز قطعه‌ای اضافه نکرده‌اید.',
     albums: 'هنوز آلبومی اضافه نکرده‌اید.',
     artists: 'هنوز هنرمندی اضافه نکرده‌اید.',
+    works: 'هنوز اثری اضافه نکرده‌اید.',
   }[activeView];
 
   return (
@@ -229,7 +261,10 @@ export default function ArchiveScreen() {
             if (activeView === 'albums') {
               return renderAlbum({ item: item as AlbumRecord });
             }
-            return renderArtist({ item: item as ArtistRecord });
+            if (activeView === 'artists') {
+              return renderArtist({ item: item as ArtistRecord });
+            }
+            return renderWork({ item: item as WorkRecord });
           }}
           contentContainerStyle={[
             styles.listContent,
@@ -250,7 +285,15 @@ export default function ArchiveScreen() {
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}>
                 <Feather
-                  name={activeView === 'tracks' ? 'music' : activeView === 'albums' ? 'disc' : 'mic'}
+                  name={
+                    activeView === 'tracks'
+                      ? 'music'
+                      : activeView === 'albums'
+                        ? 'disc'
+                        : activeView === 'artists'
+                          ? 'mic'
+                          : 'book-open'
+                  }
                   size={30}
                   color={colors.primary}
                 />

@@ -15,6 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
@@ -22,8 +23,17 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArtistRecord,
+  AlbumRecord,
+  AlbumTrackRecord,
   deleteArtist,
   getArtistById,
+  getArtists,
+  getAlbumsForArtist,
+  getAlbumTracks,
+  getArtistRelationships,
+  addArtistRelationship,
+  deleteArtistRelationship,
+  ArtistRelationshipRecord,
   getCreditsForArtist,
   getTracksByArtistId,
   CreditViewRecord,
@@ -40,6 +50,15 @@ export default function ArtistDetailScreen() {
   const [artist, setArtist] = useState<ArtistRecord | null>(null);
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
   const [credits, setCredits] = useState<CreditViewRecord[]>([]);
+  const [relationships, setRelationships] = useState<ArtistRelationshipRecord[]>([]);
+  const [allArtists, setAllArtists] = useState<ArtistRecord[]>([]);
+  const [artistAlbums, setArtistAlbums] = useState<AlbumRecord[]>([]);
+  const [artistAlbumTracks, setArtistAlbumTracks] = useState<AlbumTrackRecord[]>([]);
+  const [relationshipModalVisible, setRelationshipModalVisible] = useState<boolean>(false);
+  const [relationshipSearch, setRelationshipSearch] = useState<string>('');
+  const [relationshipDescription, setRelationshipDescription] = useState<string>('');
+  const [selectedRelatedArtistId, setSelectedRelatedArtistId] = useState<string | null>(null);
+  const [savingRelationship, setSavingRelationship] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [savingGallery, setSavingGallery] = useState<boolean>(false);
@@ -67,16 +86,24 @@ export default function ArtistDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundArtist, artistTracks, artistCredits] = await Promise.all([
+      const [foundArtist, artistTracks, artistCredits, artistRelationships, artistItems, albumsForArtist] = await Promise.all([
         getArtistById(artistId),
         getTracksByArtistId(artistId),
         getCreditsForArtist(artistId),
+        getArtistRelationships(artistId),
+        getArtists(),
+        getAlbumsForArtist(artistId),
       ]);
       if (!foundArtist) setError('هنرمند پیدا نشد.');
       else {
         setArtist(foundArtist);
         setTracks(artistTracks);
         setCredits(artistCredits);
+        setRelationships(artistRelationships);
+        setAllArtists(artistItems);
+        setArtistAlbums(albumsForArtist);
+        const albumTrackLists = await Promise.all(albumsForArtist.map((album) => getAlbumTracks(album.id)));
+        setArtistAlbumTracks(albumTrackLists.flat());
       }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن هنرمند انجام نشد.');
@@ -119,6 +146,17 @@ export default function ArtistDetailScreen() {
   };
 
   const galleryUris = useMemo(() => parseGalleryImages(artist?.galleryImages), [artist?.galleryImages]);
+  const relatedArtistIds = useMemo(
+    () => new Set(relationships.map((relationship) => relationship.relatedArtistId)),
+    [relationships],
+  );
+  const availableRelatedArtists = useMemo(() => {
+    const query = relationshipSearch.trim().toLocaleLowerCase();
+    return allArtists.filter((candidate) => {
+      if (!artist || candidate.id === artist.id || relatedArtistIds.has(candidate.id)) return false;
+      return !query || candidate.name.toLocaleLowerCase().includes(query);
+    });
+  }, [allArtists, artist, relatedArtistIds, relationshipSearch]);
 
   const pickGalleryImages = async () => {
     if (!artist || savingGallery) return;
@@ -320,6 +358,56 @@ export default function ArtistDetailScreen() {
     );
   };
 
+  const openRelationshipModal = () => {
+    setRelationshipSearch('');
+    setRelationshipDescription('');
+    setSelectedRelatedArtistId(null);
+    setRelationshipModalVisible(true);
+  };
+
+  const saveRelationship = async () => {
+    if (!artist || !selectedRelatedArtistId || savingRelationship) return;
+    setSavingRelationship(true);
+    try {
+      const relationship = await addArtistRelationship({
+        artistId: artist.id,
+        relatedArtistId: selectedRelatedArtistId,
+        description: relationshipDescription.trim() || null,
+      });
+      setRelationships((current) =>
+        [...current, relationship].sort((left, right) =>
+          left.relatedArtistName.localeCompare(right.relatedArtistName, 'fa'),
+        ),
+      );
+      setRelationshipModalVisible(false);
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : 'ذخیره‌ی ارتباط انجام نشد.');
+    } finally {
+      setSavingRelationship(false);
+    }
+  };
+
+  const removeRelationship = (relationship: ArtistRelationshipRecord) => {
+    Alert.alert(
+      'حذف ارتباط',
+      `ارتباط با «${relationship.relatedArtistName}» حذف شود؟`,
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void deleteArtistRelationship(relationship.id)
+              .then(() => setRelationships((current) => current.filter((item) => item.id !== relationship.id)))
+              .catch((deleteError: unknown) => {
+                setError(deleteError instanceof Error ? deleteError.message : 'حذف ارتباط انجام نشد.');
+              });
+          },
+        },
+      ],
+    );
+  };
+
   if (loading) {
     return (
       <DetailShell eyebrow="در حال خواندن" title="هنرمند" icon="mic">
@@ -433,6 +521,43 @@ export default function ArtistDetailScreen() {
         </Text>
       </DetailCard>
 
+      <View style={styles.relationshipHeading}>
+        <SectionHeading
+          title="هنرمندان مرتبط"
+          caption={relationships.length ? `${relationships.length} ارتباط` : 'همکار، استاد، الهام‌بخش…'}
+        />
+        <Pressable
+          testID="artist-add-relationship"
+          accessibilityRole="button"
+          onPress={openRelationshipModal}
+          style={({ pressed }) => [styles.relationshipAddButton, pressed && styles.pressed]}
+        >
+          <Feather name="user-plus" size={15} color={colors.primaryForeground} />
+          <Text style={styles.relationshipAddText}>افزودن</Text>
+        </Pressable>
+      </View>
+      <DetailCard>
+        {relationships.length ? relationships.map((relationship) => (
+          <View key={relationship.id} style={styles.relationshipRow}>
+            <Pressable
+              testID={`artist-remove-relationship-${relationship.id}`}
+              accessibilityLabel="حذف هنرمند مرتبط"
+              onPress={() => removeRelationship(relationship)}
+              style={({ pressed }) => [styles.relationshipRemove, pressed && styles.pressed]}
+            >
+              <Feather name="x" size={16} color={colors.destructive} />
+            </Pressable>
+            <View style={styles.relationshipCopy}>
+              <Text style={styles.relationshipName}>{relationship.relatedArtistName}</Text>
+              <Text style={styles.relationshipMeta}>
+                {relationship.relatedArtistType ?? 'هنرمند'}
+                {relationship.description ? `  •  ${relationship.description}` : ''}
+              </Text>
+            </View>
+          </View>
+        )) : <Text style={styles.mutedText}>هنوز ارتباطی برای این هنرمند ثبت نشده است.</Text>}
+      </DetailCard>
+
       <View style={styles.galleryHeading}>
         <SectionHeading
           title="گالری تصاویر"
@@ -510,24 +635,15 @@ export default function ArtistDetailScreen() {
         {galleryMessage ? <Text style={styles.galleryMessage}>{galleryMessage}</Text> : null}
       </DetailCard>
 
-      <SectionHeading title="قطعه‌های هنرمند" caption={`${tracks.length} قطعه`} />
-      <DetailCard>
-        {tracks.length > 0 ? (
-          tracks.map((track) => (
-            <Pressable
-              key={track.id}
-              testID={`artist-track-${track.id}`}
-              onPress={() => router.push(`/track/${track.id}`)}
-              style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}
-            >
-              <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
-              <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
-            </Pressable>
-          ))
-        ) : (
-          <Text style={styles.mutedText}>هنوز قطعه‌ای به این هنرمند وصل نشده است.</Text>
-        )}
-      </DetailCard>
+      <SectionHeading title="دیسکوگرافی" caption={`${tracks.length} قطعه`} />
+      <Discography
+        tracks={tracks}
+        albums={artistAlbums}
+        albumTracks={artistAlbumTracks}
+        styles={styles}
+        colors={colors}
+        onTrackPress={(trackId) => router.push(`/track/${trackId}`)}
+      />
 
       {credits.length > 0 ? (
         <>
@@ -549,6 +665,73 @@ export default function ArtistDetailScreen() {
         </>
       ) : null}
 
+      <Modal
+        visible={relationshipModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRelationshipModalVisible(false)}
+      >
+        <View style={[styles.relationshipModalBackdrop, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.relationshipModalCard}>
+            <View style={styles.relationshipModalHeader}>
+              <Pressable onPress={() => setRelationshipModalVisible(false)} style={styles.modalClose}>
+                <Feather name="x" size={20} color={colors.foreground} />
+              </Pressable>
+              <View style={styles.relationshipModalCopy}>
+                <Text style={styles.relationshipModalTitle}>هنرمند مرتبط</Text>
+                <Text style={styles.relationshipModalSubtitle}>یک هنرمند موجود را انتخاب کن</Text>
+              </View>
+            </View>
+            <TextInput
+              testID="artist-relationship-search"
+              value={relationshipSearch}
+              onChangeText={setRelationshipSearch}
+              placeholder="جستجوی هنرمند…"
+              placeholderTextColor={colors.mutedForeground}
+              style={styles.relationshipSearch}
+              textAlign="right"
+            />
+            <ScrollView style={styles.relationshipCandidates} keyboardShouldPersistTaps="handled">
+              {availableRelatedArtists.length ? availableRelatedArtists.map((candidate) => (
+                <Pressable
+                  key={candidate.id}
+                  onPress={() => setSelectedRelatedArtistId(candidate.id)}
+                  style={[
+                    styles.relationshipCandidate,
+                    selectedRelatedArtistId === candidate.id && styles.relationshipCandidateSelected,
+                  ]}
+                >
+                  <Feather
+                    name={selectedRelatedArtistId === candidate.id ? 'check-circle' : 'circle'}
+                    size={18}
+                    color={selectedRelatedArtistId === candidate.id ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={styles.relationshipCandidateText}>{candidate.name}</Text>
+                </Pressable>
+              )) : <Text style={styles.mutedText}>هنرمند دیگری برای انتخاب پیدا نشد.</Text>}
+            </ScrollView>
+            <TextInput
+              value={relationshipDescription}
+              onChangeText={setRelationshipDescription}
+              placeholder="شرح اختیاری؛ مثلاً همکار در چند اجرا"
+              placeholderTextColor={colors.mutedForeground}
+              style={styles.relationshipDescriptionInput}
+              textAlign="right"
+            />
+            <Pressable
+              testID="artist-save-relationship"
+              disabled={!selectedRelatedArtistId || savingRelationship}
+              onPress={() => void saveRelationship()}
+              style={({ pressed }) => [
+                styles.relationshipSave,
+                (!selectedRelatedArtistId || savingRelationship || pressed) && styles.pressed,
+              ]}
+            >
+              <Text style={styles.relationshipSaveText}>{savingRelationship ? 'در حال ذخیره…' : 'ذخیره‌ی ارتباط'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={gridGalleryVisible}
         animationType="slide"
@@ -716,6 +899,80 @@ function parseGalleryImages(value: string | null | undefined): string[] {
   }
 }
 
+function Discography({
+  tracks,
+  albums,
+  albumTracks,
+  styles,
+  colors,
+  onTrackPress,
+}: {
+  tracks: TrackRecord[];
+  albums: AlbumRecord[];
+  albumTracks: AlbumTrackRecord[];
+  styles: ReturnType<typeof createStyles>;
+  colors: ReturnType<typeof useColors>;
+  onTrackPress: (trackId: string) => void;
+}) {
+  const albumGroups = albums.map((album) => ({
+    album,
+    tracks: albumTracks.filter((track) => track.albumTrackAlbumId === album.id),
+  })).filter((group) => group.tracks.length > 0);
+  const groupedTrackIds = new Set(albumGroups.flatMap((group) => group.tracks.map((track) => track.id)));
+  const singles = tracks.filter((track) => !groupedTrackIds.has(track.id));
+
+  return (
+    <View style={styles.discography}>
+      {albumGroups.map(({ album, tracks: albumTracks }) => (
+        <View key={album.id} style={styles.discographyAlbum}>
+          <Pressable
+            onPress={() => router.push(`/album/${album.id}`)}
+            style={({ pressed }) => [styles.discographyAlbumHeader, pressed && styles.pressed]}
+          >
+            {album.coverImage ? (
+              <Image source={{ uri: album.coverImage }} style={styles.discographyCover} resizeMode="cover" />
+            ) : (
+              <View style={[styles.discographyCover, { backgroundColor: colors.secondary }]}>
+                <Feather name="disc" size={17} color={colors.primary} />
+              </View>
+            )}
+            <View style={styles.discographyAlbumCopy}>
+              <Text style={styles.discographyAlbumTitle}>{album.title}</Text>
+              <Text style={styles.discographyAlbumMeta}>
+                {album.releaseYear ? `سال ${album.releaseYear}` : 'سال ثبت نشده'}  •  {albumTracks.length} قطعه
+              </Text>
+            </View>
+            <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
+          </Pressable>
+          {albumTracks.map((track, index) => (
+            <Pressable
+              key={track.id}
+              onPress={() => onTrackPress(track.id)}
+              style={({ pressed }) => [styles.discographyTrack, pressed && styles.pressed]}
+            >
+              <Text style={styles.discographyNumber}>{index + 1}</Text>
+              <Text style={styles.discographyTrackTitle}>{track.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ))}
+      <View style={styles.singlesSection}>
+        <Text style={styles.singlesTitle}>تک‌آهنگ‌ها و قطعه‌های بدون آلبوم</Text>
+        {singles.length ? singles.map((track) => (
+          <Pressable
+            key={track.id}
+            onPress={() => onTrackPress(track.id)}
+            style={({ pressed }) => [styles.discographyTrack, pressed && styles.pressed]}
+          >
+            <Feather name="music" size={15} color={colors.primary} />
+            <Text style={styles.discographyTrackTitle}>{track.title}</Text>
+          </Pressable>
+        )) : <Text style={styles.mutedText}>تک‌آهنگی ثبت نشده است.</Text>}
+      </View>
+    </View>
+  );
+}
+
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     loading: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
@@ -799,6 +1056,135 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 14,
       textAlign: 'right',
     },
+    relationshipHeading: {
+      flexDirection: 'row-reverse',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    relationshipAddButton: {
+      minHeight: 36,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      marginBottom: 12,
+      backgroundColor: colors.primary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 5,
+    },
+    relationshipAddText: { color: colors.primaryForeground, fontSize: 11, fontWeight: '700' },
+    relationshipRow: {
+      minHeight: 56,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    relationshipCopy: { flex: 1, alignItems: 'flex-end' },
+    relationshipName: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    relationshipMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    relationshipRemove: { width: 30, height: 32, alignItems: 'center', justifyContent: 'center' },
+    relationshipModalBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.62)',
+    },
+    relationshipModalCard: {
+      maxHeight: '88%',
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      padding: 18,
+      backgroundColor: colors.background,
+    },
+    relationshipModalHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 14 },
+    relationshipModalCopy: { flex: 1, alignItems: 'flex-end' },
+    relationshipModalTitle: { color: colors.foreground, fontSize: 17, fontWeight: '700', textAlign: 'right' },
+    relationshipModalSubtitle: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    modalClose: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center' },
+    relationshipSearch: {
+      minHeight: 44,
+      borderRadius: 13,
+      paddingHorizontal: 13,
+      color: colors.foreground,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      fontSize: 13,
+      marginBottom: 9,
+    },
+    relationshipCandidates: { maxHeight: 290 },
+    relationshipCandidate: {
+      minHeight: 46,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      paddingHorizontal: 10,
+      borderRadius: 12,
+      marginBottom: 4,
+    },
+    relationshipCandidateSelected: { backgroundColor: colors.secondary },
+    relationshipCandidateText: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
+    relationshipDescriptionInput: {
+      minHeight: 72,
+      borderRadius: 13,
+      paddingHorizontal: 13,
+      paddingVertical: 11,
+      color: colors.foreground,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      fontSize: 12,
+      marginTop: 10,
+    },
+    relationshipSave: {
+      minHeight: 46,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      marginTop: 12,
+    },
+    relationshipSaveText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
+    discography: { gap: 12 },
+    discographyAlbum: {
+      overflow: 'hidden',
+      borderRadius: 17,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    discographyAlbumHeader: {
+      minHeight: 70,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      padding: 10,
+    },
+    discographyCover: { width: 48, height: 48, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+    discographyAlbumCopy: { flex: 1, alignItems: 'flex-end' },
+    discographyAlbumTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    discographyAlbumMeta: { color: colors.primary, fontSize: 10, marginTop: 3, textAlign: 'right' },
+    discographyTrack: {
+      minHeight: 40,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 13,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    discographyNumber: { width: 22, color: colors.mutedForeground, fontSize: 11, textAlign: 'center' },
+    discographyTrackTitle: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
+    singlesSection: {
+      overflow: 'hidden',
+      borderRadius: 17,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingBottom: 4,
+    },
+    singlesTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right', padding: 13 },
     creditRow: {
       minHeight: 58,
       flexDirection: 'row-reverse',

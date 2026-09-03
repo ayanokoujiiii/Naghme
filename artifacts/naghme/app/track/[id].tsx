@@ -29,6 +29,7 @@ import {
   CreditViewRecord,
   deleteJournalEntry,
   getAlbumById,
+  getAlbumsForTrack,
   getCreditsForTrack,
   getJournalEntries,
   getListeningHistory,
@@ -37,6 +38,8 @@ import {
   getPersonalRelationship,
   getOtherTracksWithSameTitle,
   getTrackById,
+  getVersionById,
+  getWorkById,
   JournalEntryRecord,
   ListeningHistoryRecord,
   logListen,
@@ -69,6 +72,8 @@ export default function TrackDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const trackId = Array.isArray(id) ? id[0] : id;
   const [track, setTrack] = useState<TrackRecord | null>(null);
+  const [officialVersionName, setOfficialVersionName] = useState<string | null>(null);
+  const [workTitle, setWorkTitle] = useState<string | null>(null);
   const [artistName, setArtistName] = useState<string>('بدون هنرمند');
   const [albumTitle, setAlbumTitle] = useState<string>('بدون آلبوم');
   const [relationship, setRelationship] =
@@ -109,16 +114,25 @@ export default function TrackDetailScreen() {
       }
 
       setTrack(foundTrack);
-      const [album, artist, versions, trackCredits] = await Promise.all([
+      const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
         getOtherTracksWithSameTitle(foundTrack.id, foundTrack.title),
         getCreditsForTrack(foundTrack.id),
+        foundTrack.versionId ? getVersionById(foundTrack.versionId) : Promise.resolve(null),
+        foundTrack.workId ? getWorkById(foundTrack.workId) : Promise.resolve(null),
+        getAlbumsForTrack(foundTrack.id),
       ]);
-      setAlbumTitle(foundTrack.albumId ? album?.title ?? 'آلبوم پیدا نشد' : 'بدون آلبوم');
+      const albumNames = Array.from(new Set([
+        ...(foundTrack.albumId && album?.title ? [album.title] : []),
+        ...relatedAlbums.map((relatedAlbum) => relatedAlbum.title),
+      ]));
+      setAlbumTitle(albumNames.length ? albumNames.join('  /  ') : 'بدون آلبوم');
       setArtistName(foundTrack.artistId ? artist?.name ?? 'هنرمند پیدا نشد' : 'بدون هنرمند');
       setOtherVersions(versions);
       setCredits(trackCredits);
+      setOfficialVersionName(officialVersion?.name ?? null);
+      setWorkTitle(work?.title ?? null);
 
       const [savedRelationship, savedJournalEntries, savedListeningHistory] =
         await Promise.all([
@@ -328,7 +342,11 @@ export default function TrackDetailScreen() {
     <DetailShell
       eyebrow="جزئیات قطعه"
       title={track.title}
-      subtitle={track.versionName ? `نسخه / اجرا: ${track.versionName}` : undefined}
+      subtitle={
+        officialVersionName || track.versionName
+          ? `نسخه / اجرا: ${officialVersionName ?? track.versionName}`
+          : undefined
+      }
       icon="music"
       onEdit={() => router.push(`/add-track?id=${track.id}`)}
       onDelete={confirmDelete}
@@ -360,6 +378,8 @@ export default function TrackDetailScreen() {
         <DetailRow label="عنوان" value={track.title} />
         <DetailRow label="هنرمند" value={artistName} />
         <DetailRow label="آلبوم" value={albumTitle} />
+        <DetailRow label="اثر" value={workTitle ?? 'بدون اثر'} />
+        <DetailRow label="نسخه‌ی رسمی" value={officialVersionName ?? 'بدون نسخه‌ی رسمی'} />
         <DetailRow
           label="مدت‌زمان"
           value={track.duration === null ? 'ثبت نشده' : formatDuration(track.duration)}
@@ -480,6 +500,7 @@ export default function TrackDetailScreen() {
           trackId={track.id}
           uri={track.audioUri}
           track={track}
+          officialVersionName={officialVersionName}
           artistName={artistName}
           colors={colors}
           styles={styles}
@@ -687,6 +708,7 @@ function AudioPlayer({
   trackId,
   uri,
   track,
+  officialVersionName,
   artistName,
   colors,
   styles,
@@ -695,6 +717,7 @@ function AudioPlayer({
   trackId: string;
   uri: string;
   track: TrackRecord;
+  officialVersionName: string | null;
   artistName: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
@@ -711,14 +734,14 @@ function AudioPlayer({
       void loadAudio(uri, trackId, {
         title: track.title,
         coverImage: track.coverImage,
-        versionName: track.versionName,
+        versionName: officialVersionName ?? track.versionName,
         artistName,
         lyrics: track.lyrics,
         durationSeconds: track.duration,
       }).catch(() => undefined);
     }
     return unsubscribe;
-  }, [artistName, track, trackId, uri]);
+  }, [artistName, officialVersionName, track, trackId, uri]);
 
   const isCurrentTrack = audio.trackId === trackId && audio.uri === uri;
   const ready = isCurrentTrack && audio.isLoaded;
@@ -728,7 +751,7 @@ function AudioPlayer({
   const metadata = {
     title: track.title,
     coverImage: track.coverImage,
-    versionName: track.versionName,
+    versionName: officialVersionName ?? track.versionName,
     artistName,
     lyrics: track.lyrics,
     durationSeconds: track.duration,
