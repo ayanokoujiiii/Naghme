@@ -1,8 +1,10 @@
 import { getDatabase } from '@/src/db/database';
+import { audioFileExists } from '@/src/audio/audioFiles';
 import type {
   AlbumRecord,
   AlbumTrackRecord,
   ArtistRecord,
+  ArtistAlbumLinkRecord,
   ArtistRelationshipRecord,
   CreditRecord,
   JournalEntryRecord,
@@ -13,6 +15,13 @@ import type {
   VersionRecord,
   WorkRecord,
 } from '@/src/db/queries';
+
+type ArtistAlbumBackupRecord = Pick<
+  ArtistAlbumLinkRecord,
+  'artistId' | 'albumId' | 'source'
+> & {
+  createdAt: string;
+};
 
 export interface ArchiveBackup {
   format: 'naghme-archive';
@@ -36,6 +45,8 @@ export interface ArchiveBackup {
   versions?: VersionRecord[];
   /** Optional extension to Version 1; absent in older backups. */
   artistRelationships?: ArtistRelationshipRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  artistAlbums?: ArtistAlbumBackupRecord[];
 }
 
 export interface RestoreSummary {
@@ -51,6 +62,8 @@ export interface RestoreSummary {
   roles: number;
   credits: number;
   artistRelationships: number;
+  artistAlbums: number;
+  missingAudioFiles?: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
@@ -67,6 +80,7 @@ const VERSION_BACKUP_COLUMNS =
   'id, workId, name, kind, description, notes, createdAt, updatedAt';
 const ARTIST_RELATIONSHIP_BACKUP_COLUMNS =
   'id, artistId, relatedArtistId, description, createdAt';
+const ARTIST_ALBUM_BACKUP_COLUMNS = 'artistId, albumId, source, createdAt';
 const RELATIONSHIP_BACKUP_COLUMNS = `
   trackId, rating, favorite, emotionalTags, personalNote,
   (
@@ -106,6 +120,7 @@ export async function createArchiveBackup(): Promise<string> {
     works,
     versions,
     artistRelationships,
+    artistAlbums,
   ] = await Promise.all([
     database.getAllAsync<ArtistRecord>(
       `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
@@ -161,6 +176,11 @@ export async function createArchiveBackup(): Promise<string> {
          FROM ArtistRelationships ORDER BY rowid ASC`,
       [],
     ),
+    database.getAllAsync<ArtistAlbumBackupRecord>(
+      `SELECT ${ARTIST_ALBUM_BACKUP_COLUMNS}
+         FROM ArtistAlbums ORDER BY rowid ASC`,
+      [],
+    ),
   ]);
 
   const backup: ArchiveBackup = {
@@ -179,6 +199,7 @@ export async function createArchiveBackup(): Promise<string> {
     works,
     versions,
     artistRelationships,
+    artistAlbums,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -196,6 +217,10 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   const versionsById = new Map((backup.versions ?? []).map((version) => [version.id, version]));
   const relationshipIds = new Set(
     (backup.artistRelationships ?? []).map((relationship) => relationship.id),
+  );
+  const validArtistAlbums = (backup.artistAlbums ?? []).filter(
+    (relationship) =>
+      artistIds.has(relationship.artistId) && albumIds.has(relationship.albumId),
   );
 
   for (const track of backup.tracks) {
@@ -465,6 +490,22 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
       );
     }
 
+    for (const relationship of validArtistAlbums) {
+      await database.runAsync(
+        `INSERT INTO ArtistAlbums (artistId, albumId, source, createdAt)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(artistId, albumId) DO UPDATE SET
+           source = excluded.source,
+           createdAt = excluded.createdAt`,
+        [
+          relationship.artistId,
+          relationship.albumId,
+          relationship.source,
+          relationship.createdAt,
+        ],
+      );
+    }
+
     for (const relationship of backup.personalRelationships) {
       await database.runAsync(
         `INSERT INTO PersonalRelationships
@@ -537,6 +578,18 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     }
   });
 
+  let missingAudioFiles: number | undefined;
+  try {
+    const audioStatuses = await Promise.all(
+      backup.tracks
+        .filter((track) => track.audioUri)
+        .map((track) => audioFileExists(track.audioUri)),
+    );
+    missingAudioFiles = audioStatuses.filter((exists) => !exists).length;
+  } catch {
+    // A file status failure must not turn a successful restore into an error.
+  }
+
   return {
     artists: backup.artists.length,
     albums: backup.albums.length,
@@ -550,6 +603,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     roles: backup.roles?.length ?? 0,
     credits: backup.credits?.length ?? 0,
     artistRelationships: backup.artistRelationships?.length ?? 0,
+    artistAlbums: validArtistAlbums.length,
+    missingAudioFiles,
   };
 }
 
@@ -577,6 +632,7 @@ function parseBackup(json: string): ArchiveBackup {
   const listeningHistory = parseListeningHistory(parsed.listeningHistory);
   const albumTracks = parseAlbumTracks(parsed.albumTracks);
   const artistRelationships = parseArtistRelationships(parsed.artistRelationships);
+  const artistAlbums = parseArtistAlbums(parsed.artistAlbums);
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
@@ -590,6 +646,7 @@ function parseBackup(json: string): ArchiveBackup {
   assertUniqueIds(listeningHistory, 'تاریخچهٔ شنیدن');
   assertUniqueAlbumTrackMemberships(albumTracks);
   assertUniqueIds(artistRelationships, 'ارتباط‌های هنرمندان');
+  assertUniqueArtistAlbumLinks(artistAlbums);
   assertUniqueCreditTargets(credits);
 
   return {
@@ -608,7 +665,23 @@ function parseBackup(json: string): ArchiveBackup {
     listeningHistory,
     albumTracks,
     artistRelationships,
+    artistAlbums,
   };
+}
+
+function parseArtistAlbums(
+  value: unknown,
+): ArtistAlbumBackupRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'رابطه‌های هنرمند و آلبوم').map((item, index) => {
+    const record = recordValue(item, `رابطهٔ هنرمند و آلبوم شمارهٔ ${index + 1}`);
+    return {
+      artistId: requiredString(record.artistId, 'شناسهٔ هنرمند در رابطهٔ آلبوم'),
+      albumId: requiredString(record.albumId, 'شناسهٔ آلبوم در رابطهٔ هنرمند'),
+      source: record.source === 'explicit' ? 'explicit' : 'inferred',
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد رابطهٔ هنرمند و آلبوم'),
+    };
+  });
 }
 
 function parseArtistRelationships(value: unknown): ArtistRelationshipRecord[] {
@@ -768,6 +841,19 @@ function assertUniqueAlbumTrackMemberships(records: AlbumTrackRecord[]): void {
     const key = `${record.albumTrackAlbumId}:${record.id}`;
     if (seen.has(key)) {
       throw new Error('رابطه‌های آلبوم و قطعه در فایل پشتیبان تکراری هستند.');
+    }
+    seen.add(key);
+  }
+}
+
+function assertUniqueArtistAlbumLinks(
+  records: Pick<ArtistAlbumBackupRecord, 'artistId' | 'albumId'>[],
+): void {
+  const seen = new Set<string>();
+  for (const record of records) {
+    const key = `${record.artistId}:${record.albumId}`;
+    if (seen.has(key)) {
+      throw new Error('رابطه‌های هنرمند و آلبوم در فایل پشتیبان تکراری هستند.');
     }
     seen.add(key);
   }

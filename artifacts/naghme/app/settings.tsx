@@ -168,9 +168,13 @@ export default function SettingsScreen() {
         encoding: FileSystem.EncodingType.UTF8,
       });
       const summary = await restoreArchiveBackup(json);
+      const missingAudioMessage =
+        summary.missingAudioFiles
+          ? ` فایل صوتی ${summary.missingAudioFiles} قطعه روی این دستگاه پیدا نشد.`
+          : '';
       Alert.alert(
-        'بازیابی انجام شد',
-        `${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.`,
+        'بازیابی و ادغام انجام شد',
+        `اطلاعات فایل پشتیبان با آرشیو فعلی ادغام شد و چیزی از آرشیو تو حذف نشد. ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {
@@ -310,7 +314,10 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>خروجی گرفتن از آرشیو</Text>
-          <Text style={styles.actionDescription}>یک فایل پشتیبان از هنرمندها، آلبوم‌ها، قطعه‌ها و رابطه‌های شخصی بساز.</Text>
+          <Text style={styles.actionDescription}>
+            یک فایل پشتیبان از اطلاعات آرشیو بساز. فایل‌های صوتی و تصویری همراه آن نیستند؛
+            برای انتقال به دستگاه دیگر، این فایل‌ها را جداگانه هم منتقل کن.
+          </Text>
         </View>
         <Pressable
           testID="export-archive"
@@ -337,7 +344,9 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>بازیابی اطلاعات</Text>
-          <Text style={styles.actionDescription}>یک فایل پشتیبان را انتخاب کن تا اطلاعات آرشیو روی این دستگاه بازنویسی شود.</Text>
+          <Text style={styles.actionDescription}>
+            اطلاعات فایل پشتیبان با آرشیو فعلی ادغام می‌شود؛ چیزی از آرشیو تو حذف نمی‌شود.
+          </Text>
         </View>
         <Pressable
           testID="restore-archive"
