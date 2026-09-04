@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -69,6 +69,7 @@ export default function PlayerScreen() {
   const [queueVisible, setQueueVisible] = useState<boolean>(false);
   const [collectionPickerTrackId, setCollectionPickerTrackId] = useState<string | null>(null);
   const [isSliding, setIsSliding] = useState<boolean>(false);
+  const { projectId } = useLocalSearchParams<{ projectId?: string | string[] }>();
   const [sliderValue, setSliderValue] = useState<number>(0);
   const posterMotionStyle = useMoodPosterStyle(latestMood);
 
@@ -621,6 +622,8 @@ export default function PlayerScreen() {
         title={audio.track.title}
         lyrics={audio.track.lyrics ?? ''}
         coverImage={audio.track.coverImage}
+        trackId={audio.trackId ?? ''}
+        projectId={Array.isArray(projectId) ? projectId[0] : projectId}
         artistName={audio.track.artistName ?? undefined}
         onClose={() => setPostcardVisible(false)}
       />

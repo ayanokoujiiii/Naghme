@@ -174,7 +174,7 @@ export default function SettingsScreen() {
           : '';
       Alert.alert(
         'بازیابی و ادغام انجام شد',
-        `اطلاعات فایل پشتیبان با آرشیو فعلی ادغام شد و چیزی از آرشیو تو حذف نشد. ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.collections} مجموعه، ${summary.collectionTracks} عضویت مجموعه، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}`,
+         `اطلاعات فایل پشتیبان با آرشیو فعلی ادغام شد و چیزی از آرشیو تو حذف نشد. ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.collections} مجموعه، ${summary.collectionTracks} عضویت مجموعه، ${summary.postcardProjects} عکس‌نوشته، ${summary.conversations} گفتگو، ${summary.conversationMessages} پیام گفتگو، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {

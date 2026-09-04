@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export interface AppliedMigration {
   version: number;
@@ -119,6 +119,11 @@ const migrations: readonly Migration[] = [
     version: 8,
     description: 'افزودن مجموعه‌های شخصی و ترتیب قطعه‌های هر مجموعه',
     migrate: addCollections,
+  },
+  {
+    version: 9,
+    description: 'افزودن آرشیو عکس‌نوشته‌ها و گفت‌وگوهای ماندگار',
+    migrate: addPostcardProjectsAndConversations,
   },
 ];
 
@@ -468,5 +473,49 @@ async function addCollections(database: SQLiteDatabase): Promise<void> {
       ON CollectionTracks (collectionId, position);
     CREATE INDEX IF NOT EXISTS idx_collection_tracks_track
       ON CollectionTracks (trackId);
+  `);
+}
+
+async function addPostcardProjectsAndConversations(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS PostcardProjects (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      trackId TEXT NOT NULL,
+      selectedText TEXT NOT NULL,
+      settings TEXT NOT NULL,
+      outputUri TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_postcard_projects_track
+      ON PostcardProjects (trackId);
+
+    CREATE INDEX IF NOT EXISTS idx_postcard_projects_updated
+      ON PostcardProjects (updatedAt DESC);
+
+    CREATE TABLE IF NOT EXISTS Conversations (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversations_updated
+      ON Conversations (updatedAt DESC);
+
+    CREATE TABLE IF NOT EXISTS ConversationMessages (
+      id TEXT PRIMARY KEY NOT NULL,
+      conversationId TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'model')),
+      text TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (conversationId) REFERENCES Conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_created
+      ON ConversationMessages (conversationId, createdAt ASC);
   `);
 }

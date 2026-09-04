@@ -139,6 +139,38 @@ export interface CollectionMembershipRecord {
   coverImage: string | null;
 }
 
+export interface PostcardProjectRecord {
+  id: string;
+  title: string;
+  trackId: string;
+  selectedText: string;
+  settings: string;
+  outputUri: string | null;
+  createdAt: string;
+  updatedAt: string;
+  trackTitle: string;
+  artistName: string | null;
+  coverImage: string | null;
+}
+
+export interface ConversationRecord {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export type ConversationMessageRole = 'user' | 'model';
+
+export interface ConversationMessageRecord {
+  id: string;
+  conversationId: string;
+  role: ConversationMessageRole;
+  text: string;
+  createdAt: string;
+}
+
 export interface NewAlbumTrack {
   albumId: string;
   trackId: string;
@@ -379,6 +411,12 @@ export type NewArtistAlbumLink = {
 export type NewCollection = Pick<CollectionRecord, 'title'> &
   Partial<Pick<CollectionRecord, 'description' | 'coverImage'>>;
 export type UpdateCollection = Partial<NewCollection>;
+
+export type NewPostcardProject = Pick<PostcardProjectRecord, 'trackId' | 'selectedText' | 'settings'> &
+  Partial<Pick<PostcardProjectRecord, 'title' | 'outputUri'>>;
+export type UpdatePostcardProject = Partial<
+  Pick<PostcardProjectRecord, 'title' | 'selectedText' | 'settings' | 'outputUri'>
+>;
 
 export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
 export type UpdateJournalEntry = Pick<JournalEntryRecord, 'note' | 'mood'>;
@@ -1988,6 +2026,235 @@ export async function moveCollectionTrack(
       [new Date().toISOString(), collectionId],
     );
   });
+}
+
+export async function getPostcardProjects(
+  trackId?: string,
+  limit?: number,
+): Promise<PostcardProjectRecord[]> {
+  const database = await requireDatabase();
+  const safeLimit = limit === undefined ? null : Math.max(1, Math.min(Math.floor(limit), 100));
+  const where = trackId ? 'WHERE PostcardProjects.trackId = ?' : '';
+  const parameters: (string | number)[] = trackId ? [trackId] : [];
+  if (safeLimit !== null) parameters.push(safeLimit);
+
+  return database.getAllAsync<PostcardProjectRecord>(
+    `SELECT
+       PostcardProjects.id,
+       PostcardProjects.title,
+       PostcardProjects.trackId,
+       PostcardProjects.selectedText,
+       PostcardProjects.settings,
+       PostcardProjects.outputUri,
+       PostcardProjects.createdAt,
+       PostcardProjects.updatedAt,
+       Tracks.title AS trackTitle,
+       Artists.name AS artistName,
+       Tracks.coverImage AS coverImage
+     FROM PostcardProjects
+     INNER JOIN Tracks ON Tracks.id = PostcardProjects.trackId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     ${where}
+     ORDER BY datetime(PostcardProjects.updatedAt) DESC, PostcardProjects.rowid DESC
+     ${safeLimit === null ? '' : 'LIMIT ?'}`,
+    parameters,
+  );
+}
+
+export async function getPostcardProjectById(id: string): Promise<PostcardProjectRecord | null> {
+  const projects = await getPostcardProjects();
+  return projects.find((project) => project.id === id) ?? null;
+}
+
+export async function createPostcardProject(input: NewPostcardProject): Promise<PostcardProjectRecord> {
+  const database = await requireDatabase();
+  const track = await database.getFirstAsync<{
+    id: string;
+    title: string;
+  }>('SELECT id, title FROM Tracks WHERE id = ?', [input.trackId]);
+  if (!track) throw new Error('قطعه برای عکس‌نوشته پیدا نشد.');
+
+  const selectedText = input.selectedText.trim();
+  if (!selectedText) throw new Error('متن عکس‌نوشته نمی‌تواند خالی باشد.');
+  if (!input.settings.trim()) throw new Error('تنظیمات عکس‌نوشته آماده نیست.');
+
+  const now = new Date().toISOString();
+  const projectId = createId('postcard');
+  await database.runAsync(
+    `INSERT INTO PostcardProjects
+       (id, title, trackId, selectedText, settings, outputUri, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      projectId,
+      input.title?.trim() || track.title,
+      track.id,
+      selectedText,
+      input.settings,
+      input.outputUri ?? null,
+      now,
+      now,
+    ],
+  );
+
+  const saved = await getPostcardProjectById(projectId);
+  if (!saved) throw new Error('ذخیره‌ی پروژه‌ی عکس‌نوشته انجام نشد.');
+  return saved;
+}
+
+export async function updatePostcardProject(
+  id: string,
+  input: UpdatePostcardProject,
+): Promise<PostcardProjectRecord> {
+  const current = await getPostcardProjectById(id);
+  if (!current) throw new Error('پروژه‌ی عکس‌نوشته پیدا نشد.');
+  const database = await requireDatabase();
+  const title = input.title === undefined ? current.title : input.title.trim() || current.trackTitle;
+  const selectedText =
+    input.selectedText === undefined ? current.selectedText : input.selectedText.trim();
+  const settings = input.settings === undefined ? current.settings : input.settings.trim();
+  if (!selectedText) throw new Error('متن عکس‌نوشته نمی‌تواند خالی باشد.');
+  if (!settings) throw new Error('تنظیمات عکس‌نوشته آماده نیست.');
+  const updatedAt = new Date().toISOString();
+
+  await database.runAsync(
+    `UPDATE PostcardProjects
+        SET title = ?, selectedText = ?, settings = ?, outputUri = ?, updatedAt = ?
+      WHERE id = ?`,
+    [
+      title,
+      selectedText,
+      settings,
+      input.outputUri === undefined ? current.outputUri : input.outputUri,
+      updatedAt,
+      id,
+    ],
+  );
+  const saved = await getPostcardProjectById(id);
+  if (!saved) throw new Error('به‌روزرسانی پروژه‌ی عکس‌نوشته انجام نشد.');
+  return saved;
+}
+
+export async function deletePostcardProject(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM PostcardProjects WHERE id = ?', [id]);
+}
+
+export async function getConversations(): Promise<ConversationRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ConversationRecord>(
+    `SELECT
+       Conversations.id,
+       Conversations.title,
+       Conversations.createdAt,
+       Conversations.updatedAt,
+       COUNT(ConversationMessages.id) AS messageCount
+     FROM Conversations
+     LEFT JOIN ConversationMessages
+       ON ConversationMessages.conversationId = Conversations.id
+     GROUP BY Conversations.id
+     ORDER BY datetime(Conversations.updatedAt) DESC, Conversations.rowid DESC`,
+    [],
+  );
+}
+
+export async function getLatestConversation(): Promise<ConversationRecord | null> {
+  const conversations = await getConversations();
+  return conversations[0] ?? null;
+}
+
+export async function getConversationMessages(
+  conversationId: string,
+): Promise<ConversationMessageRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ConversationMessageRecord>(
+    `SELECT id, conversationId, role, text, createdAt
+       FROM ConversationMessages
+      WHERE conversationId = ?
+      ORDER BY datetime(createdAt) ASC, rowid ASC`,
+    [conversationId],
+  );
+}
+
+export async function createConversation(firstUserMessage: string): Promise<ConversationRecord> {
+  const text = firstUserMessage.trim();
+  if (!text) throw new Error('پیام گفتگو نمی‌تواند خالی باشد.');
+  const database = await requireDatabase();
+  const now = new Date().toISOString();
+  const id = createId('conversation');
+  const messageId = createId('message');
+
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      'INSERT INTO Conversations (id, title, createdAt, updatedAt) VALUES (?, ?, ?, ?)',
+      [id, shortenConversationTitle(text), now, now],
+    );
+    await database.runAsync(
+      `INSERT INTO ConversationMessages
+         (id, conversationId, role, text, createdAt)
+       VALUES (?, ?, 'user', ?, ?)`,
+      [messageId, id, text, now],
+    );
+  });
+
+  const saved = (await getConversations()).find((conversation) => conversation.id === id);
+  if (!saved) throw new Error('ساخت گفت‌وگو انجام نشد.');
+  return saved;
+}
+
+export async function appendConversationMessage(
+  conversationId: string,
+  role: ConversationMessageRole,
+  message: string,
+): Promise<ConversationMessageRecord> {
+  const text = message.trim();
+  if (!text) throw new Error('پیام گفتگو نمی‌تواند خالی باشد.');
+  const database = await requireDatabase();
+  const conversation = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Conversations WHERE id = ?',
+    [conversationId],
+  );
+  if (!conversation) throw new Error('گفت‌وگو پیدا نشد.');
+  const record: ConversationMessageRecord = {
+    id: createId('message'),
+    conversationId,
+    role,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      `INSERT INTO ConversationMessages (id, conversationId, role, text, createdAt)
+       VALUES (?, ?, ?, ?, ?)`,
+      [record.id, record.conversationId, record.role, record.text, record.createdAt],
+    );
+    await database.runAsync(
+      'UPDATE Conversations SET updatedAt = ? WHERE id = ?',
+      [record.createdAt, conversationId],
+    );
+  });
+  return record;
+}
+
+export async function renameConversation(id: string, title: string): Promise<void> {
+  const cleanTitle = title.trim();
+  if (!cleanTitle) throw new Error('عنوان گفتگو نمی‌تواند خالی باشد.');
+  const database = await requireDatabase();
+  const result = await database.runAsync(
+    'UPDATE Conversations SET title = ?, updatedAt = ? WHERE id = ?',
+    [shortenConversationTitle(cleanTitle, 60), new Date().toISOString(), id],
+  );
+  if (result.changes === 0) throw new Error('گفت‌وگو پیدا نشد.');
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Conversations WHERE id = ?', [id]);
+}
+
+function shortenConversationTitle(value: string, maxLength = 42): string {
+  const cleanValue = value.trim().replace(/\s+/g, ' ');
+  if (cleanValue.length <= maxLength) return cleanValue;
+  return `${cleanValue.slice(0, maxLength - 1).trim()}…`;
 }
 
 export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {

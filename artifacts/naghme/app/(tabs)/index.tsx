@@ -174,6 +174,11 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>آرشیو تو</Text>
         {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.sectionHint}>آخرین وضعیت آرشیو</Text>}
       </View>
+      <Pressable testID="home-open-postcards" onPress={() => router.push('/postcards')} style={({ pressed }) => [styles.emptySection, pressed && styles.pressed]}>
+        <Feather name="image" size={17} color={colors.primary} />
+        <Text style={styles.emptyText}>آرشیو عکس‌نوشته‌ها</Text>
+        <Text style={styles.sectionLink}>نمایش</Text>
+      </Pressable>
       <View style={styles.statsRow}>
         <StatCard icon="music" value={stats.tracks} label="قطعه" colors={colors} styles={styles} />
         <StatCard icon="disc" value={stats.albums} label="آلبوم" colors={colors} styles={styles} />

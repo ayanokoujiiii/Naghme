@@ -40,6 +40,7 @@ import {
   getArtistById,
   getPersonalRelationship,
   getOtherTracksWithSameTitle,
+  getPostcardProjects,
   getTrackById,
   getVersionById,
   getWorkById,
@@ -71,8 +72,9 @@ const moodOptions = [
 export default function TrackDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const { id, postcardId } = useLocalSearchParams<{ id: string | string[]; postcardId?: string | string[] }>();
   const trackId = Array.isArray(id) ? id[0] : id;
+  const requestedPostcardId = Array.isArray(postcardId) ? postcardId[0] : postcardId;
   const [track, setTrack] = useState<TrackRecord | null>(null);
   const [audioAvailable, setAudioAvailable] = useState<boolean>(true);
   const [officialVersionName, setOfficialVersionName] = useState<string | null>(null);
@@ -87,10 +89,12 @@ export default function TrackDetailScreen() {
   const [otherVersions, setOtherVersions] = useState<VersionTrackRecord[]>([]);
   const [credits, setCredits] = useState<CreditViewRecord[]>([]);
   const [collections, setCollections] = useState<Array<{ id: string; title: string; coverImage: string | null }>>([]);
+  const [postcardProjects, setPostcardProjects] = useState<Array<{ id: string; title: string; updatedAt: string }>>([]);
   const [collectionPickerVisible, setCollectionPickerVisible] = useState<boolean>(false);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
   const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
+  const [postcardProjectId, setPostcardProjectId] = useState<string | undefined>();
   const [sheetMusicModalVisible, setSheetMusicModalVisible] = useState<boolean>(false);
   const [editingJournalEntryId, setEditingJournalEntryId] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState<string>('');
@@ -120,7 +124,7 @@ export default function TrackDetailScreen() {
 
       setTrack(foundTrack);
       setAudioAvailable(await audioFileExists(foundTrack.audioUri).catch(() => true));
-      const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums, trackCollections] = await Promise.all([
+      const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums, trackCollections, trackPostcards] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
         getOtherTracksWithSameTitle(foundTrack.id, foundTrack.title),
@@ -129,6 +133,7 @@ export default function TrackDetailScreen() {
         foundTrack.workId ? getWorkById(foundTrack.workId) : Promise.resolve(null),
         getAlbumsForTrack(foundTrack.id),
         getCollectionsForTrack(foundTrack.id),
+        getPostcardProjects(foundTrack.id),
       ]);
       const albumNames = Array.from(new Set([
         ...(foundTrack.albumId && album?.title ? [album.title] : []),
@@ -139,6 +144,11 @@ export default function TrackDetailScreen() {
       setOtherVersions(versions);
       setCredits(trackCredits);
       setCollections(trackCollections);
+      setPostcardProjects(trackPostcards);
+      if (requestedPostcardId && trackPostcards.some((project) => project.id === requestedPostcardId)) {
+        setPostcardProjectId(requestedPostcardId);
+        setPostcardVisible(true);
+      }
       setOfficialVersionName(officialVersion?.name ?? null);
       setWorkTitle(work?.title ?? null);
 
@@ -161,7 +171,7 @@ export default function TrackDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [trackId]);
+  }, [requestedPostcardId, trackId]);
 
   useEffect(() => {
     void loadTrack();
@@ -408,6 +418,19 @@ export default function TrackDetailScreen() {
             <Feather name="layers" size={16} color={colors.primary} />
           </Pressable>
         )) : <Text style={styles.mutedText}>این قطعه هنوز در مجموعه‌ای نیست.</Text>}
+      </DetailCard>
+      <SectionHeading title="عکس‌نوشته‌های این قطعه" caption={`${postcardProjects.length} پروژه`} />
+      <DetailCard>
+        {postcardProjects.map((project) => (
+          <Pressable key={project.id} onPress={() => { setPostcardProjectId(project.id); setPostcardVisible(true); }} style={({ pressed }) => [styles.collectionRow, pressed && styles.pressed]}>
+            <Text style={styles.collectionRowTitle}>{project.title}</Text>
+            <Feather name="edit-3" size={16} color={colors.primary} />
+          </Pressable>
+        ))}
+        <Pressable testID="track-open-postcards" onPress={() => router.push(`/postcards?trackId=${track.id}`)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+          <Feather name="image" size={17} color={colors.primary} />
+          <Text style={styles.secondaryActionText}>آرشیو عکس‌نوشته‌ها</Text>
+        </Pressable>
       </DetailCard>
 
       {credits.length > 0 ? (
@@ -755,8 +778,10 @@ export default function TrackDetailScreen() {
         title={track.title}
         lyrics={track.lyrics ?? ''}
         coverImage={track.coverImage}
+        trackId={track.id}
         artistName={artistName}
-        onClose={() => setPostcardVisible(false)}
+        projectId={postcardProjectId}
+        onClose={() => { setPostcardVisible(false); setPostcardProjectId(undefined); }}
       />
       <CollectionPicker
         trackId={track.id}

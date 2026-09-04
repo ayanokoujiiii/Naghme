@@ -7,9 +7,11 @@ import type {
   ArtistAlbumLinkRecord,
   ArtistRelationshipRecord,
   CreditRecord,
+  ConversationMessageRole,
   JournalEntryRecord,
   ListeningHistoryRecord,
   PersonalRelationshipRecord,
+  PostcardProjectRecord,
   RoleRecord,
   TrackRecord,
   VersionRecord,
@@ -36,6 +38,26 @@ interface CollectionTrackBackupRecord {
   collectionId: string;
   trackId: string;
   position: number;
+}
+
+type PostcardProjectBackupRecord = Pick<
+  PostcardProjectRecord,
+  'id' | 'title' | 'trackId' | 'selectedText' | 'settings' | 'outputUri' | 'createdAt' | 'updatedAt'
+>;
+
+interface ConversationBackupRecord {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ConversationMessageBackupRecord {
+  id: string;
+  conversationId: string;
+  role: ConversationMessageRole;
+  text: string;
+  createdAt: string;
 }
 
 export interface ArchiveBackup {
@@ -66,6 +88,12 @@ export interface ArchiveBackup {
   collections?: CollectionBackupRecord[];
   /** Optional extension to Version 1; absent in older backups. */
   collectionTracks?: CollectionTrackBackupRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  postcardProjects?: PostcardProjectBackupRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  conversations?: ConversationBackupRecord[];
+  /** Optional extension to Version 1; absent in older backups. */
+  conversationMessages?: ConversationMessageBackupRecord[];
 }
 
 export interface RestoreSummary {
@@ -84,6 +112,9 @@ export interface RestoreSummary {
   artistAlbums: number;
   collections: number;
   collectionTracks: number;
+  postcardProjects: number;
+  conversations: number;
+  conversationMessages: number;
   missingAudioFiles?: number;
 }
 
@@ -105,6 +136,11 @@ const ARTIST_ALBUM_BACKUP_COLUMNS = 'artistId, albumId, source, createdAt';
 const COLLECTION_BACKUP_COLUMNS =
   'id, title, description, coverImage, createdAt, updatedAt';
 const COLLECTION_TRACK_BACKUP_COLUMNS = 'collectionId, trackId, position';
+const POSTCARD_PROJECT_BACKUP_COLUMNS =
+  'id, title, trackId, selectedText, settings, outputUri, createdAt, updatedAt';
+const CONVERSATION_BACKUP_COLUMNS = 'id, title, createdAt, updatedAt';
+const CONVERSATION_MESSAGE_BACKUP_COLUMNS =
+  'id, conversationId, role, text, createdAt';
 const RELATIONSHIP_BACKUP_COLUMNS = `
   trackId, rating, favorite, emotionalTags, personalNote,
   (
@@ -147,6 +183,9 @@ export async function createArchiveBackup(): Promise<string> {
     artistAlbums,
     collections,
     collectionTracks,
+    postcardProjects,
+    conversations,
+    conversationMessages,
   ] = await Promise.all([
     database.getAllAsync<ArtistRecord>(
       `SELECT ${ARTIST_BACKUP_COLUMNS} FROM Artists ORDER BY rowid ASC`,
@@ -216,6 +255,22 @@ export async function createArchiveBackup(): Promise<string> {
          FROM CollectionTracks ORDER BY collectionId, position ASC`,
       [],
     ),
+    database.getAllAsync<PostcardProjectBackupRecord>(
+      `SELECT ${POSTCARD_PROJECT_BACKUP_COLUMNS}
+         FROM PostcardProjects ORDER BY datetime(updatedAt) DESC, rowid DESC`,
+      [],
+    ),
+    database.getAllAsync<ConversationBackupRecord>(
+      `SELECT ${CONVERSATION_BACKUP_COLUMNS}
+         FROM Conversations ORDER BY datetime(updatedAt) DESC, rowid DESC`,
+      [],
+    ),
+    database.getAllAsync<ConversationMessageBackupRecord>(
+      `SELECT ${CONVERSATION_MESSAGE_BACKUP_COLUMNS}
+         FROM ConversationMessages
+        ORDER BY conversationId, datetime(createdAt) ASC, rowid ASC`,
+      [],
+    ),
   ]);
 
   const backup: ArchiveBackup = {
@@ -237,6 +292,9 @@ export async function createArchiveBackup(): Promise<string> {
     artistAlbums,
     collections,
     collectionTracks,
+    postcardProjects,
+    conversations,
+    conversationMessages,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -263,6 +321,13 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   const validCollectionTracks = (backup.collectionTracks ?? []).filter(
     (relationship) =>
       collectionIds.has(relationship.collectionId) && trackIds.has(relationship.trackId),
+  );
+  const validPostcardProjects = (backup.postcardProjects ?? []).filter((project) =>
+    trackIds.has(project.trackId),
+  );
+  const conversationIds = new Set((backup.conversations ?? []).map((conversation) => conversation.id));
+  const validConversationMessages = (backup.conversationMessages ?? []).filter((message) =>
+    conversationIds.has(message.conversationId),
   );
 
   for (const track of backup.tracks) {
@@ -348,6 +413,16 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     }
     if (!Number.isInteger(relationship.position) || relationship.position < 0) {
       throw new Error('ترتیب قطعه‌های مجموعه معتبر نیست.');
+    }
+  }
+  for (const project of backup.postcardProjects ?? []) {
+    if (!trackIds.has(project.trackId)) {
+      throw new Error('یکی از عکس‌نوشته‌ها به قطعه‌ای نامعتبر اشاره می‌کند.');
+    }
+  }
+  for (const message of backup.conversationMessages ?? []) {
+    if (!conversationIds.has(message.conversationId)) {
+      throw new Error('یکی از پیام‌های گفتگو به گفت‌وگوی نامعتبر اشاره می‌کند.');
     }
   }
 
@@ -519,6 +594,31 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
       }
     }
 
+    for (const project of validPostcardProjects) {
+      await database.runAsync(
+        `INSERT INTO PostcardProjects
+           (id, title, trackId, selectedText, settings, outputUri, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           trackId = excluded.trackId,
+           selectedText = excluded.selectedText,
+           settings = excluded.settings,
+           outputUri = excluded.outputUri,
+           updatedAt = excluded.updatedAt`,
+        [
+          project.id,
+          project.title,
+          project.trackId,
+          project.selectedText,
+          project.settings,
+          project.outputUri,
+          project.createdAt,
+          project.updatedAt,
+        ],
+      );
+    }
+
     for (const relationship of backup.albumTracks ?? []) {
       await database.runAsync(
         `INSERT INTO AlbumTracks
@@ -549,6 +649,31 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
          ON CONFLICT(collectionId, trackId) DO UPDATE SET
            position = excluded.position`,
         [relationship.collectionId, relationship.trackId, relationship.position],
+      );
+    }
+
+    for (const conversation of backup.conversations ?? []) {
+      await database.runAsync(
+        `INSERT INTO Conversations (id, title, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           updatedAt = excluded.updatedAt`,
+        [conversation.id, conversation.title, conversation.createdAt, conversation.updatedAt],
+      );
+    }
+
+    for (const message of validConversationMessages) {
+      await database.runAsync(
+        `INSERT INTO ConversationMessages
+           (id, conversationId, role, text, createdAt)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           conversationId = excluded.conversationId,
+           role = excluded.role,
+           text = excluded.text,
+           createdAt = excluded.createdAt`,
+        [message.id, message.conversationId, message.role, message.text, message.createdAt],
       );
     }
 
@@ -687,6 +812,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     artistAlbums: validArtistAlbums.length,
     collections: backup.collections?.length ?? 0,
     collectionTracks: validCollectionTracks.length,
+    postcardProjects: validPostcardProjects.length,
+    conversations: backup.conversations?.length ?? 0,
+    conversationMessages: validConversationMessages.length,
     missingAudioFiles,
   };
 }
@@ -718,6 +846,9 @@ function parseBackup(json: string): ArchiveBackup {
   const artistAlbums = parseArtistAlbums(parsed.artistAlbums);
   const collections = parseCollections(parsed.collections);
   const collectionTracks = parseCollectionTracks(parsed.collectionTracks);
+  const postcardProjects = parsePostcardProjects(parsed.postcardProjects);
+  const conversations = parseConversations(parsed.conversations);
+  const conversationMessages = parseConversationMessages(parsed.conversationMessages);
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
@@ -733,6 +864,9 @@ function parseBackup(json: string): ArchiveBackup {
   assertUniqueIds(artistRelationships, 'ارتباط‌های هنرمندان');
   assertUniqueArtistAlbumLinks(artistAlbums);
   assertUniqueIds(collections, 'مجموعه‌ها');
+  assertUniqueIds(postcardProjects, 'پروژه‌های عکس‌نوشته');
+  assertUniqueIds(conversations, 'گفتگوها');
+  assertUniqueIds(conversationMessages, 'پیام‌های گفتگو');
   assertUniqueCollectionTracks(collectionTracks);
   assertUniqueCreditTargets(credits);
 
@@ -755,6 +889,9 @@ function parseBackup(json: string): ArchiveBackup {
     artistAlbums,
     collections,
     collectionTracks,
+    postcardProjects,
+    conversations,
+    conversationMessages,
   };
 }
 
@@ -786,6 +923,54 @@ function parseCollectionTracks(value: unknown): CollectionTrackBackupRecord[] {
       collectionId: requiredString(record.collectionId, 'شناسهٔ مجموعهٔ قطعه'),
       trackId: requiredString(record.trackId, 'شناسهٔ قطعهٔ مجموعه'),
       position,
+    };
+  });
+}
+
+function parsePostcardProjects(value: unknown): PostcardProjectBackupRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'پروژه‌های عکس‌نوشته').map((item, index) => {
+    const record = recordValue(item, `پروژهٔ عکس‌نوشتهٔ شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ پروژهٔ عکس‌نوشته'),
+      title: requiredString(record.title, 'عنوان پروژهٔ عکس‌نوشته'),
+      trackId: requiredString(record.trackId, 'شناسهٔ قطعهٔ عکس‌نوشته'),
+      selectedText: requiredString(record.selectedText, 'متن انتخاب‌شدهٔ عکس‌نوشته'),
+      settings: requiredString(record.settings, 'تنظیمات عکس‌نوشته'),
+      outputUri: nullableString(record.outputUri, 'مسیر خروجی عکس‌نوشته'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد پروژهٔ عکس‌نوشته'),
+      updatedAt: requiredString(record.updatedAt, 'زمان ویرایش پروژهٔ عکس‌نوشته'),
+    };
+  });
+}
+
+function parseConversations(value: unknown): ConversationBackupRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'گفتگوها').map((item, index) => {
+    const record = recordValue(item, `گفتگوی شمارهٔ ${index + 1}`);
+    return {
+      id: requiredString(record.id, 'شناسهٔ گفتگو'),
+      title: requiredString(record.title, 'عنوان گفتگو'),
+      createdAt: requiredString(record.createdAt, 'زمان ایجاد گفتگو'),
+      updatedAt: requiredString(record.updatedAt, 'زمان ویرایش گفتگو'),
+    };
+  });
+}
+
+function parseConversationMessages(value: unknown): ConversationMessageBackupRecord[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'پیام‌های گفتگو').map((item, index) => {
+    const record = recordValue(item, `پیام گفتگوی شمارهٔ ${index + 1}`);
+    const role = record.role;
+    if (role !== 'user' && role !== 'model') {
+      throw new Error('نقش پیام گفتگو معتبر نیست.');
+    }
+    return {
+      id: requiredString(record.id, 'شناسهٔ پیام گفتگو'),
+      conversationId: requiredString(record.conversationId, 'شناسهٔ گفتگو در پیام'),
+      role,
+      text: requiredString(record.text, 'متن پیام گفتگو'),
+      createdAt: requiredString(record.createdAt, 'زمان پیام گفتگو'),
     };
   });
 }

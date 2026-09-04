@@ -34,6 +34,14 @@ import { captureRef } from 'react-native-view-shot';
 import { studioPalette } from '@/constants/colors';
 import { useColors } from '@/hooks/useColors';
 import { getDominantCoverColor, withAlpha } from '@/src/player/coverColors';
+import {
+  parsePostcardSettings,
+  serializePostcardSettings,
+  type PostcardSettings,
+  type PostcardStickerState,
+  type PostcardTransform,
+} from '@/src/postcard/persistence';
+import { createPostcardProject, getPostcardProjectById, updatePostcardProject } from '@/src/db/queries';
 
 interface PostcardStudioProps {
   visible: boolean;
@@ -41,6 +49,8 @@ interface PostcardStudioProps {
   lyrics: string;
   coverImage: string | null;
   artistName?: string;
+  trackId: string;
+  projectId?: string;
   onClose: () => void;
 }
 
@@ -71,12 +81,7 @@ type PersianFont =
   | 'ArefRuqaa'
   | 'NotoSansArabic';
 
-interface CustomSticker {
-  id: string;
-  uri: string;
-  opacity: number;
-  borderRadius: number;
-}
+interface CustomSticker extends PostcardStickerState {}
 
 const ratioOptions: Array<{ value: CanvasRatio; label: string; caption: string; ratio: number }> = [
   { value: 'square', label: '۱:۱', caption: 'مربع', ratio: 1 },
@@ -131,6 +136,8 @@ export function PostcardStudio({
   lyrics,
   coverImage,
   artistName,
+  trackId,
+  projectId,
   onClose,
 }: PostcardStudioProps) {
   const colors = useColors();
@@ -162,6 +169,10 @@ export function PostcardStudio({
   const [activeFilters, setActiveFilters] = useState<FilterName[]>([]);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('jpg');
   const [saving, setSaving] = useState<boolean>(false);
+  const [projectSaving, setProjectSaving] = useState<boolean>(false);
+  const [activeProjectId, setActiveProjectId] = useState<string | undefined>(projectId);
+  const [textTransform, setTextTransform] = useState<PostcardTransform>({ x: 0, y: 0, scale: 1 });
+  const [resolvedBackgroundUri, setResolvedBackgroundUri] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
   const toastProgress = useSharedValue(0);
   const postcardWidth = Math.min(Math.max(width - 32, 280), 360);
@@ -172,8 +183,7 @@ export function PostcardStudio({
       ? { value: 'custom' as const, label: 'سفارشی', caption: `${customWidthNumber} × ${customHeightNumber}`, ratio: customWidthNumber / customHeightNumber }
       : ratioOptions.find((item) => item.value === ratio) ?? ratioOptions[1];
   const postcardHeight = postcardWidth / selectedRatio.ratio;
-  const backgroundUri =
-    backgroundKind === 'custom' ? customBackgroundUri : backgroundKind === 'cover' ? coverImage : null;
+  const backgroundUri = backgroundKind === 'solid' ? null : resolvedBackgroundUri;
 
   const toastStyle = useAnimatedStyle(() => ({
     opacity: toastProgress.value,
@@ -183,6 +193,7 @@ export function PostcardStudio({
   useEffect(() => {
     if (!visible) return;
     setStep('selector');
+    setActiveProjectId(projectId);
     setSelectedLyrics(lyrics);
     setRatio('portrait');
     setCustomWidth('1080');
@@ -203,7 +214,47 @@ export function PostcardStudio({
     setActiveStickerId(null);
     setActiveFilters([]);
     setExportFormat('jpg');
-  }, [lyrics, visible]);
+    setTextTransform({ x: 0, y: 0, scale: 1 });
+    setResolvedBackgroundUri(coverImage);
+    if (projectId) {
+      void getPostcardProjectById(projectId).then((project) => {
+        if (!project) return;
+        const restored = parsePostcardSettings(project.settings, colors.card);
+        setSelectedLyrics(project.selectedText);
+        setRatio(restored.ratio);
+        setCustomWidth(String(restored.customWidth));
+        setCustomHeight(String(restored.customHeight));
+        setTempWidth(String(restored.customWidth));
+        setTempHeight(String(restored.customHeight));
+        setBackgroundKind(restored.backgroundKind);
+        setCustomBackgroundUri(restored.customBackgroundUri);
+        setSolidBackground(restored.solidBackground);
+        setBlurRadius(restored.blurRadius);
+        setFontChoice(restored.fontChoice);
+        setAlignment(restored.alignment);
+        setTextColor(restored.textColor);
+        setTextSize(restored.textSize);
+        setTextTransform(restored.textTransform);
+        setCustomStickers(restored.stickers);
+        setActiveFilters(restored.activeFilters);
+        setExportFormat(restored.exportFormat);
+        setStep('editor');
+      }).catch(() => showToast('خواندن پروژه‌ی قبلی انجام نشد؛ کارت تازه آماده است.'));
+    }
+  }, [lyrics, visible, projectId, coverImage, colors.card]);
+
+  useEffect(() => {
+    const uri = backgroundKind === 'custom' ? customBackgroundUri : backgroundKind === 'cover' ? coverImage : null;
+    if (!uri) {
+      setResolvedBackgroundUri(null);
+      if (backgroundKind !== 'solid') showToast('تصویر پس‌زمینه پیدا نشد؛ پس‌زمینه‌ی پیش‌فرض حفظ شد.');
+      return;
+    }
+    Image.getSize(uri, () => setResolvedBackgroundUri(uri), () => {
+      setResolvedBackgroundUri(null);
+      showToast('تصویر پس‌زمینه پیدا نشد؛ پس‌زمینه‌ی پیش‌فرض حفظ شد.');
+    });
+  }, [backgroundKind, customBackgroundUri, coverImage]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -264,7 +315,15 @@ export function PostcardStudio({
       const uri = result.assets[0].uri;
       setCustomStickers((current) => [
         ...current,
-        { id: `${Date.now()}-${current.length}`, uri, opacity: 1, borderRadius: 14 },
+        {
+          id: `${Date.now()}-${current.length}`,
+          uri,
+          opacity: 1,
+          borderRadius: 14,
+          x: 0,
+          y: 0,
+          scale: 1,
+        },
       ]);
     } catch {
       showToast('افزودن استیکر انجام نشد.');
@@ -373,6 +432,9 @@ export function PostcardStudio({
       });
       console.log('[Naghme postcard export] capture complete', uri);
       await MediaLibrary.saveToLibraryAsync(uri);
+      if (activeProjectId) {
+        await updatePostcardProject(activeProjectId, { outputUri: uri });
+      }
       console.log('[Naghme postcard export] saved to library');
       showToast(`عکس‌نوشته با فرمت ${exportFormat.toUpperCase()} ذخیره شد.`);
     } catch (error: unknown) {
@@ -382,6 +444,51 @@ export function PostcardStudio({
       showToast('ذخیره‌ی عکس‌نوشته انجام نشد.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveProject = async () => {
+    if (projectSaving || !selectedLyrics.trim()) {
+      if (!selectedLyrics.trim()) showToast('اول بخشی از شعر را برای کارت‌پستال انتخاب کن.');
+      return;
+    }
+    setProjectSaving(true);
+    try {
+      const settings: PostcardSettings = {
+        version: 1,
+        ratio,
+        customWidth: customWidthNumber,
+        customHeight: customHeightNumber,
+        backgroundKind,
+        customBackgroundUri,
+        solidBackground,
+        blurRadius,
+        fontChoice,
+        alignment,
+        textColor,
+        textSize,
+        textTransform,
+        stickers: customStickers,
+        activeFilters,
+        exportFormat,
+      };
+      const saved = activeProjectId
+        ? await updatePostcardProject(activeProjectId, {
+            selectedText: selectedLyrics,
+            settings: serializePostcardSettings(settings),
+          })
+        : await createPostcardProject({
+            trackId,
+            selectedText: selectedLyrics,
+            settings: serializePostcardSettings(settings),
+            title,
+          });
+      setActiveProjectId(saved.id);
+      showToast(`پروژه‌ی «${saved.title}» ذخیره شد.`);
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'ذخیره‌ی پروژه انجام نشد.');
+    } finally {
+      setProjectSaving(false);
     }
   };
 
@@ -518,6 +625,8 @@ export function PostcardStudio({
                     textSize={textSize}
                     textStyle={textStyle}
                     alignment={alignment}
+                    initialTransform={textTransform}
+                    onTransformChange={setTextTransform}
                     width={postcardWidth - 68}
                     top={postcardHeight * 0.32}
                     styles={styles}
@@ -528,10 +637,18 @@ export function PostcardStudio({
                       uri={sticker.uri}
                       initialX={(index % 2 === 0 ? -1 : 1) * (postcardWidth * 0.23)}
                       initialY={postcardHeight * 0.18 + index * 24}
+                      initialScale={sticker.scale}
                       opacity={sticker.opacity}
                       borderRadius={sticker.borderRadius}
                       selected={activeStickerId === sticker.id}
                       onSelect={() => setActiveStickerId(sticker.id)}
+                      onTransformChange={(transform) =>
+                        setCustomStickers((current) =>
+                          current.map((item) =>
+                            item.id === sticker.id ? { ...item, ...transform } : item,
+                          ),
+                        )
+                      }
                       styles={styles}
                     />
                   ))}
@@ -911,6 +1028,15 @@ export function PostcardStudio({
             </View>
 
             <Pressable
+              testID="postcard-save-project"
+              accessibilityRole="button"
+              disabled={projectSaving}
+              onPress={() => void saveProject()}
+              style={({ pressed }) => [styles.secondarySaveButton, pressed && styles.pressed]}
+            >
+              {projectSaving ? <ActivityIndicator color={colors.primary} /> : <><Feather name="save" size={18} color={colors.primary} /><Text style={styles.secondarySaveText}>ذخیره‌ی پروژه</Text></>}
+            </Pressable>
+            <Pressable
               testID="postcard-save"
               accessibilityRole="button"
               accessibilityLabel="ذخیره عکس‌نوشته در گالری"
@@ -958,6 +1084,8 @@ function DraggableLyrics({
   textSize,
   textStyle,
   alignment,
+  initialTransform,
+  onTransformChange,
   width,
   top,
   styles,
@@ -969,16 +1097,18 @@ function DraggableLyrics({
   textSize: number;
   textStyle: { fontFamily: string; fontWeight?: '700' | '500' };
   alignment: TextAlignment;
+  initialTransform: PostcardTransform;
+  onTransformChange: (transform: PostcardTransform) => void;
   width: number;
   top: number;
   styles: ReturnType<typeof createStyles>;
 }) {
-  const x = useSharedValue(0);
-  const y = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
-  const startScale = useSharedValue(1);
+  const x = useSharedValue(initialTransform.x);
+  const y = useSharedValue(initialTransform.y);
+  const scale = useSharedValue(initialTransform.scale);
+  const startX = useSharedValue(initialTransform.x);
+  const startY = useSharedValue(initialTransform.y);
+  const startScale = useSharedValue(initialTransform.scale);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { scale: scale.value }],
   }));
@@ -993,6 +1123,9 @@ function DraggableLyrics({
       .onUpdate((event) => {
         x.value = startX.value + event.translationX;
         y.value = startY.value + event.translationY;
+      })
+      .onEnd(() => {
+        runOnJS(onTransformChange)({ x: x.value, y: y.value, scale: scale.value });
       }),
     Gesture.Pinch()
       .onStart(() => {
@@ -1000,6 +1133,9 @@ function DraggableLyrics({
       })
       .onUpdate((event) => {
         scale.value = Math.min(2.2, Math.max(0.62, startScale.value * event.scale));
+      })
+      .onEnd(() => {
+        runOnJS(onTransformChange)({ x: x.value, y: y.value, scale: scale.value });
       }),
   );
 
@@ -1031,27 +1167,31 @@ function DraggableSticker({
   uri,
   initialX,
   initialY,
+  initialScale,
   opacity,
   borderRadius,
   selected,
   onSelect,
+  onTransformChange,
   styles,
 }: {
   uri: string;
   initialX: number;
   initialY: number;
+  initialScale: number;
   opacity: number;
   borderRadius: number;
   selected: boolean;
   onSelect: () => void;
+  onTransformChange: (transform: PostcardTransform) => void;
   styles: ReturnType<typeof createStyles>;
 }) {
   const x = useSharedValue(initialX);
   const y = useSharedValue(initialY);
-  const scale = useSharedValue(1);
+  const scale = useSharedValue(initialScale);
   const startX = useSharedValue(initialX);
   const startY = useSharedValue(initialY);
-  const startScale = useSharedValue(1);
+  const startScale = useSharedValue(initialScale);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { scale: scale.value }],
   }));
@@ -1066,6 +1206,9 @@ function DraggableSticker({
       .onUpdate((event) => {
         x.value = startX.value + event.translationX;
         y.value = startY.value + event.translationY;
+      })
+      .onEnd(() => {
+        runOnJS(onTransformChange)({ x: x.value, y: y.value, scale: scale.value });
       }),
     Gesture.Pinch()
       .onStart(() => {
@@ -1073,6 +1216,9 @@ function DraggableSticker({
       })
       .onUpdate((event) => {
         scale.value = Math.min(2.8, Math.max(0.35, startScale.value * event.scale));
+      })
+      .onEnd(() => {
+        runOnJS(onTransformChange)({ x: x.value, y: y.value, scale: scale.value });
       }),
   );
 
@@ -1469,6 +1615,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     formatOptionSelected: { backgroundColor: colors.primary },
     formatText: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700' },
     formatTextSelected: { color: colors.primaryForeground },
+    secondarySaveButton: { width: '100%', minHeight: 48, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary, marginBottom: 10 },
+    secondarySaveText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
     saveButton: { width: '100%', minHeight: 52, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 16, backgroundColor: colors.primary },
     saveButtonDisabled: { opacity: 0.6 },
     saveButtonText: { color: colors.primaryForeground, fontSize: 14, fontWeight: '700' },

@@ -176,7 +176,7 @@ export async function askGeminiChat(
   if (!cleanKey) throw new Error('کلید Gemini تنظیم نشده است.');
   if (!cleanMessage) throw new Error('پیام خالی است.');
   const model = normalizeModelName(selectedModel) || DEFAULT_GEMINI_MODEL;
-  const recentConversation = conversation.slice(-10);
+  const recentConversation = conversation.slice(-20);
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cleanKey)}`,
