@@ -52,8 +52,9 @@ export function MiniPlayer() {
           <View style={styles.copy}>
             <Text style={styles.title} numberOfLines={1}>{audio.track.title}</Text>
             <Text style={styles.subtitle} numberOfLines={1}>
-              {audio.error || audio.track.versionName || audio.track.artistName || 'در حال پخش'}
+              {audio.track.versionName || audio.track.artistName || 'در حال پخش'}
             </Text>
+            {audio.error ? <Text style={styles.error} numberOfLines={1}>{audio.error}</Text> : null}
           </View>
         </Pressable>
         <Pressable
@@ -84,6 +85,18 @@ export function MiniPlayer() {
         >
           <Feather name="skip-forward" size={17} color={colors.foreground} />
         </Pressable>
+        <View pointerEvents="none" style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${audio.durationMillis > 0
+                  ? Math.min(100, Math.max(0, (audio.positionMillis / audio.durationMillis) * 100))
+                  : 0}%`,
+              },
+            ]}
+          />
+        </View>
       </View>
     </View>
   );
@@ -99,12 +112,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       elevation: 10,
     },
     card: {
-      minHeight: 64,
-      flexDirection: 'row',
+      minHeight: 76,
+      flexDirection: 'row-reverse',
       alignItems: 'center',
       gap: 10,
       paddingHorizontal: 9,
-      paddingVertical: 8,
+      paddingVertical: 9,
       borderRadius: 18,
       borderWidth: 1,
       borderColor: colors.border,
@@ -113,6 +126,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       shadowOpacity: 0.32,
       shadowRadius: 12,
       shadowOffset: { width: 0, height: 4 },
+      position: 'relative',
+      overflow: 'hidden',
     },
     cardTapArea: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
     cover: { width: 46, height: 46, borderRadius: 13, backgroundColor: colors.secondary },
@@ -127,6 +142,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     copy: { flex: 1, alignItems: 'flex-end' },
     title: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
     subtitle: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 4 },
+    error: { color: colors.destructive, fontSize: 9, textAlign: 'right', marginTop: 3 },
     toggle: {
       width: 40,
       height: 40,
@@ -136,12 +152,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.primary,
     },
     next: {
-      width: 36,
-      height: 40,
+      width: 44,
+      height: 44,
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
     },
+    progressTrack: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 3,
+      backgroundColor: colors.secondary,
+    },
+    progressFill: { height: 3, backgroundColor: colors.primary, alignSelf: 'flex-end' },
     disabled: { opacity: 0.4 },
     pressed: { opacity: 0.72 },
   });

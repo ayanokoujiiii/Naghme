@@ -388,7 +388,11 @@ export default function TrackDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
+          <SectionHeading
+            title="مشارکت‌کنندگان"
+            caption={`${credits.length} مشارکت`}
+            description="چه کسی در ساخت این اثر نقش داشته و با چه نقشی."
+          />
           <DetailCard>
             {credits.map((credit) => (
               <View key={credit.id} style={styles.creditRow}>

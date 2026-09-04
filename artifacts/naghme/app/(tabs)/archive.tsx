@@ -125,7 +125,13 @@ export default function ArchiveScreen() {
           testID={`track-play-${item.id}`}
           accessibilityRole="button"
           accessibilityLabel={`پخش ${item.title} و ادامه‌ی صف`}
-          onPress={() => void playTracksInQueue(tracks, tracks.findIndex((track) => track.id === item.id))}
+          onPress={() => void playTracksInQueue(
+            tracks.map((track) => ({
+              ...track,
+              artistName: artists.find((artist) => artist.id === track.artistId)?.name ?? null,
+            })),
+            tracks.findIndex((track) => track.id === item.id),
+          )}
           style={({ pressed }) => [styles.itemPlayButton, pressed && styles.pressed]}
         >
           <Feather name="play" size={16} color={colors.primaryForeground} />

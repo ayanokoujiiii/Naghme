@@ -122,9 +122,11 @@ export function DetailRow({
 export function SectionHeading({
   title,
   caption,
+  description,
 }: {
   title: string;
   caption?: string;
+  description?: string;
 }) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -132,6 +134,7 @@ export function SectionHeading({
     <View style={styles.sectionHeading}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
+      {description ? <Text style={styles.sectionDescription}>{description}</Text> : null}
     </View>
   );
 }
@@ -232,6 +235,13 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.mutedForeground,
       fontSize: 12,
       textAlign: 'right',
+    },
+    sectionDescription: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      lineHeight: 18,
+      textAlign: 'right',
+      marginTop: 3,
     },
     actions: {
       flexDirection: 'row-reverse',

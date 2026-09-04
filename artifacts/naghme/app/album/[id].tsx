@@ -352,7 +352,13 @@ export default function AlbumDetailScreen() {
                       testID={`album-track-play-${track.id}`}
                       accessibilityRole="button"
                       accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
-                      onPress={() => void playTracksInQueue(albumTrackEntries, albumTrackEntries.findIndex((entry) => entry.id === track.id))}
+                      onPress={() => void playTracksInQueue(
+                        albumTrackEntries.map((entry) => ({
+                          ...entry,
+                          artistName: albumArtists.find((artist) => artist.artistId === entry.artistId)?.artistName ?? null,
+                        })),
+                        albumTrackEntries.findIndex((entry) => entry.id === track.id),
+                      )}
                       style={({ pressed }) => [styles.trackPlayButton, pressed && styles.pressed]}
                     >
                       <Feather name="play" size={14} color={colors.primaryForeground} />
@@ -373,7 +379,13 @@ export default function AlbumDetailScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
-                  onPress={() => void playTracksInQueue(tracks, index)}
+                  onPress={() => void playTracksInQueue(
+                    tracks.map((item) => ({
+                      ...item,
+                      artistName: albumArtists.find((artist) => artist.artistId === item.artistId)?.artistName ?? null,
+                    })),
+                    index,
+                  )}
                   style={({ pressed }) => [styles.trackPlayButton, pressed && styles.pressed]}
                 >
                   <Feather name="play" size={14} color={colors.primaryForeground} />
@@ -388,7 +400,11 @@ export default function AlbumDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
+          <SectionHeading
+            title="مشارکت‌کنندگان"
+            caption={`${credits.length} مشارکت`}
+            description="چه کسی در ساخت این اثر نقش داشته و با چه نقشی."
+          />
           <DetailCard>
             {credits.map((credit) => (
               <View key={credit.id} style={styles.creditRow}>

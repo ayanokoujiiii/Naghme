@@ -197,6 +197,7 @@ export interface LibraryStats {
 
 export interface HomeTrackRecord extends TrackRecord {
   albumTitle: string | null;
+  artistName: string | null;
 }
 
 export interface MusicGraphRow {
@@ -1613,9 +1614,11 @@ export async function getRecentlyAddedTracks(limit = 6): Promise<HomeTrackRecord
     `SELECT
        Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
        Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
-       Tracks.versionName, Tracks.workId, Tracks.versionId, Albums.title AS albumTitle
+       Tracks.versionName, Tracks.workId, Tracks.versionId, Albums.title AS albumTitle,
+       Artists.name AS artistName
      FROM Tracks
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
      ORDER BY Tracks.rowid DESC
      LIMIT ?`,
     [safeLimit],
@@ -1719,11 +1722,13 @@ export async function getFavoriteTracks(limit = 6): Promise<HomeTrackRecord[]> {
     `SELECT
        Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
        Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
-       Tracks.versionName, Tracks.workId, Tracks.versionId, Albums.title AS albumTitle
+       Tracks.versionName, Tracks.workId, Tracks.versionId, Albums.title AS albumTitle,
+       Artists.name AS artistName
      FROM Tracks
      INNER JOIN PersonalRelationships
        ON PersonalRelationships.trackId = Tracks.id
      LEFT JOIN Albums ON Albums.id = Tracks.albumId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
      WHERE PersonalRelationships.favorite = 1
      ORDER BY Tracks.rowid DESC
      LIMIT ?`,

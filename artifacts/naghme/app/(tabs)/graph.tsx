@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +23,9 @@ import {
   getArtistAlbumLinks,
   getArtists,
   getTracks,
+  getWorks,
   TrackRecord,
+  WorkRecord,
 } from '@/src/db/queries';
 import {
   getMusicGraphNeighborhood,
@@ -41,6 +44,7 @@ type BrowseData = {
   artists: GraphArtist[];
   unassignedAlbums: GraphAlbum[];
   unassignedTracks: TrackRecord[];
+  works: WorkRecord[];
 };
 type FocusRef = {
   id: string;
@@ -50,6 +54,12 @@ type FocusRef = {
 type RelationGroupKey = 'credits' | 'relatedArtists' | 'artists' | 'albums' | 'tracks' | 'workVersion';
 type RelationFilter = RelationGroupKey | 'all';
 type GraphQueueTrack = TrackRecord & { artistName: string | null };
+type RelationPickerItem = {
+  id: string;
+  type: MusicGraphNodeType;
+  label: string;
+  meta: string;
+};
 
 const RELATION_LIMIT = 6;
 
@@ -71,6 +81,8 @@ export default function GraphScreen() {
   const [history, setHistory] = useState<FocusRef[]>([]);
   const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
   const [relationLimits, setRelationLimits] = useState<Record<string, number>>({});
+  const [relationSearch, setRelationSearch] = useState<string>('');
+  const [ignoreRequestedFocus, setIgnoreRequestedFocus] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [relationLoading, setRelationLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -80,10 +92,11 @@ export default function GraphScreen() {
     setLoading(true);
     setError('');
     try {
-      const [artistItems, albumItems, trackItems] = await Promise.all([
+      const [artistItems, albumItems, trackItems, workItems] = await Promise.all([
         getArtists(),
         getAlbums(),
         getTracks(),
+        getWorks(),
       ]);
       const [artistLinks, albumTrackLists] = await Promise.all([
         Promise.all(artistItems.map((artist) => getArtistAlbumLinks(artist.id))),
@@ -116,6 +129,7 @@ export default function GraphScreen() {
         artists: nextArtists,
         unassignedAlbums: nextUnassignedAlbums,
         unassignedTracks: trackItems.filter((track) => !albumTrackIds.has(track.id)),
+        works: workItems,
       });
       const nextExpanded: ExpandedState = {};
       nextArtists.forEach((artist) => {
@@ -161,7 +175,7 @@ export default function GraphScreen() {
 
   useEffect(() => {
     if (viewMode !== 'relations' || relationLoading) return;
-    if (requestedFocusId) {
+    if (requestedFocusId && !ignoreRequestedFocus) {
       void loadRelations({
         id: requestedFocusId,
         type: requestedFocusType,
@@ -169,15 +183,12 @@ export default function GraphScreen() {
       });
       return;
     }
-    if (!focused && browseData) {
-      const start = chooseBrowseFocus(browseData);
-      if (start) void loadRelations(start);
-    }
   }, [
     browseData,
     loadRelations,
     requestedFocusId,
     requestedFocusType,
+    ignoreRequestedFocus,
     viewMode,
   ]);
 
@@ -223,6 +234,14 @@ export default function GraphScreen() {
     if (focused) setHistory((current) => [...current, focused]);
     setViewMode('relations');
     void loadRelations({ id: node.id, type: node.type, label: node.label });
+  };
+
+  const clearRelationFocus = () => {
+    setFocused(null);
+    setRelationData(null);
+    setHistory([]);
+    setRelationSearch('');
+    setIgnoreRequestedFocus(true);
   };
 
   const goBack = () => {
@@ -318,6 +337,8 @@ export default function GraphScreen() {
               data={browseData}
               expanded={expanded}
               onToggle={toggleExpanded}
+              onExpandAll={() => setExpanded(createExpandedState(browseData, true))}
+              onCollapseAll={() => setExpanded(createExpandedState(browseData, false))}
               onPlayAlbum={(album) => void playQueue(album.tracks)}
               onPlayTrack={(track) => void playBrowseTrack(track)}
               colors={colors}
@@ -344,15 +365,22 @@ export default function GraphScreen() {
               ...current,
               [key]: (current[key] ?? RELATION_LIMIT) + RELATION_LIMIT,
             }))}
+            onChangeFocus={clearRelationFocus}
             colors={colors}
             styles={styles}
           />
         ) : (
-          <View style={styles.emptyState}>
-            <Feather name="share-2" size={28} color={colors.mutedForeground} />
-            <Text style={styles.emptyTitle}>رابطه‌ای برای نمایش نیست</Text>
-            <Text style={styles.emptyText}>از حالت مرور یک هنرمند، آلبوم یا قطعه را انتخاب کن.</Text>
-          </View>
+          <RelationsPicker
+            data={browseData}
+            query={relationSearch}
+            onQueryChange={setRelationSearch}
+            onSelect={(item) => {
+              setHistory([]);
+              void loadRelations({ id: item.id, type: item.type, label: item.label });
+            }}
+            colors={colors}
+            styles={styles}
+          />
         )}
       </ScrollView>
       {toast ? (
@@ -369,6 +397,8 @@ function BrowseView({
   data,
   expanded,
   onToggle,
+  onExpandAll,
+  onCollapseAll,
   onPlayAlbum,
   onPlayTrack,
   colors,
@@ -377,6 +407,8 @@ function BrowseView({
   data: BrowseData;
   expanded: ExpandedState;
   onToggle: (key: string) => void;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
   onPlayAlbum: (album: GraphAlbum) => void;
   onPlayTrack: (track: TrackRecord) => void;
   colors: ReturnType<typeof useColors>;
@@ -395,6 +427,26 @@ function BrowseView({
 
   return (
     <View style={styles.tree}>
+      <View style={styles.treeActions}>
+        <Pressable
+          testID="graph-expand-all"
+          accessibilityRole="button"
+          onPress={onExpandAll}
+          style={({ pressed }) => [styles.treeAction, pressed && styles.pressed]}
+        >
+          <Feather name="plus-square" size={15} color={colors.primary} />
+          <Text style={styles.treeActionText}>باز کردن همه</Text>
+        </Pressable>
+        <Pressable
+          testID="graph-collapse-all"
+          accessibilityRole="button"
+          onPress={onCollapseAll}
+          style={({ pressed }) => [styles.treeAction, pressed && styles.pressed]}
+        >
+          <Feather name="minus-square" size={15} color={colors.mutedForeground} />
+          <Text style={styles.treeActionText}>بستن همه</Text>
+        </Pressable>
+      </View>
       {data.artists.map((artist) => (
         <View key={artist.id} style={styles.artistBranch}>
           <BrowseArtistRow
@@ -461,6 +513,111 @@ function BrowseView({
   );
 }
 
+function RelationsPicker({
+  data,
+  query,
+  onQueryChange,
+  onSelect,
+  colors,
+  styles,
+}: {
+  data: BrowseData | null;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onSelect: (item: RelationPickerItem) => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const items = useMemo<RelationPickerItem[]>(() => {
+    if (!data) return [];
+    const artists = data.artists.map((artist) => ({
+      id: artist.id,
+      type: 'artist' as const,
+      label: artist.name,
+      meta: `${artist.albums.length} آلبوم`,
+    }));
+    const albums = [
+      ...data.artists.flatMap((artist) => artist.albums),
+      ...data.unassignedAlbums,
+    ].filter((album, index, all) => all.findIndex((candidate) => candidate.id === album.id) === index)
+      .map((album) => ({
+        id: album.id,
+        type: 'album' as const,
+        label: album.title,
+        meta: `${album.tracks.length} قطعه`,
+      }));
+    const tracks = [
+      ...data.artists.flatMap((artist) => artist.albums.flatMap((album) => album.tracks)),
+      ...data.unassignedTracks,
+    ].filter((track, index, all) => all.findIndex((candidate) => candidate.id === track.id) === index)
+      .map((track) => ({
+        id: track.id,
+        type: 'track' as const,
+        label: track.title,
+        meta: 'قطعه',
+      }));
+    const works = data.works.map((work) => ({
+      id: work.id,
+      type: 'work' as const,
+      label: work.title,
+      meta: 'اثر',
+    }));
+    return [...artists, ...albums, ...tracks, ...works];
+  }, [data]);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const results = normalizedQuery
+    ? items.filter((item) => item.label.toLocaleLowerCase().includes(normalizedQuery))
+    : items
+      .filter((item) => item.type === 'artist')
+      .sort((a, b) => Number(b.meta.split(' ')[0]) - Number(a.meta.split(' ')[0]))
+      .slice(0, 5);
+
+  return (
+    <View style={styles.picker}>
+      <View style={styles.pickerHeading}>
+        <View style={styles.pickerHeadingCopy}>
+          <Text style={styles.emptyTitle}>انتخاب موجودیت</Text>
+          <Text style={styles.pickerHint}>هنرمند، آلبوم، قطعه یا اثر را برای دیدن رابطه‌ها انتخاب کن.</Text>
+        </View>
+        <Feather name="search" size={20} color={colors.primary} />
+      </View>
+      <View style={styles.pickerInputWrap}>
+        <Feather name="search" size={17} color={colors.mutedForeground} />
+        <TextInput
+          testID="graph-relation-search"
+          value={query}
+          onChangeText={onQueryChange}
+          placeholder="جست‌وجو در آرشیو…"
+          placeholderTextColor={colors.mutedForeground}
+          style={styles.pickerInput}
+          textAlign="right"
+          autoCorrect={false}
+        />
+      </View>
+      <Text style={styles.pickerSectionLabel}>{normalizedQuery ? 'نتیجه‌های جست‌وجو' : 'پیشنهادهای سریع'}</Text>
+      {results.length ? results.map((item) => (
+        <Pressable
+          key={`${item.type}:${item.id}`}
+          testID={`graph-relation-picker-${item.type}-${item.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`انتخاب ${item.label}`}
+          onPress={() => onSelect(item)}
+          style={({ pressed }) => [styles.pickerResult, pressed && styles.pressed]}
+        >
+          <Feather name={artworkIcon(item.type)} size={17} color={artworkIconColor(item.type, colors)} />
+          <View style={styles.pickerResultCopy}>
+            <Text style={styles.pickerResultTitle} numberOfLines={1}>{item.label}</Text>
+            <Text style={styles.pickerResultMeta}>{nodeTypeLabel(item.type)} · {item.meta}</Text>
+          </View>
+          <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
+        </Pressable>
+      )) : (
+        <Text style={styles.pickerEmpty}>موردی با این نام پیدا نشد.</Text>
+      )}
+    </View>
+  );
+}
+
 function BrowseArtistRow({
   artist,
   expanded,
@@ -479,8 +636,8 @@ function BrowseArtistRow({
       <Pressable
         testID={`graph-browse-artist-${artist.id}`}
         accessibilityRole="button"
-        accessibilityLabel={`باز کردن صفحه‌ی ${artist.name}`}
-        onPress={() => router.push(`/artist/${artist.id}`)}
+        accessibilityLabel={expanded ? `بستن آلبوم‌های ${artist.name}` : `باز کردن آلبوم‌های ${artist.name}`}
+        onPress={onToggle}
         style={({ pressed }) => [styles.artistContent, pressed && styles.pressed]}
       >
         <Artwork uri={artist.profileImage ?? artist.image} kind="artist" size={62} colors={colors} styles={styles} />
@@ -489,20 +646,25 @@ function BrowseArtistRow({
           <Text style={styles.nodeCaption}>
             {artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
           </Text>
+          {artist.albums.length ? (
+            <Text style={styles.expandHint}>{expanded ? 'برای بستن آلبوم‌ها بزن' : 'برای دیدن آلبوم‌ها بزن'}</Text>
+          ) : null}
         </View>
-        <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+        <View style={styles.expandIndicator}>
+          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.primary} />
+          <Text style={styles.expandIndicatorText}>{expanded ? 'باز' : 'بسته'}</Text>
+        </View>
       </Pressable>
-      {artist.albums.length ? (
-        <Pressable
-          testID={`graph-browse-toggle-artist-${artist.id}`}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? 'بستن آلبوم‌های هنرمند' : 'باز کردن آلبوم‌های هنرمند'}
-          onPress={onToggle}
-          style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
-        >
-          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={19} color={colors.mutedForeground} />
-        </Pressable>
-      ) : null}
+      <Pressable
+        testID={`graph-browse-artist-details-${artist.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`باز کردن صفحه‌ی ${artist.name}`}
+        onPress={() => router.push(`/artist/${artist.id}`)}
+        style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
+      >
+        <Feather name="arrow-left" size={14} color={colors.primary} />
+        <Text style={styles.detailsButtonText}>صفحه‌ی هنرمند</Text>
+      </Pressable>
     </View>
   );
 }
@@ -530,16 +692,32 @@ function BrowseAlbumBranch({
         <Pressable
           testID={`graph-browse-album-${album.id}`}
           accessibilityRole="button"
-          accessibilityLabel={`باز کردن صفحه‌ی ${album.title}`}
-          onPress={() => router.push(`/album/${album.id}`)}
+          accessibilityLabel={expanded ? `بستن قطعه‌های ${album.title}` : `باز کردن قطعه‌های ${album.title}`}
+          onPress={onToggle}
           style={({ pressed }) => [styles.albumContent, pressed && styles.pressed]}
         >
           <Artwork uri={album.coverImage} kind="album" size={40} colors={colors} styles={styles} />
           <View style={styles.nodeCopy}>
             <Text style={styles.nodeTitle} numberOfLines={2}>{album.title}</Text>
             <Text style={styles.nodeCaption}>{album.tracks.length ? `${album.tracks.length} قطعه` : 'بدون قطعه'}</Text>
+            {album.tracks.length ? (
+              <Text style={styles.expandHint}>{expanded ? 'برای بستن قطعه‌ها بزن' : 'برای دیدن قطعه‌ها بزن'}</Text>
+            ) : null}
           </View>
-          <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
+          <View style={styles.expandIndicator}>
+            <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={17} color={colors.primary} />
+            <Text style={styles.expandIndicatorText}>{expanded ? 'باز' : 'بسته'}</Text>
+          </View>
+        </Pressable>
+        <Pressable
+          testID={`graph-browse-album-details-${album.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`باز کردن صفحه‌ی ${album.title}`}
+          onPress={() => router.push(`/album/${album.id}`)}
+          style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
+        >
+          <Feather name="arrow-left" size={13} color={colors.primary} />
+          <Text style={styles.detailsButtonText}>صفحه‌ی آلبوم</Text>
         </Pressable>
         <Pressable
           testID={`graph-play-album-${album.id}`}
@@ -550,17 +728,6 @@ function BrowseAlbumBranch({
         >
           <Feather name="play" size={15} color={colors.primaryForeground} />
         </Pressable>
-        {album.tracks.length ? (
-          <Pressable
-            testID={`graph-toggle-album-${album.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={expanded ? 'بستن قطعه‌های آلبوم' : 'باز کردن قطعه‌های آلبوم'}
-            onPress={onToggle}
-            style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
-          >
-            <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.mutedForeground} />
-          </Pressable>
-        ) : null}
       </View>
       {expanded ? (
         <View style={styles.trackChildren}>
@@ -632,6 +799,7 @@ function RelationsView({
   onPlayFocused,
   onPlayNode,
   onShowMore,
+  onChangeFocus,
   colors,
   styles,
 }: {
@@ -648,6 +816,7 @@ function RelationsView({
   onPlayFocused: () => void;
   onPlayNode: (node: MusicGraphNode) => void;
   onShowMore: (key: RelationGroupKey) => void;
+  onChangeFocus: () => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
@@ -684,6 +853,15 @@ function RelationsView({
       </View>
 
       <View style={styles.focusActions}>
+        <Pressable
+          testID="graph-change-focus"
+          accessibilityRole="button"
+          onPress={onChangeFocus}
+          style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+        >
+          <Feather name="search" size={16} color={colors.primary} />
+          <Text style={styles.secondaryActionText}>تغییر موجودیت</Text>
+        </Pressable>
         <Pressable
           testID="graph-open-details"
           accessibilityRole="button"
@@ -756,7 +934,10 @@ function RelationsView({
             return (
               <View key={group.key} style={styles.relationGroup}>
                 <View style={styles.groupHeading}>
-                  <Text style={styles.groupTitle}>{group.label}</Text>
+                  <View style={styles.groupHeadingCopy}>
+                    <Text style={styles.groupTitle}>{group.label}</Text>
+                    <Text style={styles.groupDescription}>{relationGroupDescription(group.key)}</Text>
+                  </View>
                   <Text style={styles.groupCount}>{group.edges.length.toString()}</Text>
                 </View>
                 <View style={styles.relationCard}>
@@ -910,6 +1091,12 @@ function groupRelationEdges(
     .map((key) => ({ key, label: labels[key], edges: groups.get(key) ?? [] }));
 }
 
+function relationGroupDescription(key: RelationGroupKey): string {
+  if (key === 'credits') return 'چه کسی در ساخت این اثر نقش داشته و با چه نقشی.';
+  if (key === 'relatedArtists') return 'رابطه‌ی این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص.';
+  return 'ارتباط ثبت‌شده در آرشیو موسیقی.';
+}
+
 function relationGroupKey(
   edge: MusicGraphEdge,
   focusedType: MusicGraphNodeType | null,
@@ -1048,6 +1235,20 @@ function chooseBrowseFocus(data: BrowseData): FocusRef | null {
   if (album) return { id: album.id, type: 'album', label: album.title };
   const track = data.unassignedTracks[0];
   return track ? { id: track.id, type: 'track', label: track.title } : null;
+}
+
+function createExpandedState(data: BrowseData, expand: boolean): ExpandedState {
+  const next: ExpandedState = {};
+  data.artists.forEach((artist) => {
+    next[`artist:${artist.id}`] = expand;
+    artist.albums.forEach((album) => {
+      next[`album:${album.id}`] = expand;
+    });
+  });
+  data.unassignedAlbums.forEach((album) => {
+    next[`album:${album.id}`] = expand;
+  });
+  return next;
 }
 
 function parseNodeType(value: string | undefined): MusicGraphNodeType | null {
@@ -1190,7 +1391,35 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     artistCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
     artistTitle: { color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
-    toggle: { width: 31, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+    treeActions: { flexDirection: 'row-reverse', gap: 8, marginBottom: 2 },
+    treeAction: {
+      minHeight: 44,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingHorizontal: 11,
+      borderRadius: 13,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    treeActionText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
+    expandHint: { color: colors.mutedForeground, fontSize: 10, lineHeight: 16, marginTop: 3, textAlign: 'right' },
+    expandIndicator: { alignItems: 'center', justifyContent: 'center', gap: 1, minWidth: 36 },
+    expandIndicatorText: { color: colors.primary, fontSize: 9, fontWeight: '700' },
+    detailsButton: {
+      minWidth: 44,
+      minHeight: 44,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingHorizontal: 7,
+      borderRadius: 12,
+      backgroundColor: withAlpha(colors.primary, 0.1),
+    },
+    detailsButtonText: { color: colors.primary, fontSize: 10, fontWeight: '700', textAlign: 'center' },
     children: { borderRightWidth: 1, borderRightColor: colors.border, marginRight: 28, paddingRight: 10, marginTop: 8, gap: 9 },
     albumBranch: { gap: 7 },
     albumRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
@@ -1212,9 +1441,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     nodeTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     nodeCaption: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
     smallPlayButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 13,
+      width: 44,
+      height: 44,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primary,
@@ -1259,7 +1488,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     focusEyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'right' },
     focusTitle: { color: colors.foreground, fontSize: 20, lineHeight: 27, fontWeight: '700', marginTop: 4, textAlign: 'right' },
     focusMeta: { color: colors.mutedForeground, fontSize: 12, marginTop: 5, textAlign: 'right' },
-    focusActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 11 },
+    focusActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 11 },
     primaryAction: {
       flex: 1,
       minHeight: 45,
@@ -1286,6 +1515,42 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       paddingHorizontal: 10,
     },
     secondaryActionText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    picker: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 22,
+      padding: 15,
+    },
+    pickerHeading: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 },
+    pickerHeadingCopy: { flex: 1, alignItems: 'flex-end' },
+    pickerHint: { color: colors.mutedForeground, fontSize: 12, lineHeight: 20, textAlign: 'right', marginTop: 5 },
+    pickerInputWrap: {
+      minHeight: 48,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 14,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pickerInput: { flex: 1, color: colors.foreground, fontSize: 13, minHeight: 44 },
+    pickerSectionLabel: { color: colors.mutedForeground, fontSize: 11, fontWeight: '700', textAlign: 'right', marginTop: 15, marginBottom: 7 },
+    pickerResult: {
+      minHeight: 54,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    pickerResultCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+    pickerResultTitle: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+    pickerResultMeta: { color: colors.mutedForeground, fontSize: 10, marginTop: 3, textAlign: 'right' },
+    pickerEmpty: { color: colors.mutedForeground, fontSize: 12, textAlign: 'right', paddingVertical: 20 },
     backButton: {
       minHeight: 42,
       flexDirection: 'row-reverse',
@@ -1316,7 +1581,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     relationGroups: { gap: 15, marginTop: 18 },
     relationGroup: { gap: 8 },
     groupHeading: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 3 },
-    groupTitle: { flex: 1, color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+    groupHeadingCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+    groupTitle: { color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+    groupDescription: { color: colors.mutedForeground, fontSize: 10, lineHeight: 17, textAlign: 'right', marginTop: 3 },
     groupCount: {
       minWidth: 27,
       height: 27,

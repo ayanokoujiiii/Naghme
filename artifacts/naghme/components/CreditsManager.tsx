@@ -219,7 +219,6 @@ export function CreditsManager({
     );
   };
 
-  const targetLabel = targetType === 'track' ? 'قطعه' : 'آلبوم';
   const selectedArtist = artists.find((artist) => artist.id === selectedArtistId);
   const selectedRole = roles.find((role) => role.id === selectedRoleId);
 
@@ -228,7 +227,8 @@ export function CreditsManager({
       <View style={styles.headingRow}>
         <View style={styles.headingCopy}>
           <Text style={styles.heading}>مشارکت‌کنندگان</Text>
-          <Text style={styles.hint}>عوامل و نقش‌های این {targetLabel}</Text>
+          <Text style={styles.hint}>چه کسی در ساخت این اثر نقش داشته و با چه نقشی.</Text>
+          <Text style={styles.hint}>مشارکت همیشه به یک قطعه، آلبوم یا اثر مشخص وصل است.</Text>
         </View>
         <Pressable
           testID={`${targetType}-credit-add`}

@@ -258,7 +258,7 @@ export default function SettingsScreen() {
           ) : (
             <Feather name="refresh-cw" size={16} color={colors.primary} />
           )}
-          <Text style={styles.modelFetchButtonText}>استعلام مدل‌های در دسترس</Text>
+          <Text style={styles.modelFetchButtonText}>دیدن مدل‌های موجود</Text>
         </Pressable>
         {geminiKeyMessage ? <Text style={styles.aiMessage}>{geminiKeyMessage}</Text> : null}
         {availableModels.length ? (
@@ -310,7 +310,7 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>خروجی گرفتن از آرشیو</Text>
-          <Text style={styles.actionDescription}>یک فایل JSON از هنرمندها، آلبوم‌ها، قطعه‌ها و رابطه‌های شخصی بساز.</Text>
+          <Text style={styles.actionDescription}>یک فایل پشتیبان از هنرمندها، آلبوم‌ها، قطعه‌ها و رابطه‌های شخصی بساز.</Text>
         </View>
         <Pressable
           testID="export-archive"
@@ -337,7 +337,7 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>بازیابی اطلاعات</Text>
-          <Text style={styles.actionDescription}>یک فایل پشتیبان JSON را انتخاب کن تا اطلاعات آرشیو روی این دستگاه بازنویسی شود.</Text>
+          <Text style={styles.actionDescription}>یک فایل پشتیبان را انتخاب کن تا اطلاعات آرشیو روی این دستگاه بازنویسی شود.</Text>
         </View>
         <Pressable
           testID="restore-archive"

@@ -538,6 +538,7 @@ export default function ArtistDetailScreen() {
         <SectionHeading
           title="هنرمندان مرتبط"
           caption={relationships.length ? `${relationships.length} ارتباط` : 'همکار، استاد، الهام‌بخش…'}
+          description="رابطه‌ی این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص."
         />
         <Pressable
           testID="artist-add-relationship"
@@ -653,6 +654,7 @@ export default function ArtistDetailScreen() {
         tracks={tracks}
         albums={artistAlbums}
         albumTracks={artistAlbumTracks}
+        artistName={artist.name}
         styles={styles}
         colors={colors}
         onTrackPress={(trackId) => router.push(`/track/${trackId}`)}
@@ -660,7 +662,11 @@ export default function ArtistDetailScreen() {
 
       {credits.length > 0 ? (
         <>
-          <SectionHeading title="مشارکت‌کنندگان" caption={`${credits.length} مشارکت`} />
+          <SectionHeading
+            title="مشارکت‌کنندگان"
+            caption={`${credits.length} مشارکت`}
+            description="چه کسی در ساخت این اثر نقش داشته و با چه نقشی."
+          />
           <DetailCard>
             {credits.map((credit) => (
               <CreditRow
@@ -693,6 +699,9 @@ export default function ArtistDetailScreen() {
               <View style={styles.relationshipModalCopy}>
                 <Text style={styles.relationshipModalTitle}>هنرمند مرتبط</Text>
                 <Text style={styles.relationshipModalSubtitle}>یک هنرمند موجود را انتخاب کن</Text>
+              <Text style={styles.relationshipModalHint}>
+                اینجا رابطه‌ی مستقیم دو هنرمند را ثبت می‌کنی؛ مستقل از قطعه یا آلبوم و بدون نقش مشارکت.
+              </Text>
               </View>
             </View>
             <TextInput
@@ -937,6 +946,7 @@ function Discography({
   tracks,
   albums,
   albumTracks,
+  artistName,
   styles,
   colors,
   onTrackPress,
@@ -944,6 +954,7 @@ function Discography({
   tracks: TrackRecord[];
   albums: AlbumRecord[];
   albumTracks: AlbumTrackRecord[];
+  artistName: string;
   styles: ReturnType<typeof createStyles>;
   colors: ReturnType<typeof useColors>;
   onTrackPress: (trackId: string) => void;
@@ -994,7 +1005,10 @@ function Discography({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`پخش ${track.title} و ادامه‌ی آلبوم`}
-                  onPress={() => void playTracksInQueue(albumTracks, index)}
+                  onPress={() => void playTracksInQueue(
+                    albumTracks.map((item) => ({ ...item, artistName })),
+                    index,
+                  )}
                   style={({ pressed }) => [styles.discographyPlayButton, pressed && styles.pressed]}
                 >
                   <Feather name="play" size={13} color={colors.primaryForeground} />
@@ -1022,7 +1036,10 @@ function Discography({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`پخش ${track.title} و ادامه‌ی تک‌آهنگ‌ها`}
-                onPress={() => void playTracksInQueue(singles, index)}
+                onPress={() => void playTracksInQueue(
+                  singles.map((item) => ({ ...item, artistName })),
+                  index,
+                )}
                 style={({ pressed }) => [styles.discographyPlayButton, pressed && styles.pressed]}
               >
                 <Feather name="play" size={13} color={colors.primaryForeground} />
@@ -1176,6 +1193,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     relationshipModalCopy: { flex: 1, alignItems: 'flex-end' },
     relationshipModalTitle: { color: colors.foreground, fontSize: 17, fontWeight: '700', textAlign: 'right' },
     relationshipModalSubtitle: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    relationshipModalHint: { color: colors.primary, fontSize: 10, lineHeight: 17, marginTop: 5, textAlign: 'right' },
     modalClose: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center' },
     relationshipSearch: {
       minHeight: 44,

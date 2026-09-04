@@ -157,12 +157,12 @@ export default function HomeScreen() {
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>آرشیو تو</Text>
-        {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.sectionHint}>زنده از SQLite</Text>}
+        {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.sectionHint}>آخرین وضعیت آرشیو</Text>}
       </View>
       <View style={styles.statsRow}>
         <StatCard icon="music" value={stats.tracks} label="قطعه" colors={colors} styles={styles} />
         <StatCard icon="disc" value={stats.albums} label="آلبوم" colors={colors} styles={styles} />
-        <StatCard icon="mic" value={stats.artists} label="خواننده" colors={colors} styles={styles} />
+        <StatCard icon="mic" value={stats.artists} label="هنرمند" colors={colors} styles={styles} />
       </View>
 
       <View style={styles.sectionHeader}>
