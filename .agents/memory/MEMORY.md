@@ -8,3 +8,4 @@
 - [Work and Version foundation](work-version-foundation.md) — keep domain links optional and provenance-safe; never infer Work identity from titles.
 - [Expo audio phase boundary](expo-av-phase-boundary.md) — keep expo-av for SDK 54 playback; Android lock-screen controls remain out of scope.
 - [Git transport for push](git-transport-for-push.md) — synchronize repository history with Git push, not connector content uploads.
+- [Postcard project persistence](postcard-project-persistence.md) — keep studio settings versioned and validate missing device assets without dropping the project.
