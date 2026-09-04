@@ -155,7 +155,7 @@ export default function GraphScreen() {
     try {
       const graph = await getMusicGraphNeighborhood(target.type, target.id);
       const center = graph.nodes.find((node) => node.id === target.id);
-      if (!center) throw new Error('موجودیت انتخاب‌شده در آرشیو پیدا نشد.');
+      if (!center) throw new Error('این مورد در آرشیو پیدا نشد.');
       setRelationData(graph);
       setFocused({ id: center.id, type: center.type, label: center.label });
       setRelationFilter('all');
@@ -179,7 +179,7 @@ export default function GraphScreen() {
       void loadRelations({
         id: requestedFocusId,
         type: requestedFocusType,
-        label: 'موجودیت انتخاب‌شده',
+        label: 'مورد انتخاب‌شده',
       });
       return;
     }
@@ -256,7 +256,7 @@ export default function GraphScreen() {
     const node = relationData.nodes.find((item) => item.id === focused.id);
     const path = node ? routeForNode(node) : null;
     if (path) router.push(path);
-    else showToast('برای این نوع موجودیت صفحه‌ی جزئیات جداگانه‌ای وجود ندارد.');
+    else showToast('برای این مورد صفحه‌ی جداگانه‌ای وجود ندارد.');
   };
 
   const relationNodeMap = useMemo(
@@ -290,7 +290,7 @@ export default function GraphScreen() {
           </View>
         </View>
         <Text style={styles.intro}>
-          آرشیو را به‌صورت درختی مرور کن یا رابطه‌های واقعی هر موجودیت را خوانا ببین.
+          آرشیو را به‌صورت درختی مرور کن یا رابطه‌های هر هنرمند، آلبوم یا قطعه را خوانا ببین.
         </Text>
 
         <View style={styles.modeSwitch} accessibilityRole="tablist">
@@ -576,7 +576,7 @@ function RelationsPicker({
     <View style={styles.picker}>
       <View style={styles.pickerHeading}>
         <View style={styles.pickerHeadingCopy}>
-          <Text style={styles.emptyTitle}>انتخاب موجودیت</Text>
+          <Text style={styles.emptyTitle}>چه چیزی را ببینیم؟</Text>
           <Text style={styles.pickerHint}>هنرمند، آلبوم، قطعه یا اثر را برای دیدن رابطه‌ها انتخاب کن.</Text>
         </View>
         <Feather name="search" size={20} color={colors.primary} />
@@ -642,18 +642,12 @@ function BrowseArtistRow({
       >
         <Artwork uri={artist.profileImage ?? artist.image} kind="artist" size={62} colors={colors} styles={styles} />
         <View style={styles.artistCopy}>
-          <Text style={styles.artistTitle} numberOfLines={2}>{artist.name}</Text>
+          <Text style={styles.artistTitle} numberOfLines={1}>{artist.name}</Text>
           <Text style={styles.nodeCaption}>
             {artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
           </Text>
-          {artist.albums.length ? (
-            <Text style={styles.expandHint}>{expanded ? 'برای بستن آلبوم‌ها بزن' : 'برای دیدن آلبوم‌ها بزن'}</Text>
-          ) : null}
         </View>
-        <View style={styles.expandIndicator}>
-          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.primary} />
-          <Text style={styles.expandIndicatorText}>{expanded ? 'باز' : 'بسته'}</Text>
-        </View>
+        <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.mutedForeground} />
       </Pressable>
       <Pressable
         testID={`graph-browse-artist-details-${artist.id}`}
@@ -662,7 +656,6 @@ function BrowseArtistRow({
         onPress={() => router.push(`/artist/${artist.id}`)}
         style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
       >
-        <Feather name="arrow-left" size={14} color={colors.primary} />
         <Text style={styles.detailsButtonText}>صفحه‌ی هنرمند</Text>
       </Pressable>
     </View>
@@ -698,16 +691,10 @@ function BrowseAlbumBranch({
         >
           <Artwork uri={album.coverImage} kind="album" size={40} colors={colors} styles={styles} />
           <View style={styles.nodeCopy}>
-            <Text style={styles.nodeTitle} numberOfLines={2}>{album.title}</Text>
+            <Text style={styles.nodeTitle} numberOfLines={1}>{album.title}</Text>
             <Text style={styles.nodeCaption}>{album.tracks.length ? `${album.tracks.length} قطعه` : 'بدون قطعه'}</Text>
-            {album.tracks.length ? (
-              <Text style={styles.expandHint}>{expanded ? 'برای بستن قطعه‌ها بزن' : 'برای دیدن قطعه‌ها بزن'}</Text>
-            ) : null}
           </View>
-          <View style={styles.expandIndicator}>
-            <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={17} color={colors.primary} />
-            <Text style={styles.expandIndicatorText}>{expanded ? 'باز' : 'بسته'}</Text>
-          </View>
+          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={17} color={colors.mutedForeground} />
         </Pressable>
         <Pressable
           testID={`graph-browse-album-details-${album.id}`}
@@ -716,7 +703,6 @@ function BrowseAlbumBranch({
           onPress={() => router.push(`/album/${album.id}`)}
           style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
         >
-          <Feather name="arrow-left" size={13} color={colors.primary} />
           <Text style={styles.detailsButtonText}>صفحه‌ی آلبوم</Text>
         </Pressable>
         <Pressable
@@ -769,7 +755,7 @@ function BrowseTrackRow({
         style={({ pressed }) => [styles.trackContent, pressed && styles.pressed]}
       >
         <Feather name="music" size={16} color={colors.accentForeground} />
-        <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+        <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
         <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
       </Pressable>
       <Pressable
@@ -846,7 +832,6 @@ function RelationsView({
           styles={styles}
         />
         <View style={styles.focusCopy}>
-          <Text style={styles.focusEyebrow}>موجودیت کانونی</Text>
           <Text style={styles.focusTitle} numberOfLines={2}>{focusedNode.label}</Text>
           <Text style={styles.focusMeta}>{nodeTypeLabel(focusedNode.type)}</Text>
         </View>
@@ -854,32 +839,32 @@ function RelationsView({
 
       <View style={styles.focusActions}>
         <Pressable
-          testID="graph-change-focus"
-          accessibilityRole="button"
-          onPress={onChangeFocus}
-          style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
-        >
-          <Feather name="search" size={16} color={colors.primary} />
-          <Text style={styles.secondaryActionText}>تغییر موجودیت</Text>
-        </Pressable>
-        <Pressable
-          testID="graph-open-details"
-          accessibilityRole="button"
-          onPress={onOpenDetails}
-          style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
-        >
-          <Feather name="external-link" size={16} color={colors.primary} />
-          <Text style={styles.secondaryActionText}>صفحه‌ی جزئیات</Text>
-        </Pressable>
-        <Pressable
           testID="graph-play-focused"
           accessibilityRole="button"
           onPress={onPlayFocused}
           style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
         >
           <Feather name="play" size={16} color={colors.primaryForeground} />
-          <Text style={styles.primaryActionText}>پخش صف این گره</Text>
+          <Text style={styles.primaryActionText}>پخش این فهرست</Text>
         </Pressable>
+        <View style={styles.focusSecondaryActions}>
+          <Pressable
+            testID="graph-change-focus"
+            accessibilityRole="button"
+            onPress={onChangeFocus}
+            style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.secondaryActionText}>انتخاب دیگر</Text>
+          </Pressable>
+          <Pressable
+            testID="graph-open-details"
+            accessibilityRole="button"
+            onPress={onOpenDetails}
+            style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.secondaryActionText}>صفحه‌ی جزئیات</Text>
+          </Pressable>
+        </View>
       </View>
 
       {previous ? (
@@ -977,7 +962,7 @@ function RelationsView({
         <View style={styles.noRelations}>
           <Feather name="info" size={23} color={colors.mutedForeground} />
           <Text style={styles.noRelationsTitle}>
-            {groups.length ? 'در این فیلتر رابطه‌ای پیدا نشد.' : 'برای این موجودیت رابطه‌ای ثبت نشده است.'}
+            {groups.length ? 'در این فیلتر رابطه‌ای پیدا نشد.' : 'هنوز رابطه‌ای برای این مورد ثبت نشده است.'}
           </Text>
           <Text style={styles.noRelationsText}>
             {groups.length ? 'فیلتر دیگری را امتحان کن.' : emptyRelationHint(focusedNode.type)}
@@ -1178,7 +1163,7 @@ async function playNode(
       .map((track) => ({ ...track, artistName: null }));
   }
   if (!tracks.length) {
-    showToast('فایل قابل پخشی برای این گره پیدا نشد.');
+    showToast('فایل قابل پخشی برای این مورد پیدا نشد.');
     return;
   }
   await playQueue(tracks);
@@ -1405,21 +1390,16 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderColor: colors.border,
     },
     treeActionText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
-    expandHint: { color: colors.mutedForeground, fontSize: 10, lineHeight: 16, marginTop: 3, textAlign: 'right' },
-    expandIndicator: { alignItems: 'center', justifyContent: 'center', gap: 1, minWidth: 36 },
-    expandIndicatorText: { color: colors.primary, fontSize: 9, fontWeight: '700' },
     detailsButton: {
       minWidth: 44,
       minHeight: 44,
-      flexDirection: 'row-reverse',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4,
-      paddingHorizontal: 7,
+      paddingHorizontal: 9,
       borderRadius: 12,
-      backgroundColor: withAlpha(colors.primary, 0.1),
+      backgroundColor: 'transparent',
     },
-    detailsButtonText: { color: colors.primary, fontSize: 10, fontWeight: '700', textAlign: 'center' },
+    detailsButtonText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', textAlign: 'center' },
     children: { borderRightWidth: 1, borderRightColor: colors.border, marginRight: 28, paddingRight: 10, marginTop: 8, gap: 9 },
     albumBranch: { gap: 7 },
     albumRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
@@ -1485,10 +1465,10 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderColor: colors.border,
     },
     focusCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-    focusEyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'right' },
     focusTitle: { color: colors.foreground, fontSize: 20, lineHeight: 27, fontWeight: '700', marginTop: 4, textAlign: 'right' },
     focusMeta: { color: colors.mutedForeground, fontSize: 12, marginTop: 5, textAlign: 'right' },
-    focusActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 11 },
+    focusActions: { gap: 8, marginTop: 11 },
+    focusSecondaryActions: { flexDirection: 'row-reverse', gap: 8 },
     primaryAction: {
       flex: 1,
       minHeight: 45,

@@ -257,13 +257,18 @@ export async function getMusicGraphData(): Promise<MusicGraphData> {
         label: credit.roleName,
       }];
     }),
-    ...artistRelationships.map((relationship) => ({
-      id: `artist-artist:${relationship.artistId}:${relationship.relatedArtistId}`,
-      from: relationship.artistId,
-      to: relationship.relatedArtistId,
-      type: 'artist-artist' as const,
-      label: relationship.description ?? 'رابطه‌ی هنرمندان',
-    })),
+    ...artistRelationships.reduce<MusicGraphEdge[]>((result, relationship) => {
+      const id = artistRelationshipEdgeId(relationship.artistId, relationship.relatedArtistId);
+      if (result.some((edge) => edge.id === id)) return result;
+      result.push({
+        id,
+        from: relationship.artistId,
+        to: relationship.relatedArtistId,
+        type: 'artist-artist',
+        label: relationship.description ?? 'رابطه‌ی هنرمندان',
+      });
+      return result;
+    }, []),
   ];
 
   return { nodes, edges };
@@ -383,7 +388,7 @@ export async function getMusicGraphNeighborhood(
         ? relationship.relatedArtistId
         : relationship.artistId;
       addEdge(
-        `artist-artist:${relationship.id}:${focusId}`,
+        artistRelationshipEdgeId(focusId, relatedArtistId),
         focusId,
         'artist',
         relatedArtistId,
@@ -488,6 +493,10 @@ export async function getMusicGraphNeighborhood(
     nodes: [...nodes.values()],
     edges: edges.map(({ fromType: _fromType, toType: _toType, ...edge }) => edge),
   };
+}
+
+function artistRelationshipEdgeId(firstArtistId: string, secondArtistId: string): string {
+  return `artist-artist:${[firstArtistId, secondArtistId].sort().join(':')}`;
 }
 
 async function resolveNodeType(

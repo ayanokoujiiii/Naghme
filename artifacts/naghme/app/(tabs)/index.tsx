@@ -74,7 +74,7 @@ export default function HomeScreen() {
       await loadHome();
       Alert.alert(
         'داده‌ها آماده‌اند',
-        `${result.artists} هنرمند، ${result.albums} آلبوم و ${result.tracks} قطعه به آرشیو اضافه شد.`,
+        `${result.artists} هنرمند، ${result.albums} آلبوم، ${result.tracks} قطعه، ${result.works} اثر، ${result.versions} نسخه، ${result.credits} مشارکت و ${result.relationships} رابطه‌ی هنرمندان به آرشیو نمونه اضافه شد.`,
       );
     } catch (seedError: unknown) {
       const message = seedError instanceof Error ? seedError.message : 'تزریق داده انجام نشد.';
@@ -213,7 +213,9 @@ export default function HomeScreen() {
         </View>
         <View style={styles.seedCopy}>
           <Text style={styles.seedTitle}>آرشیو را با موسیقی ایرانی شروع کن</Text>
-          <Text style={styles.seedDescription}>داده‌ی نمونه شامل شجریان، کلهر و علیزاده است.</Text>
+          <Text style={styles.seedDescription}>
+            هنرمندها، آلبوم‌ها، قطعه‌ها، اثرها، نسخه‌ها، مشارکت‌ها و رابطه‌های هنرمندان آماده‌ی مشاهده‌اند.
+          </Text>
         </View>
         <Pressable
           testID="inject-sample-data"

@@ -5,6 +5,11 @@ export const SAMPLE_ARTIST_IDS = {
   shajarian: 'sample_artist_shajarian',
   kalhor: 'sample_artist_kalhor',
   alizadeh: 'sample_artist_alizadeh',
+  meshkatian: 'sample_artist_meshkatian',
+  lotfi: 'sample_artist_lotfi',
+  homayoun: 'sample_artist_homayoun',
+  khaleghi: 'sample_artist_khaleghi',
+  taraghi: 'sample_artist_taraghi',
 } as const;
 
 export const SAMPLE_ALBUM_IDS = {
@@ -19,9 +24,24 @@ export const SAMPLE_TRACK_IDS = {
   shabSokoutKavir: 'sample_track_shab_sokout_kavir',
 } as const;
 
+export const SAMPLE_WORK_IDS = {
+  bidad: 'sample_work_bidad',
+  shabSokoutKavir: 'sample_work_shab_sokout_kavir',
+  morghSahar: 'sample_work_morgh_sahar',
+  baharDelneshin: 'sample_work_bahar_delneshin',
+} as const;
+
+export const SAMPLE_VERSION_IDS = {
+  bidadStudio: 'sample_version_bidad_studio',
+  bidadLive: 'sample_version_bidad_live',
+  bidadReinterpretation: 'sample_version_bidad_reinterpretation',
+  shabSokoutKavirLive: 'sample_version_shab_sokout_kavir_live',
+} as const;
+
 export interface SeedArtistAlbumLink {
   artistId: string;
   albumId: string;
+  source: 'explicit' | 'inferred';
 }
 
 /**
@@ -32,10 +52,12 @@ export const SAMPLE_ARTIST_ALBUM_LINKS: readonly SeedArtistAlbumLink[] = [
   {
     artistId: SAMPLE_ARTIST_IDS.shajarian,
     albumId: SAMPLE_ALBUM_IDS.bidad,
+    source: 'explicit',
   },
   {
     artistId: SAMPLE_ARTIST_IDS.kalhor,
     albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir,
+    source: 'inferred',
   },
 ];
 
@@ -71,6 +93,61 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
       'حسین علیزاده آهنگساز، پژوهشگر و نوازندهٔ تار و سه‌تار است. او با آفرینش قطعات ماندگار و موسیقی فیلم، از چهره‌های اثرگذار موسیقی معاصر ایران به شمار می‌رود.',
     genres: 'موسیقی دستگاهی، موسیقی فیلم',
     image: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Hosein_alizadeh2.jpg',
+    profileImage: null,
+    galleryImages: null,
+  },
+  {
+    id: SAMPLE_ARTIST_IDS.meshkatian,
+    name: 'پرویز مشکاتیان',
+    type: 'آهنگساز و نوازندهٔ سنتور',
+    biography:
+      'پرویز مشکاتیان آهنگساز و نوازندهٔ سنتور و از چهره‌های اثرگذار موسیقی دستگاهی ایران بود. آثار او در پیوند با گروه عارف و اجرای خوانندگان برجسته شناخته می‌شوند.',
+    genres: 'موسیقی دستگاهی، موسیقی سنتی',
+    image: null,
+    profileImage: null,
+    galleryImages: null,
+  },
+  {
+    id: SAMPLE_ARTIST_IDS.lotfi,
+    name: 'محمدرضا لطفی',
+    type: 'آهنگساز و نوازندهٔ تار',
+    biography:
+      'محمدرضا لطفی آهنگساز و نوازندهٔ تار و سه‌تار و از پایه‌گذاران گروه شیدا بود. میراث او بخشی مهم از موسیقی دستگاهی معاصر ایران است.',
+    genres: 'موسیقی دستگاهی، موسیقی سنتی',
+    image: null,
+    profileImage: null,
+    galleryImages: null,
+  },
+  {
+    id: SAMPLE_ARTIST_IDS.homayoun,
+    name: 'همایون شجریان',
+    type: 'خواننده و نوازندهٔ تنبک',
+    biography:
+      'همایون شجریان خواننده و نوازندهٔ تنبک است که در کنار فعالیت مستقل، در بخشی از مسیر هنری خود با پدرش محمدرضا شجریان همکاری داشته است.',
+    genres: 'موسیقی دستگاهی، موسیقی تلفیقی',
+    image: null,
+    profileImage: null,
+    galleryImages: null,
+  },
+  {
+    id: SAMPLE_ARTIST_IDS.khaleghi,
+    name: 'روح‌الله خالقی',
+    type: 'آهنگساز و تنظیم‌کننده',
+    biography:
+      'روح‌الله خالقی آهنگساز، موسیقی‌دان و نویسندهٔ ایرانی و از چهره‌های مهم شکل‌گیری موسیقی ملی ایران بود.',
+    genres: 'موسیقی ملی، تصنیف',
+    image: null,
+    profileImage: null,
+    galleryImages: null,
+  },
+  {
+    id: SAMPLE_ARTIST_IDS.taraghi,
+    name: 'بیژن ترقی',
+    type: 'شاعر و ترانه‌سرا',
+    biography:
+      'بیژن ترقی شاعر و ترانه‌سرای ایرانی بود که ترانه‌های ماندگاری برای موسیقی معاصر ایران سرود.',
+    genres: 'ترانه، موسیقی ملی',
+    image: null,
     profileImage: null,
     galleryImages: null,
   },
@@ -113,8 +190,8 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
       'بیداد اگرچه تلخ بود، پایان این آواز نیست',
     sheetMusicUri: null,
     versionName: 'اجرای نمونهٔ استودیویی',
-    workId: null,
-    versionId: null,
+    workId: SAMPLE_WORK_IDS.bidad,
+    versionId: SAMPLE_VERSION_IDS.bidadStudio,
   },
   {
     id: SAMPLE_TRACK_IDS.baroun,
@@ -177,6 +254,129 @@ const SAMPLE_TRACKS: Array<TrackRecord> = [
     versionId: null,
   },
 ];
+
+const SAMPLE_WORKS = [
+  {
+    id: SAMPLE_WORK_IDS.bidad,
+    title: 'بیداد',
+    alternateTitles: 'بیدادِ همایون',
+    description: 'یک اثر نمونه برای دیدن تفاوت میان خودِ اثر، نسخه‌های اجرا و قطعه‌های ضبط‌شده.',
+    language: 'فارسی',
+    genre: 'موسیقی دستگاهی',
+    notes: 'این داده برای نمایش ارتباط اثر و نسخه در آرشیو نمونه است.',
+  },
+  {
+    id: SAMPLE_WORK_IDS.shabSokoutKavir,
+    title: 'شب، سکوت، کویر',
+    alternateTitles: 'شب سکوت کویر',
+    description: 'نمونه‌ای از یک اثر موسیقی ایرانی که یک اجرای زنده به آن متصل شده است.',
+    language: 'فارسی',
+    genre: 'موسیقی ایرانی',
+    notes: null,
+  },
+  {
+    id: SAMPLE_WORK_IDS.morghSahar,
+    title: 'مرغ سحر',
+    alternateTitles: 'مرغ سحر ناله سر کن',
+    description: 'تصنیفی شناخته‌شده در موسیقی معاصر ایران با اجراها و بازخوانی‌های متعدد.',
+    language: 'فارسی',
+    genre: 'تصنیف',
+    notes: 'برای نمایش یک اثر بدون نسخه‌ی نمونه‌ی متصل.',
+  },
+  {
+    id: SAMPLE_WORK_IDS.baharDelneshin,
+    title: 'بهار دلنشین',
+    alternateTitles: 'بهار دل‌نشین',
+    description: 'تصنیفی شناخته‌شده از موسیقی ملی ایران با شعر بیژن ترقی و موسیقی روح‌الله خالقی.',
+    language: 'فارسی',
+    genre: 'تصنیف',
+    notes: 'این اثر برای نمایش نقش ترانه‌سرا و تنظیم‌کننده در نقشه‌ی نمونه اضافه شده است.',
+  },
+] as const;
+
+const SAMPLE_VERSIONS = [
+  {
+    id: SAMPLE_VERSION_IDS.bidadStudio,
+    workId: SAMPLE_WORK_IDS.bidad,
+    name: 'اجرای استودیویی بیداد',
+    kind: 'استودیویی',
+    description: 'نسخه‌ی استودیویی نمونه از اثر بیداد.',
+  },
+  {
+    id: SAMPLE_VERSION_IDS.bidadLive,
+    workId: SAMPLE_WORK_IDS.bidad,
+    name: 'اجرای زنده بیداد',
+    kind: 'زنده',
+    description: 'نسخه‌ی زنده‌ی نمونه برای مقایسه با اجرای استودیویی.',
+  },
+  {
+    id: SAMPLE_VERSION_IDS.bidadReinterpretation,
+    workId: SAMPLE_WORK_IDS.bidad,
+    name: 'بازخوانی بیداد',
+    kind: 'بازخوانی',
+    description: 'برداشت دوباره‌ی نمونه از همان اثر.',
+  },
+  {
+    id: SAMPLE_VERSION_IDS.shabSokoutKavirLive,
+    workId: SAMPLE_WORK_IDS.shabSokoutKavir,
+    name: 'اجرای زنده شب، سکوت، کویر',
+    kind: 'زنده',
+    description: 'نسخه‌ی زنده‌ی نمونه از این اثر.',
+  },
+] as const;
+
+type SampleCredit = {
+  id: string;
+  artistId: string;
+  roleId: string;
+  workId?: string;
+  trackId?: string;
+  albumId?: string;
+};
+
+const SAMPLE_CREDITS: readonly SampleCredit[] = [
+  { id: 'sample_credit_bidad_track_vocalist', artistId: SAMPLE_ARTIST_IDS.shajarian, roleId: 'role_vocalist', trackId: SAMPLE_TRACK_IDS.tasnifBidad },
+  { id: 'sample_credit_bidad_track_composer', artistId: SAMPLE_ARTIST_IDS.meshkatian, roleId: 'role_composer', trackId: SAMPLE_TRACK_IDS.tasnifBidad },
+  { id: 'sample_credit_bidad_track_musician', artistId: SAMPLE_ARTIST_IDS.lotfi, roleId: 'role_musician', trackId: SAMPLE_TRACK_IDS.tasnifBidad },
+  { id: 'sample_credit_bidad_album_vocalist', artistId: SAMPLE_ARTIST_IDS.shajarian, roleId: 'role_vocalist', albumId: SAMPLE_ALBUM_IDS.bidad },
+  { id: 'sample_credit_bidad_album_composer', artistId: SAMPLE_ARTIST_IDS.meshkatian, roleId: 'role_composer', albumId: SAMPLE_ALBUM_IDS.bidad },
+  { id: 'sample_credit_bidad_work_vocalist', artistId: SAMPLE_ARTIST_IDS.shajarian, roleId: 'role_vocalist', workId: SAMPLE_WORK_IDS.bidad },
+  { id: 'sample_credit_bidad_work_composer', artistId: SAMPLE_ARTIST_IDS.meshkatian, roleId: 'role_composer', workId: SAMPLE_WORK_IDS.bidad },
+  { id: 'sample_credit_kavir_track_vocalist', artistId: SAMPLE_ARTIST_IDS.shajarian, roleId: 'role_vocalist', trackId: SAMPLE_TRACK_IDS.shabSokoutKavir },
+  { id: 'sample_credit_kavir_track_musician', artistId: SAMPLE_ARTIST_IDS.kalhor, roleId: 'role_musician', trackId: SAMPLE_TRACK_IDS.shabSokoutKavir },
+  { id: 'sample_credit_kavir_album_composer', artistId: SAMPLE_ARTIST_IDS.kalhor, roleId: 'role_composer', albumId: SAMPLE_ALBUM_IDS.shabSokoutKavir },
+  { id: 'sample_credit_kavir_work_composer', artistId: SAMPLE_ARTIST_IDS.kalhor, roleId: 'role_composer', workId: SAMPLE_WORK_IDS.shabSokoutKavir },
+  { id: 'sample_credit_bahar_work_composer', artistId: SAMPLE_ARTIST_IDS.khaleghi, roleId: 'role_composer', workId: SAMPLE_WORK_IDS.baharDelneshin },
+  { id: 'sample_credit_bahar_work_arranger', artistId: SAMPLE_ARTIST_IDS.khaleghi, roleId: 'role_arranger', workId: SAMPLE_WORK_IDS.baharDelneshin },
+  { id: 'sample_credit_bahar_work_lyricist', artistId: SAMPLE_ARTIST_IDS.taraghi, roleId: 'role_lyricist', workId: SAMPLE_WORK_IDS.baharDelneshin },
+] as const;
+
+const SAMPLE_ARTIST_RELATIONSHIPS = [
+  {
+    id: 'sample_artist_relationship_shajarian_alizadeh',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    relatedArtistId: SAMPLE_ARTIST_IDS.alizadeh,
+    description: 'همکاری در تولید و اجرای آثار موسیقی ایرانی',
+  },
+  {
+    id: 'sample_artist_relationship_shajarian_kalhor',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    relatedArtistId: SAMPLE_ARTIST_IDS.kalhor,
+    description: 'همکاری در آلبوم شب، سکوت، کویر',
+  },
+  {
+    id: 'sample_artist_relationship_shajarian_meshkatian',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    relatedArtistId: SAMPLE_ARTIST_IDS.meshkatian,
+    description: 'همکاری در اجرای آثار گروه عارف',
+  },
+  {
+    id: 'sample_artist_relationship_shajarian_homayoun',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    relatedArtistId: SAMPLE_ARTIST_IDS.homayoun,
+    description: 'رابطه‌ی خانوادگی و همکاری موسیقایی',
+  },
+] as const;
 
 const SAMPLE_JOURNAL_ENTRIES = [
   {
@@ -249,6 +449,10 @@ export interface SeedResult {
   artists: number;
   albums: number;
   tracks: number;
+  works: number;
+  versions: number;
+  credits: number;
+  relationships: number;
 }
 
 export async function injectSampleData(): Promise<SeedResult> {
@@ -256,14 +460,8 @@ export async function injectSampleData(): Promise<SeedResult> {
 
   for (const artist of SAMPLE_ARTISTS) {
     await database.runAsync(
-      `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         type = excluded.type,
-         biography = excluded.biography,
-         genres = excluded.genres,
-         image = excluded.image`,
+      `INSERT OR IGNORE INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         artist.id,
         artist.name,
@@ -279,12 +477,8 @@ export async function injectSampleData(): Promise<SeedResult> {
 
   for (const album of SAMPLE_ALBUMS) {
     await database.runAsync(
-      `INSERT INTO Albums (id, title, releaseYear, coverImage)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title,
-         releaseYear = excluded.releaseYear,
-         coverImage = excluded.coverImage`,
+      `INSERT OR IGNORE INTO Albums (id, title, releaseYear, coverImage)
+       VALUES (?, ?, ?, ?)`,
       [album.id, album.title, album.releaseYear, album.coverImage],
     );
   }
@@ -292,26 +486,45 @@ export async function injectSampleData(): Promise<SeedResult> {
   for (const link of SAMPLE_ARTIST_ALBUM_LINKS) {
     await database.runAsync(
       `INSERT OR IGNORE INTO ArtistAlbums (artistId, albumId, source)
-       VALUES (?, ?, 'inferred')`,
-      [link.artistId, link.albumId],
+       VALUES (?, ?, ?)`,
+      [link.artistId, link.albumId, link.source],
+    );
+  }
+
+  const now = new Date().toISOString();
+  for (const work of SAMPLE_WORKS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO Works
+         (id, title, alternateTitles, description, language, genre, notes, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        work.id,
+        work.title,
+        work.alternateTitles,
+        work.description,
+        work.language,
+        work.genre,
+        work.notes,
+        now,
+        now,
+      ],
+    );
+  }
+
+  for (const version of SAMPLE_VERSIONS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO Versions
+         (id, workId, name, kind, description, notes, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+      [version.id, version.workId, version.name, version.kind, version.description, now, now],
     );
   }
 
   for (const track of SAMPLE_TRACKS) {
     await database.runAsync(
-      `INSERT INTO Tracks
-         (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title,
-         duration = excluded.duration,
-         artistId = excluded.artistId,
-         albumId = excluded.albumId,
-         audioUri = excluded.audioUri,
-         coverImage = excluded.coverImage,
-         lyrics = excluded.lyrics,
-         sheetMusicUri = excluded.sheetMusicUri,
-         versionName = excluded.versionName`,
+      `INSERT OR IGNORE INTO Tracks
+         (id, title, duration, artistId, albumId, audioUri, coverImage, lyrics, sheetMusicUri, versionName, workId, versionId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         track.id,
         track.title,
@@ -323,13 +536,15 @@ export async function injectSampleData(): Promise<SeedResult> {
         track.lyrics,
         track.sheetMusicUri,
         track.versionName,
+        track.workId,
+        track.versionId,
       ],
     );
     await database.runAsync(
       `UPDATE Tracks
-       SET lyrics = ?, coverImage = ?, versionName = ?
+       SET workId = COALESCE(workId, ?), versionId = COALESCE(versionId, ?)
        WHERE id = ?`,
-      [track.lyrics, track.coverImage, track.versionName, track.id],
+      [track.workId, track.versionId, track.id],
     );
     if (track.albumId) {
       // Sample data carries membership, but no source-backed official order.
@@ -338,6 +553,39 @@ export async function injectSampleData(): Promise<SeedResult> {
            (albumId, trackId, discNumber, trackNumber, titleOverride, notes, orderSource)
          VALUES (?, ?, NULL, NULL, NULL, NULL, 'legacy')`,
         [track.albumId, track.id],
+      );
+    }
+  }
+
+  for (const credit of SAMPLE_CREDITS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO Credits
+         (id, artistId, roleId, workId, trackId, albumId, notes, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+      [
+        credit.id,
+        credit.artistId,
+        credit.roleId,
+        credit.workId ?? null,
+        credit.trackId ?? null,
+        credit.albumId ?? null,
+        now,
+        now,
+      ],
+    );
+  }
+
+  for (const relationship of SAMPLE_ARTIST_RELATIONSHIPS) {
+    const directions = [
+      [relationship.artistId, relationship.relatedArtistId, `${relationship.id}:forward`],
+      [relationship.relatedArtistId, relationship.artistId, `${relationship.id}:reverse`],
+    ] as const;
+    for (const [artistId, relatedArtistId, id] of directions) {
+      await database.runAsync(
+        `INSERT OR IGNORE INTO ArtistRelationships
+           (id, artistId, relatedArtistId, description, createdAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, artistId, relatedArtistId, relationship.description, now],
       );
     }
   }
@@ -376,5 +624,9 @@ export async function injectSampleData(): Promise<SeedResult> {
     artists: SAMPLE_ARTISTS.length,
     albums: SAMPLE_ALBUMS.length,
     tracks: SAMPLE_TRACKS.length,
+    works: SAMPLE_WORKS.length,
+    versions: SAMPLE_VERSIONS.length,
+    credits: SAMPLE_CREDITS.length,
+    relationships: SAMPLE_ARTIST_RELATIONSHIPS.length,
   };
 }

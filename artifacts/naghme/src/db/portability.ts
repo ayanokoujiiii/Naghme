@@ -264,7 +264,7 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   }
   for (const entry of backup.listeningHistory) {
     if (!trackIds.has(entry.trackId)) {
-      throw new Error('یکی از رکوردهای تاریخچه به قطعه‌ای نامعتبر اشاره می‌کند.');
+      throw new Error('یکی از موارد تاریخچه به قطعه‌ای نامعتبر اشاره می‌کند.');
     }
   }
   for (const relationship of backup.albumTracks ?? []) {
@@ -808,9 +808,9 @@ function parseJournalEntries(value: unknown): JournalEntryRecord[] {
 function parseListeningHistory(value: unknown): ListeningHistoryRecord[] {
   if (value === undefined) return [];
   return arrayValue(value, 'تاریخچه‌ی شنیدن').map((item, index) => {
-    const record = recordValue(item, `رکورد شنیدن شماره‌ی ${index + 1}`);
+    const record = recordValue(item, `مورد شنیدن شماره‌ی ${index + 1}`);
     return {
-      id: requiredString(record.id, 'شناسه‌ی رکورد شنیدن'),
+      id: requiredString(record.id, 'شناسه‌ی مورد شنیدن'),
       trackId: requiredString(record.trackId, 'شناسه‌ی قطعه در تاریخچه'),
       listenedAt: requiredString(record.listenedAt, 'زمان شنیدن'),
     };
