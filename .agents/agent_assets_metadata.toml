@@ -14,3 +14,17 @@ mtime_ms = 1788460912223
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:d54083f3-66d5-48a6-a74f-c5bd576dbc80/46ad79ac-5476-4cca-b862-b8f02e290420/824727f1-f90b-4f6e-9fa3-6ea2bda6cc62"
 storage_version_token = "1788460916703981"
 content_type = "text/plain"
+
+[[outputs]]
+id = "GgEB8c0RSXky96noj1WSL"
+uri = "file://naghme-project-source.zip"
+type = "unspecified"
+title = "فایل ZIP کامل پروژه نغمه"
+description = "شامل سورس پروژه، تنظیمات، lockfile، مستندات، حافظه پروژه و attached_assets؛ بدون node_modules، cache، build خروجی، .git و فایل‌های محیطی محرمانه."
+logical_id = "ea483c6e-30db-436f-a214-6faf5889b505"
+content_hash = "sha256:f1c1c409756995a2526d18376497c4f81177b4162a17ecec832c195c732fb0c4"
+size = 2911699
+mtime_ms = 1788482464749
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:1a7d052d-463c-49ee-8ac9-c0f0e97105a2/ea483c6e-30db-436f-a214-6faf5889b505/38383fa6-f5f3-4d7b-ac0b-5b8501ee50b9"
+storage_version_token = "1788482469465540"
+content_type = "application/octet-stream"
