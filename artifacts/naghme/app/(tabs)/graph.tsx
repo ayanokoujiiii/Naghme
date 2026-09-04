@@ -8,138 +8,249 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, { Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { MINI_PLAYER_CONTENT_PADDING, useMiniPlayerActive } from '@/hooks/useMiniPlayerActive';
 import { playTracksInQueue } from '@/src/audio/audioManager';
-import { TrackRecord } from '@/src/db/queries';
 import {
-  getMusicGraphData,
+  AlbumRecord,
+  ArtistRecord,
+  getAlbumTracks,
+  getAlbums,
+  getArtistAlbumLinks,
+  getArtists,
+  getTracks,
+  TrackRecord,
+} from '@/src/db/queries';
+import {
+  getMusicGraphNeighborhood,
   MusicGraphData,
   MusicGraphEdge,
-  MusicGraphEdgeType,
   MusicGraphNode,
   MusicGraphNodeType,
 } from '@/src/graph/musicGraph';
 import { withAlpha } from '@/src/player/coverColors';
 
-type GraphFilter = 'all' | 'credit' | 'artist-artist' | 'structure';
-type PositionedNode = MusicGraphNode & { x: number; y: number; isFocus: boolean };
+type GraphViewMode = 'browse' | 'relations';
+type ExpandedState = Record<string, boolean>;
+type GraphAlbum = AlbumRecord & { tracks: TrackRecord[] };
+type GraphArtist = ArtistRecord & { albums: GraphAlbum[] };
+type BrowseData = {
+  artists: GraphArtist[];
+  unassignedAlbums: GraphAlbum[];
+  unassignedTracks: TrackRecord[];
+};
+type FocusRef = {
+  id: string;
+  type: MusicGraphNodeType | null;
+  label: string;
+};
+type RelationGroupKey = 'credits' | 'relatedArtists' | 'artists' | 'albums' | 'tracks' | 'workVersion';
+type RelationFilter = RelationGroupKey | 'all';
 type GraphQueueTrack = TrackRecord & { artistName: string | null };
 
-const FILTERS: Array<{ value: GraphFilter; label: string; icon: 'layers' | 'users' | 'award' | 'git-branch' }> = [
-  { value: 'all', label: 'همه', icon: 'layers' },
-  { value: 'credit', label: 'مشارکت‌ها', icon: 'award' },
-  { value: 'artist-artist', label: 'روابط هنرمندان', icon: 'users' },
-  { value: 'structure', label: 'ساختار موسیقی', icon: 'git-branch' },
-];
-
-const NODE_LIMIT = 12;
+const RELATION_LIMIT = 6;
 
 export default function GraphScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const miniPlayerActive = useMiniPlayerActive();
-  const { width } = useWindowDimensions();
-  const { focusId } = useLocalSearchParams<{ focusId?: string | string[] }>();
-  const [data, setData] = useState<MusicGraphData | null>(null);
-  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
-  const [filter, setFilter] = useState<GraphFilter>('all');
-  const [neighborLimit, setNeighborLimit] = useState<number>(NODE_LIMIT);
+  const { focusId, focusType } = useLocalSearchParams<{
+    focusId?: string | string[];
+    focusType?: string | string[];
+  }>();
+  const requestedFocusId = Array.isArray(focusId) ? focusId[0] : focusId;
+  const requestedFocusType = parseNodeType(Array.isArray(focusType) ? focusType[0] : focusType);
+  const [viewMode, setViewMode] = useState<GraphViewMode>('browse');
+  const [browseData, setBrowseData] = useState<BrowseData | null>(null);
+  const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [relationData, setRelationData] = useState<MusicGraphData | null>(null);
+  const [focused, setFocused] = useState<FocusRef | null>(null);
+  const [history, setHistory] = useState<FocusRef[]>([]);
+  const [relationFilter, setRelationFilter] = useState<RelationFilter>('all');
+  const [relationLimits, setRelationLimits] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState<boolean>(true);
+  const [relationLoading, setRelationLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [toast, setToast] = useState<string>('');
 
-  const loadGraph = useCallback(async () => {
+  const loadBrowse = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const graph = await getMusicGraphData();
-      setData(graph);
-      const requestedFocusId = Array.isArray(focusId) ? focusId[0] : focusId;
-      setFocusedNodeId((current) => requestedFocusId && graph.nodes.some((node) => node.id === requestedFocusId)
-        ? requestedFocusId
-        : current && graph.nodes.some((node) => node.id === current) ? current : chooseStartNode(graph));
-      setHistory([]);
+      const [artistItems, albumItems, trackItems] = await Promise.all([
+        getArtists(),
+        getAlbums(),
+        getTracks(),
+      ]);
+      const [artistLinks, albumTrackLists] = await Promise.all([
+        Promise.all(artistItems.map((artist) => getArtistAlbumLinks(artist.id))),
+        Promise.all(albumItems.map(async (album) => ({
+          albumId: album.id,
+          tracks: await getAlbumTracks(album.id),
+        }))),
+      ]);
+      const albumsById = new Map(albumItems.map((album) => [album.id, album]));
+      const tracksByAlbum = new Map(albumTrackLists.map((entry) => [entry.albumId, entry.tracks as TrackRecord[]]));
+      const linksByArtist = new Map(artistLinks.map((links, index) => [artistItems[index].id, links]));
+      const linkedAlbumIds = new Set<string>();
+      const albumTrackIds = new Set(albumTrackLists.flatMap((entry) => entry.tracks.map((track) => track.id)));
+
+      const nextArtists = artistItems.map((artist) => {
+        const albums = (linksByArtist.get(artist.id) ?? [])
+          .map((link) => albumsById.get(link.albumId))
+          .filter((album): album is AlbumRecord => Boolean(album))
+          .map((album) => {
+            linkedAlbumIds.add(album.id);
+            return { ...album, tracks: tracksByAlbum.get(album.id) ?? [] };
+          });
+        return { ...artist, albums };
+      });
+      const nextUnassignedAlbums = albumItems
+        .filter((album) => !linkedAlbumIds.has(album.id))
+        .map((album) => ({ ...album, tracks: tracksByAlbum.get(album.id) ?? [] }));
+
+      setBrowseData({
+        artists: nextArtists,
+        unassignedAlbums: nextUnassignedAlbums,
+        unassignedTracks: trackItems.filter((track) => !albumTrackIds.has(track.id)),
+      });
+      const nextExpanded: ExpandedState = {};
+      nextArtists.forEach((artist) => {
+        nextExpanded[`artist:${artist.id}`] = true;
+        artist.albums.forEach((album) => {
+          nextExpanded[`album:${album.id}`] = false;
+        });
+      });
+      nextUnassignedAlbums.forEach((album) => {
+        nextExpanded[`album:${album.id}`] = false;
+      });
+      setExpanded(nextExpanded);
     } catch (loadError: unknown) {
-      setError(loadError instanceof Error ? loadError.message : 'خواندن نقشه انجام نشد.');
+      setError(loadError instanceof Error ? loadError.message : 'خواندن آرشیو انجام نشد.');
     } finally {
       setLoading(false);
     }
-  }, [focusId]);
+  }, []);
 
-  useFocusEffect(useCallback(() => {
-    void loadGraph();
-  }, [loadGraph]));
+  const loadRelations = useCallback(async (target: FocusRef) => {
+    setRelationLoading(true);
+    setError('');
+    try {
+      const graph = await getMusicGraphNeighborhood(target.type, target.id);
+      const center = graph.nodes.find((node) => node.id === target.id);
+      if (!center) throw new Error('موجودیت انتخاب‌شده در آرشیو پیدا نشد.');
+      setRelationData(graph);
+      setFocused({ id: center.id, type: center.type, label: center.label });
+      setRelationFilter('all');
+      setRelationLimits({});
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : 'خواندن روابط انجام نشد.');
+    } finally {
+      setRelationLoading(false);
+    }
+  }, []);
 
-  const nodeMap = useMemo(
-    () => new Map((data?.nodes ?? []).map((node) => [node.id, node])),
-    [data],
+  useFocusEffect(
+    useCallback(() => {
+      void loadBrowse();
+    }, [loadBrowse]),
   );
-  const focusedNode = focusedNodeId ? nodeMap.get(focusedNodeId) ?? null : null;
-  const allowedEdgeTypes = useMemo(() => getAllowedEdgeTypes(filter), [filter]);
-  const visibleEdges = useMemo(
-    () => getFocusedEdges(data?.edges ?? [], focusedNodeId, allowedEdgeTypes),
-    [allowedEdgeTypes, data?.edges, focusedNodeId],
-  );
-  const neighborIds = useMemo(() => {
-    const ids: string[] = [];
-    visibleEdges.forEach((edge) => {
-      const neighborId = edge.from === focusedNodeId ? edge.to : edge.from;
-      if (!ids.includes(neighborId)) ids.push(neighborId);
-    });
-    return ids;
-  }, [focusedNodeId, visibleEdges]);
-  const displayedNeighborIds = neighborIds.slice(0, neighborLimit);
-  const canvasWidth = Math.max(320, Math.min(width - 40, 620));
-  const positionedNodes = useMemo(
-    () => getPositions(focusedNode, displayedNeighborIds.map((id) => nodeMap.get(id)).filter(isNode), canvasWidth),
-    [canvasWidth, displayedNeighborIds, focusedNode],
-  );
-  const positionedMap = useMemo(
-    () => new Map(positionedNodes.map((node) => [node.id, node])),
-    [positionedNodes],
-  );
-  const renderedEdges = visibleEdges.filter((edge) => positionedMap.has(edge.from) && positionedMap.has(edge.to));
+
+  useEffect(() => {
+    if (viewMode !== 'relations' || relationLoading) return;
+    if (requestedFocusId) {
+      void loadRelations({
+        id: requestedFocusId,
+        type: requestedFocusType,
+        label: 'موجودیت انتخاب‌شده',
+      });
+      return;
+    }
+    if (!focused && browseData) {
+      const start = chooseBrowseFocus(browseData);
+      if (start) void loadRelations(start);
+    }
+  }, [
+    browseData,
+    loadRelations,
+    requestedFocusId,
+    requestedFocusType,
+    viewMode,
+  ]);
+
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const showToast = (message: string) => {
+    setToast('');
+    requestAnimationFrame(() => setToast(message));
+  };
+
+  const playQueue = async (tracks: TrackRecord[]) => {
+    const playableTracks = tracks.filter((track) => Boolean(track.audioUri));
+    if (!playableTracks.length) {
+      showToast('فایل قابل پخشی برای این مورد پیدا نشد.');
+      return;
+    }
+    const started = await playTracksInQueue(playableTracks, 0);
+    showToast(started ? 'صف پخش شروع شد.' : 'پخش قطعه‌ها ممکن نیست.');
+    if (started) router.push('/player');
+  };
+
+  const playBrowseTrack = async (track: TrackRecord) => {
+    const albumTracks = browseData?.unassignedTracks.some((item) => item.id === track.id)
+      ? [track]
+      : browseData
+        ? findAlbumTracks(browseData, track.id)
+        : [track];
+    await playQueue(albumTracks.length ? albumTracks : [track]);
+  };
+
+  const playFocusedNode = async () => {
+    if (!focused || !relationData) return;
+    const nodeMap = new Map(relationData.nodes.map((node) => [node.id, node]));
+    const node = nodeMap.get(focused.id);
+    if (!node) return;
+    await playNode(node, relationData, nodeMap, browseData, playQueue, showToast);
+  };
 
   const focusNode = (node: MusicGraphNode) => {
-    if (node.id === focusedNodeId) return;
-    if (focusedNodeId) setHistory((current) => [...current, focusedNodeId]);
-    setFocusedNodeId(node.id);
-    setNeighborLimit(NODE_LIMIT);
+    if (node.id === focused?.id) return;
+    if (focused) setHistory((current) => [...current, focused]);
+    setViewMode('relations');
+    void loadRelations({ id: node.id, type: node.type, label: node.label });
   };
 
   const goBack = () => {
     const previous = history[history.length - 1];
     if (!previous) return;
     setHistory((current) => current.slice(0, -1));
-    setFocusedNodeId(previous);
-    setNeighborLimit(NODE_LIMIT);
+    void loadRelations(previous);
   };
 
-  const playFocusedNode = async () => {
-    if (!data || !focusedNode) return;
-    const tracks = getQueueForNode(focusedNode, data, nodeMap);
-    if (!tracks.length) {
-      setToast('برای این گره قطعه‌ی قابل پخشی پیدا نشد.');
-      return;
-    }
-    setToast('صف پخش گراف آماده شد.');
-    const started = await playTracksInQueue(tracks, 0);
-    if (started) router.push('/player');
-    else setToast('پخش قطعه‌های این گره ممکن نیست.');
-  };
-
-  const openDetails = () => {
-    if (!focusedNode) return;
-    const path = routeForNode(focusedNode);
+  const openFocusedDetails = () => {
+    if (!focused || !relationData) return;
+    const node = relationData.nodes.find((item) => item.id === focused.id);
+    const path = node ? routeForNode(node) : null;
     if (path) router.push(path);
+    else showToast('برای این نوع موجودیت صفحه‌ی جزئیات جداگانه‌ای وجود ندارد.');
   };
+
+  const relationNodeMap = useMemo(
+    () => new Map((relationData?.nodes ?? []).map((node) => [node.id, node])),
+    [relationData],
+  );
+  const relationGroups = useMemo(
+    () => groupRelationEdges(
+      (relationData?.edges ?? []).filter((edge) => edge.from === focused?.id || edge.to === focused?.id),
+      focused,
+    ),
+    [focused, relationData],
+  );
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -151,302 +262,667 @@ export default function GraphScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={styles.headerIcon}><Feather name="git-branch" size={21} color={colors.primary} /></View>
+          <View style={styles.headerIcon}>
+            <Feather name="git-branch" size={21} color={colors.primary} />
+          </View>
           <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>ارتباط‌های آرشیو</Text>
             <Text style={styles.title}>نقشه‌ی موسیقی</Text>
           </View>
         </View>
         <Text style={styles.intro}>
-          هر گره را انتخاب کن تا همسایه‌های واقعی آن را ببینی؛ این نقشه فقط یک محله‌ی کوچک از آرشیو را رسم می‌کند.
+          آرشیو را به‌صورت درختی مرور کن یا رابطه‌های واقعی هر موجودیت را خوانا ببین.
         </Text>
 
-        <View style={styles.filterRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
-            {FILTERS.map((item) => (
-              <Pressable
-                key={item.value}
-                testID={`graph-filter-${item.value}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: filter === item.value }}
-                onPress={() => setFilter(item.value)}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  filter === item.value && styles.filterChipActive,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Feather name={item.icon} size={14} color={filter === item.value ? colors.primaryForeground : colors.mutedForeground} />
-                <Text style={[styles.filterText, filter === item.value && styles.filterTextActive]}>{item.label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+        <View style={styles.modeSwitch} accessibilityRole="tablist">
+          <Pressable
+            testID="graph-view-browse"
+            accessibilityRole="tab"
+            accessibilityState={{ selected: viewMode === 'browse' }}
+            onPress={() => setViewMode('browse')}
+            style={({ pressed }) => [
+              styles.modeButton,
+              viewMode === 'browse' && styles.modeButtonActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="list" size={16} color={viewMode === 'browse' ? colors.primaryForeground : colors.mutedForeground} />
+            <Text style={[styles.modeButtonText, viewMode === 'browse' && styles.modeButtonTextActive]}>مرور</Text>
+          </Pressable>
+          <Pressable
+            testID="graph-view-relations"
+            accessibilityRole="tab"
+            accessibilityState={{ selected: viewMode === 'relations' }}
+            onPress={() => setViewMode('relations')}
+            style={({ pressed }) => [
+              styles.modeButton,
+              viewMode === 'relations' && styles.modeButtonActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather name="share-2" size={16} color={viewMode === 'relations' ? colors.primaryForeground : colors.mutedForeground} />
+            <Text style={[styles.modeButtonText, viewMode === 'relations' && styles.modeButtonTextActive]}>روابط</Text>
+          </Pressable>
         </View>
 
-        {loading ? (
+        {loading && !browseData ? (
           <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
         ) : error ? (
           <View style={styles.errorBox}>
             <Feather name="alert-circle" size={17} color={colors.destructive} />
             <Text style={styles.errorText}>{error}</Text>
           </View>
-        ) : !data?.nodes.length ? (
+        ) : viewMode === 'browse' ? (
+          browseData ? (
+            <BrowseView
+              data={browseData}
+              expanded={expanded}
+              onToggle={toggleExpanded}
+              onPlayAlbum={(album) => void playQueue(album.tracks)}
+              onPlayTrack={(track) => void playBrowseTrack(track)}
+              colors={colors}
+              styles={styles}
+            />
+          ) : null
+        ) : relationLoading && !relationData ? (
+          <View style={styles.status}><ActivityIndicator color={colors.primary} /></View>
+        ) : relationData && focused ? (
+          <RelationsView
+            focused={focused}
+            history={history}
+            groups={relationGroups}
+            nodeMap={relationNodeMap}
+            relationFilter={relationFilter}
+            relationLimits={relationLimits}
+            onBack={goBack}
+            onFilter={setRelationFilter}
+            onFocus={focusNode}
+            onOpenDetails={openFocusedDetails}
+            onPlayFocused={() => void playFocusedNode()}
+            onPlayNode={(node) => void playNode(node, relationData, relationNodeMap, browseData, playQueue, showToast)}
+            onShowMore={(key) => setRelationLimits((current) => ({
+              ...current,
+              [key]: (current[key] ?? RELATION_LIMIT) + RELATION_LIMIT,
+            }))}
+            colors={colors}
+            styles={styles}
+          />
+        ) : (
           <View style={styles.emptyState}>
-            <Feather name="git-branch" size={28} color={colors.mutedForeground} />
-            <Text style={styles.emptyTitle}>نقشه هنوز خالی است</Text>
-            <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های آزمایشی را تزریق کن.</Text>
+            <Feather name="share-2" size={28} color={colors.mutedForeground} />
+            <Text style={styles.emptyTitle}>رابطه‌ای برای نمایش نیست</Text>
+            <Text style={styles.emptyText}>از حالت مرور یک هنرمند، آلبوم یا قطعه را انتخاب کن.</Text>
           </View>
-        ) : focusedNode ? (
-          <>
-            <View style={styles.focusCard}>
-              <View style={styles.focusCopy}>
-                <Text style={styles.focusEyebrow}>گره کانونی</Text>
-                <Text style={styles.focusTitle} numberOfLines={1}>{focusedNode.label}</Text>
-                <Text style={styles.focusMeta}>{nodeTypeLabel(focusedNode.type)} · {neighborIds.length} همسایه</Text>
-              </View>
-              <View style={styles.focusActions}>
-                {history.length ? (
-                  <Pressable testID="graph-back" accessibilityRole="button" accessibilityLabel="بازگشت به گره قبلی" onPress={goBack} style={styles.iconButton}>
-                    <Feather name="arrow-right" size={18} color={colors.foreground} />
-                  </Pressable>
-                ) : null}
-                <Pressable testID="graph-open-details" accessibilityRole="button" accessibilityLabel="باز کردن جزئیات گره" onPress={openDetails} style={styles.iconButton}>
-                  <Feather name="external-link" size={17} color={colors.foreground} />
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.legend}>
-              <LegendShape type="artist" label="هنرمند" colors={colors} />
-              <LegendShape type="album" label="آلبوم" colors={colors} />
-              <LegendShape type="track" label="قطعه" colors={colors} />
-              <LegendShape type="work" label="اثر" colors={colors} />
-              <LegendShape type="version" label="نسخه" colors={colors} />
-            </View>
-
-            <View style={styles.graphCard}>
-              {positionedNodes.length > 1 ? (
-                <View style={[styles.canvas, { width: canvasWidth, height: 360 }]}>
-                  <Svg width={canvasWidth} height={360}>
-                    {renderedEdges.map((edge) => {
-                      const from = positionedMap.get(edge.from);
-                      const to = positionedMap.get(edge.to);
-                      if (!from || !to) return null;
-                      return (
-                        <SvgGraphEdge key={edge.id} edge={edge} from={from} to={to} colors={colors} />
-                      );
-                    })}
-                    {positionedNodes.map((node) => <SvgGraphNode key={node.id} node={node} colors={colors} />)}
-                  </Svg>
-                  <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                    {positionedNodes.map((node) => (
-                      <Pressable
-                        key={node.id}
-                        testID={`graph-node-${node.id}`}
-                        accessibilityRole="button"
-                        accessibilityLabel={`تمرکز روی ${node.label}`}
-                        onPress={() => focusNode(node)}
-                        onLongPress={node.type === 'track' || node.type === 'album' || node.type === 'artist' ? () => void playNode(node, data, nodeMap, setToast) : undefined}
-                        style={[styles.nodeHit, { left: node.x - 54, top: node.y - 42 }]}
-                      >
-                        <Text style={styles.nodeHitLabel} numberOfLines={2}>{node.label}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.noNeighbors}>
-                  <Feather name="git-branch" size={25} color={colors.mutedForeground} />
-                  <Text style={styles.noNeighborsTitle}>همسایه‌ای با این فیلتر پیدا نشد</Text>
-                  <Text style={styles.noNeighborsText}>فیلتر دیگری را امتحان کن یا از جزئیات همین گره یک رابطه بساز.</Text>
-                </View>
-              )}
-              <View style={styles.graphHint}>
-                <Feather name="info" size={14} color={colors.mutedForeground} />
-                <Text style={styles.graphHintText}>با لمس گره تمرکز جابه‌جا می‌شود؛ با لمس طولانی قطعه یا آلبوم صف پخش شروع می‌شود.</Text>
-              </View>
-            </View>
-
-            <View style={styles.actionRow}>
-              <Pressable testID="graph-play-focused" onPress={() => void playFocusedNode()} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
-                <Feather name="play" size={17} color={colors.primaryForeground} />
-                <Text style={styles.primaryActionText}>پخش صف این گره</Text>
-              </Pressable>
-              {neighborIds.length > displayedNeighborIds.length ? (
-                <Pressable testID="graph-show-more" onPress={() => setNeighborLimit((current) => current + NODE_LIMIT)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
-                  <Feather name="plus" size={16} color={colors.primary} />
-                  <Text style={styles.secondaryActionText}>نمایش بیشتر</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </>
-        ) : null}
+        )}
       </ScrollView>
-      {toast ? <GraphToast message={toast} colors={colors} styles={styles} /> : null}
+      {toast ? (
+        <View pointerEvents="none" style={styles.toast}>
+          <Feather name="play-circle" size={17} color={colors.primary} />
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
-function SvgGraphEdge({
-  edge,
-  from,
-  to,
+function BrowseView({
+  data,
+  expanded,
+  onToggle,
+  onPlayAlbum,
+  onPlayTrack,
   colors,
+  styles,
 }: {
-  edge: MusicGraphEdge;
-  from: PositionedNode;
-  to: PositionedNode;
+  data: BrowseData;
+  expanded: ExpandedState;
+  onToggle: (key: string) => void;
+  onPlayAlbum: (album: GraphAlbum) => void;
+  onPlayTrack: (track: TrackRecord) => void;
   colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
 }) {
-  const color = edge.type === 'credit'
-    ? colors.primary
-    : edge.type === 'artist-artist'
-      ? colors.destructive
-      : colors.border;
-  return (
-    <>
-      <Line
-        x1={from.x}
-        y1={from.y}
-        x2={to.x}
-        y2={to.y}
-        stroke={color}
-        strokeWidth={edge.type === 'credit' ? 2 : 1.4}
-        strokeDasharray={edge.type === 'artist-artist' ? '5 4' : undefined}
-        opacity={0.85}
-      />
-      {edge.label ? (
-        <SvgText
-          x={(from.x + to.x) / 2}
-          y={(from.y + to.y) / 2 - 6}
-          fill={colors.mutedForeground}
-          fontSize="9"
-          textAnchor="middle"
-        >
-          {edge.label}
-        </SvgText>
-      ) : null}
-    </>
-  );
-}
-
-function SvgGraphNode({ node, colors }: { node: PositionedNode; colors: ReturnType<typeof useColors> }) {
-  const fill = nodeColor(node.type, colors);
-  if (node.type === 'album' || node.type === 'work') {
+  const hasContent = data.artists.length || data.unassignedAlbums.length || data.unassignedTracks.length;
+  if (!hasContent) {
     return (
-      <Rect
-        x={node.x - (node.isFocus ? 25 : 19)}
-        y={node.y - (node.isFocus ? 25 : 19)}
-        width={node.isFocus ? 50 : 38}
-        height={node.isFocus ? 50 : 38}
-        rx={node.type === 'work' ? 13 : 9}
-        fill={fill}
-        stroke={colors.background}
-        strokeWidth={3}
-      />
+      <View style={styles.emptyState}>
+        <Feather name="list" size={28} color={colors.mutedForeground} />
+        <Text style={styles.emptyTitle}>آرشیو هنوز خالی است</Text>
+        <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های آزمایشی را تزریق کن یا یک هنرمند اضافه کن.</Text>
+      </View>
     );
   }
-  return (
-    <Circle
-      cx={node.x}
-      cy={node.y}
-      r={node.isFocus ? 27 : node.type === 'track' ? 17 : 21}
-      fill={fill}
-      stroke={colors.background}
-      strokeWidth={3}
-    />
-  );
-}
 
-function LegendShape({
-  type,
-  label,
-  colors,
-}: {
-  type: MusicGraphNodeType;
-  label: string;
-  colors: ReturnType<typeof useColors>;
-}) {
   return (
-    <View style={stylesForLegend.item}>
-      <View style={[stylesForLegend.shape, { backgroundColor: nodeColor(type, colors), borderRadius: type === 'album' || type === 'work' ? 5 : 20 }]} />
-      <Text style={[stylesForLegend.label, { color: colors.mutedForeground }]}>{label}</Text>
+    <View style={styles.tree}>
+      {data.artists.map((artist) => (
+        <View key={artist.id} style={styles.artistBranch}>
+          <BrowseArtistRow
+            artist={artist}
+            expanded={Boolean(expanded[`artist:${artist.id}`])}
+            onToggle={() => onToggle(`artist:${artist.id}`)}
+            colors={colors}
+            styles={styles}
+          />
+          {expanded[`artist:${artist.id}`] ? (
+            <View style={styles.children}>
+              {artist.albums.length ? artist.albums.map((album) => (
+                <BrowseAlbumBranch
+                  key={`${artist.id}:${album.id}`}
+                  album={album}
+                  expanded={Boolean(expanded[`album:${album.id}`])}
+                  onToggle={() => onToggle(`album:${album.id}`)}
+                  onPlay={() => onPlayAlbum(album)}
+                  onPlayTrack={onPlayTrack}
+                  colors={colors}
+                  styles={styles}
+                />
+              )) : (
+                <Text style={styles.branchEmpty}>برای این هنرمند هنوز آلبومی ثبت نشده است.</Text>
+              )}
+            </View>
+          ) : null}
+        </View>
+      ))}
+
+      {data.unassignedAlbums.length ? (
+        <View style={styles.unassignedBranch}>
+          <Text style={styles.groupLabel}>آلبوم‌های بدون هنرمند</Text>
+          {data.unassignedAlbums.map((album) => (
+            <BrowseAlbumBranch
+              key={album.id}
+              album={album}
+              expanded={Boolean(expanded[`album:${album.id}`])}
+              onToggle={() => onToggle(`album:${album.id}`)}
+              onPlay={() => onPlayAlbum(album)}
+              onPlayTrack={onPlayTrack}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {data.unassignedTracks.length ? (
+        <View style={styles.unassignedBranch}>
+          <Text style={styles.groupLabel}>قطعه‌های بدون آلبوم</Text>
+          {data.unassignedTracks.map((track) => (
+            <BrowseTrackRow
+              key={track.id}
+              track={track}
+              onPlay={() => onPlayTrack(track)}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function GraphToast({
-  message,
+function BrowseArtistRow({
+  artist,
+  expanded,
+  onToggle,
   colors,
   styles,
 }: {
-  message: string;
+  artist: GraphArtist;
+  expanded: boolean;
+  onToggle: () => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
 }) {
   return (
-    <View pointerEvents="none" style={styles.toast}>
-      <Feather name="play-circle" size={17} color={colors.primary} />
-      <Text style={styles.toastText}>{message}</Text>
+    <View style={styles.artistRow}>
+      <Pressable
+        testID={`graph-browse-artist-${artist.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`باز کردن صفحه‌ی ${artist.name}`}
+        onPress={() => router.push(`/artist/${artist.id}`)}
+        style={({ pressed }) => [styles.artistContent, pressed && styles.pressed]}
+      >
+        <Artwork uri={artist.profileImage ?? artist.image} kind="artist" size={62} colors={colors} styles={styles} />
+        <View style={styles.artistCopy}>
+          <Text style={styles.artistTitle} numberOfLines={2}>{artist.name}</Text>
+          <Text style={styles.nodeCaption}>
+            {artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
+          </Text>
+        </View>
+        <Feather name="arrow-left" size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {artist.albums.length ? (
+        <Pressable
+          testID={`graph-browse-toggle-artist-${artist.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'بستن آلبوم‌های هنرمند' : 'باز کردن آلبوم‌های هنرمند'}
+          onPress={onToggle}
+          style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
+        >
+          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={19} color={colors.mutedForeground} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function getAllowedEdgeTypes(filter: GraphFilter): Set<MusicGraphEdgeType> {
-  if (filter === 'all') return new Set<MusicGraphEdgeType>([
-    'artist-album', 'artist-track', 'album-track', 'work-version', 'track-work',
-    'track-version', 'credit', 'artist-artist',
-  ]);
-  if (filter === 'credit') return new Set<MusicGraphEdgeType>(['credit']);
-  if (filter === 'artist-artist') return new Set<MusicGraphEdgeType>(['artist-artist']);
-  return new Set<MusicGraphEdgeType>([
-    'artist-album', 'artist-track', 'album-track', 'work-version', 'track-work', 'track-version',
-  ]);
+function BrowseAlbumBranch({
+  album,
+  expanded,
+  onToggle,
+  onPlay,
+  onPlayTrack,
+  colors,
+  styles,
+}: {
+  album: GraphAlbum;
+  expanded: boolean;
+  onToggle: () => void;
+  onPlay: () => void;
+  onPlayTrack: (track: TrackRecord) => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.albumBranch}>
+      <View style={styles.albumRow}>
+        <Pressable
+          testID={`graph-browse-album-${album.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`باز کردن صفحه‌ی ${album.title}`}
+          onPress={() => router.push(`/album/${album.id}`)}
+          style={({ pressed }) => [styles.albumContent, pressed && styles.pressed]}
+        >
+          <Artwork uri={album.coverImage} kind="album" size={40} colors={colors} styles={styles} />
+          <View style={styles.nodeCopy}>
+            <Text style={styles.nodeTitle} numberOfLines={2}>{album.title}</Text>
+            <Text style={styles.nodeCaption}>{album.tracks.length ? `${album.tracks.length} قطعه` : 'بدون قطعه'}</Text>
+          </View>
+          <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
+        </Pressable>
+        <Pressable
+          testID={`graph-play-album-${album.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`پخش صف آلبوم ${album.title}`}
+          onPress={onPlay}
+          style={({ pressed }) => [styles.smallPlayButton, pressed && styles.pressed]}
+        >
+          <Feather name="play" size={15} color={colors.primaryForeground} />
+        </Pressable>
+        {album.tracks.length ? (
+          <Pressable
+            testID={`graph-toggle-album-${album.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? 'بستن قطعه‌های آلبوم' : 'باز کردن قطعه‌های آلبوم'}
+            onPress={onToggle}
+            style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
+          >
+            <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </View>
+      {expanded ? (
+        <View style={styles.trackChildren}>
+          {album.tracks.length ? album.tracks.map((track) => (
+            <BrowseTrackRow
+              key={track.id}
+              track={track}
+              onPlay={() => onPlayTrack(track)}
+              colors={colors}
+              styles={styles}
+            />
+          )) : (
+            <Text style={styles.branchEmpty}>این آلبوم هنوز قطعه‌ای ندارد.</Text>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
-function getFocusedEdges(
-  edges: MusicGraphEdge[],
-  focusedNodeId: string | null,
-  allowed: Set<MusicGraphEdgeType>,
-): MusicGraphEdge[] {
-  if (!focusedNodeId) return [];
-  return edges.filter((edge) => allowed.has(edge.type) && (edge.from === focusedNodeId || edge.to === focusedNodeId));
+function BrowseTrackRow({
+  track,
+  onPlay,
+  colors,
+  styles,
+}: {
+  track: TrackRecord;
+  onPlay: () => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.trackRow}>
+      <Pressable
+        testID={`graph-browse-track-${track.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`باز کردن قطعه‌ی ${track.title}`}
+        onPress={() => router.push(`/track/${track.id}`)}
+        style={({ pressed }) => [styles.trackContent, pressed && styles.pressed]}
+      >
+        <Feather name="music" size={16} color={colors.accentForeground} />
+        <Text style={styles.trackTitle} numberOfLines={2}>{track.title}</Text>
+        <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
+      </Pressable>
+      <Pressable
+        testID={`graph-play-track-${track.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`پخش صف از قطعه‌ی ${track.title}`}
+        onPress={onPlay}
+        style={({ pressed }) => [styles.smallPlayButton, pressed && styles.pressed]}
+      >
+        <Feather name="play" size={14} color={colors.primaryForeground} />
+      </Pressable>
+    </View>
+  );
 }
 
-function getPositions(
-  focus: MusicGraphNode | null,
-  neighbors: MusicGraphNode[],
-  width: number,
-): PositionedNode[] {
-  if (!focus) return [];
-  const center = { x: width / 2, y: 178 };
-  const radiusX = Math.max(104, width * 0.36);
-  const radiusY = 125;
-  return [
-    { ...focus, ...center, isFocus: true },
-    ...neighbors.map((node, index) => {
-      const angle = -Math.PI / 2 + (index / Math.max(1, neighbors.length)) * Math.PI * 2;
-      return {
-        ...node,
-        x: center.x + Math.cos(angle) * radiusX,
-        y: center.y + Math.sin(angle) * radiusY,
-        isFocus: false,
-      };
-    }),
+function RelationsView({
+  focused,
+  history,
+  groups,
+  nodeMap,
+  relationFilter,
+  relationLimits,
+  onBack,
+  onFilter,
+  onFocus,
+  onOpenDetails,
+  onPlayFocused,
+  onPlayNode,
+  onShowMore,
+  colors,
+  styles,
+}: {
+  focused: FocusRef;
+  history: FocusRef[];
+  groups: Array<{ key: RelationGroupKey; label: string; edges: MusicGraphEdge[] }>;
+  nodeMap: Map<string, MusicGraphNode>;
+  relationFilter: RelationFilter;
+  relationLimits: Record<string, number>;
+  onBack: () => void;
+  onFilter: (filter: RelationFilter) => void;
+  onFocus: (node: MusicGraphNode) => void;
+  onOpenDetails: () => void;
+  onPlayFocused: () => void;
+  onPlayNode: (node: MusicGraphNode) => void;
+  onShowMore: (key: RelationGroupKey) => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const focusedNode = nodeMap.get(focused.id);
+  if (!focusedNode) return null;
+  const previous = history[history.length - 1];
+  const relationFilters: Array<{ key: RelationFilter; label: string; icon: 'layers' | 'award' | 'users' | 'disc' | 'music' | 'git-branch' }> = [
+    { key: 'all', label: 'همه', icon: 'layers' },
+    { key: 'credits', label: 'مشارکت‌ها', icon: 'award' },
+    { key: 'relatedArtists', label: 'هنرمندان مرتبط', icon: 'users' },
+    { key: 'albums', label: 'آلبوم‌ها', icon: 'disc' },
+    { key: 'tracks', label: 'قطعه‌ها', icon: 'music' },
+    { key: 'workVersion', label: 'اثر و نسخه', icon: 'git-branch' },
   ];
+  const visibleGroups = relationFilter === 'all'
+    ? groups
+    : groups.filter((group) => group.key === relationFilter);
+
+  return (
+    <View>
+      <View style={styles.focusCard}>
+        <Artwork
+          uri={focusedNode.imageUri ?? focusedNode.coverImage}
+          kind={focusedNode.type}
+          size={76}
+          colors={colors}
+          styles={styles}
+        />
+        <View style={styles.focusCopy}>
+          <Text style={styles.focusEyebrow}>موجودیت کانونی</Text>
+          <Text style={styles.focusTitle} numberOfLines={2}>{focusedNode.label}</Text>
+          <Text style={styles.focusMeta}>{nodeTypeLabel(focusedNode.type)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.focusActions}>
+        <Pressable
+          testID="graph-open-details"
+          accessibilityRole="button"
+          onPress={onOpenDetails}
+          style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+        >
+          <Feather name="external-link" size={16} color={colors.primary} />
+          <Text style={styles.secondaryActionText}>صفحه‌ی جزئیات</Text>
+        </Pressable>
+        <Pressable
+          testID="graph-play-focused"
+          accessibilityRole="button"
+          onPress={onPlayFocused}
+          style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
+        >
+          <Feather name="play" size={16} color={colors.primaryForeground} />
+          <Text style={styles.primaryActionText}>پخش صف این گره</Text>
+        </Pressable>
+      </View>
+
+      {previous ? (
+        <Pressable
+          testID="graph-back"
+          accessibilityRole="button"
+          accessibilityLabel={`بازگشت به ${previous.label}`}
+          onPress={onBack}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <Feather name="arrow-right" size={16} color={colors.primary} />
+          <Text style={styles.backButtonText}>بازگشت به {previous.label}</Text>
+        </Pressable>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.relationFilterContent}
+      >
+        {relationFilters.map((filter) => (
+          <Pressable
+            key={filter.key}
+            testID={`graph-relation-filter-${filter.key}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: relationFilter === filter.key }}
+            onPress={() => onFilter(filter.key)}
+            style={({ pressed }) => [
+              styles.relationFilterChip,
+              relationFilter === filter.key && styles.relationFilterChipActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Feather
+              name={filter.icon}
+              size={14}
+              color={relationFilter === filter.key ? colors.primaryForeground : colors.mutedForeground}
+            />
+            <Text style={[
+              styles.relationFilterText,
+              relationFilter === filter.key && styles.relationFilterTextActive,
+            ]}>{filter.label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {visibleGroups.length ? (
+        <View style={styles.relationGroups}>
+          {visibleGroups.map((group) => {
+            const limit = relationLimits[group.key] ?? RELATION_LIMIT;
+            const visibleEdges = group.edges.slice(0, limit);
+            return (
+              <View key={group.key} style={styles.relationGroup}>
+                <View style={styles.groupHeading}>
+                  <Text style={styles.groupTitle}>{group.label}</Text>
+                  <Text style={styles.groupCount}>{group.edges.length.toString()}</Text>
+                </View>
+                <View style={styles.relationCard}>
+                  {visibleEdges.map((edge) => {
+                    const neighborId = edge.from === focused.id ? edge.to : edge.from;
+                    const neighbor = nodeMap.get(neighborId);
+                    if (!neighbor) return null;
+                    return (
+                      <RelationRow
+                        key={edge.id}
+                        edge={edge}
+                        node={neighbor}
+                        onFocus={() => onFocus(neighbor)}
+                        onPlay={() => onPlayNode(neighbor)}
+                        colors={colors}
+                        styles={styles}
+                      />
+                    );
+                  })}
+                </View>
+                {group.edges.length > limit ? (
+                  <Pressable
+                    testID={`graph-show-more-${group.key}`}
+                    accessibilityRole="button"
+                    onPress={() => onShowMore(group.key)}
+                    style={({ pressed }) => [styles.showMoreButton, pressed && styles.pressed]}
+                  >
+                    <Feather name="plus" size={15} color={colors.primary} />
+                    <Text style={styles.showMoreText}>نمایش بیشتر</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={styles.noRelations}>
+          <Feather name="info" size={23} color={colors.mutedForeground} />
+          <Text style={styles.noRelationsTitle}>
+            {groups.length ? 'در این فیلتر رابطه‌ای پیدا نشد.' : 'برای این موجودیت رابطه‌ای ثبت نشده است.'}
+          </Text>
+          <Text style={styles.noRelationsText}>
+            {groups.length ? 'فیلتر دیگری را امتحان کن.' : emptyRelationHint(focusedNode.type)}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
-function chooseStartNode(data: MusicGraphData): string | null {
-  const degree = new Map<string, number>();
-  data.edges.forEach((edge) => {
-    degree.set(edge.from, (degree.get(edge.from) ?? 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1);
+function RelationRow({
+  edge,
+  node,
+  onFocus,
+  onPlay,
+  colors,
+  styles,
+}: {
+  edge: MusicGraphEdge;
+  node: MusicGraphNode;
+  onFocus: () => void;
+  onPlay: () => void;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.relationRow}>
+      <Pressable
+        testID={`graph-relation-${edge.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`تمرکز روی ${node.label}`}
+        onPress={onFocus}
+        style={({ pressed }) => [styles.relationContent, pressed && styles.pressed]}
+      >
+        <Artwork uri={node.imageUri ?? node.coverImage} kind={node.type} size={42} colors={colors} styles={styles} />
+        <View style={styles.relationCopy}>
+          <Text style={styles.relationTitle} numberOfLines={2}>{node.label}</Text>
+          <Text style={styles.relationMeta} numberOfLines={2}>
+            {nodeTypeLabel(node.type)} · {edge.label ?? 'ارتباط ثبت‌شده'}
+          </Text>
+        </View>
+        <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
+      </Pressable>
+      {node.type === 'track' || node.type === 'album' ? (
+        <Pressable
+          testID={`graph-relation-play-${node.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`پخش صف ${node.label}`}
+          onPress={onPlay}
+          style={({ pressed }) => [styles.smallPlayButton, pressed && styles.pressed]}
+        >
+          <Feather name="play" size={14} color={colors.primaryForeground} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function Artwork({
+  uri,
+  kind,
+  size,
+  colors,
+  styles,
+}: {
+  uri: string | null | undefined;
+  kind: MusicGraphNodeType | 'artist';
+  size: number;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const radius = kind === 'artist' ? size / 2 : Math.max(10, Math.round(size * 0.22));
+  return (
+    <View style={[
+      styles.artwork,
+      { width: size, height: size, borderRadius: radius, backgroundColor: artworkBackground(kind, colors) },
+    ]}>
+      {uri ? (
+        <Image source={{ uri }} style={{ width: size, height: size, borderRadius: radius }} resizeMode="cover" />
+      ) : (
+        <Feather name={artworkIcon(kind)} size={Math.max(16, Math.round(size * 0.36))} color={artworkIconColor(kind, colors)} />
+      )}
+    </View>
+  );
+}
+
+function groupRelationEdges(
+  edges: MusicGraphEdge[],
+  focused: FocusRef | null,
+): Array<{ key: RelationGroupKey; label: string; edges: MusicGraphEdge[] }> {
+  if (!focused) return [];
+  const groups = new Map<RelationGroupKey, MusicGraphEdge[]>();
+  edges.forEach((edge) => {
+    const key = relationGroupKey(edge, focused.type);
+    if (!key) return;
+    const current = groups.get(key) ?? [];
+    current.push(edge);
+    groups.set(key, current);
   });
-  return [...data.nodes]
-    .sort((left, right) => {
-      const typeWeight = (right.type === 'artist' ? 1 : 0) - (left.type === 'artist' ? 1 : 0);
-      return typeWeight || (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0);
-    })[0]?.id ?? null;
+  const labels: Record<RelationGroupKey, string> = {
+    credits: 'مشارکت‌ها',
+    relatedArtists: 'هنرمندان مرتبط',
+    artists: 'هنرمندان',
+    albums: 'آلبوم‌ها',
+    tracks: 'قطعه‌ها',
+    workVersion: 'اثر و نسخه',
+  };
+  const order: RelationGroupKey[] = ['credits', 'relatedArtists', 'albums', 'tracks', 'workVersion', 'artists'];
+  return order
+    .filter((key) => groups.has(key))
+    .map((key) => ({ key, label: labels[key], edges: groups.get(key) ?? [] }));
+}
+
+function relationGroupKey(
+  edge: MusicGraphEdge,
+  focusedType: MusicGraphNodeType | null,
+): RelationGroupKey | null {
+  if (edge.type === 'credit') return 'credits';
+  if (edge.type === 'artist-artist') return 'relatedArtists';
+  if (edge.type === 'artist-album') return focusedType === 'artist' ? 'albums' : 'artists';
+  if (edge.type === 'album-track') return focusedType === 'album' ? 'tracks' : 'albums';
+  if (edge.type === 'artist-track') return focusedType === 'artist' ? 'tracks' : 'artists';
+  if (edge.type === 'track-work' || edge.type === 'track-version' || edge.type === 'work-version') {
+    return 'workVersion';
+  }
+  return null;
 }
 
 function getQueueForNode(
@@ -454,52 +930,71 @@ function getQueueForNode(
   data: MusicGraphData,
   nodeMap: Map<string, MusicGraphNode>,
 ): GraphQueueTrack[] {
-  const trackIds: string[] = [];
+  const trackIds = new Set<string>();
+  const tracksByAlbum = new Map<string, string[]>();
+  data.edges
+    .filter((edge) => edge.type === 'album-track')
+    .forEach((edge) => {
+      const tracks = tracksByAlbum.get(edge.from) ?? [];
+      tracks.push(edge.to);
+      tracksByAlbum.set(edge.from, tracks);
+    });
   const addTrack = (id: string) => {
     const candidate = nodeMap.get(id);
-    if (candidate?.type === 'track' && candidate.audioUri && !trackIds.includes(id)) trackIds.push(id);
+    if (candidate?.type === 'track' && candidate.audioUri) trackIds.add(id);
   };
   const addAlbumTracks = (albumId: string) => {
-    data.edges
-      .filter((edge) => edge.type === 'album-track' && edge.from === albumId)
-      .forEach((edge) => addTrack(edge.to));
+    (tracksByAlbum.get(albumId) ?? []).forEach(addTrack);
   };
 
-  if (node.type === 'track') {
-    const albumEdge = data.edges.find((edge) => edge.type === 'album-track' && edge.to === node.id);
-    if (albumEdge) addAlbumTracks(albumEdge.from);
-    else if (node.albumId) addAlbumTracks(node.albumId);
-    else {
-      const artistEdge = data.edges.find((edge) => edge.type === 'artist-track' && edge.to === node.id);
-      if (artistEdge) {
-        data.edges
-          .filter(
-            (edge) =>
-              edge.type === 'artist-track' &&
-              edge.from === artistEdge.from &&
-              !data.edges.some(
-                (albumTrackEdge) =>
-                  albumTrackEdge.type === 'album-track' && albumTrackEdge.to === edge.to,
-              ),
-          )
-          .forEach((edge) => addTrack(edge.to));
-      }
-    }
-    if (!trackIds.length) addTrack(node.id);
-  } else if (node.type === 'album') {
+  if (node.type === 'album') {
     addAlbumTracks(node.id);
+  } else if (node.type === 'track') {
+    const albumIds = data.edges
+      .filter((edge) => edge.type === 'album-track' && edge.to === node.id)
+      .map((edge) => edge.from);
+    if (albumIds.length) albumIds.forEach(addAlbumTracks);
+    else addTrack(node.id);
   } else {
     data.edges
       .filter((edge) => edge.from === node.id || edge.to === node.id)
       .forEach((edge) => {
         if (edge.type === 'artist-track' && edge.from === node.id) addTrack(edge.to);
-        if (edge.type === 'credit') addTrack(edge.to);
+        if (edge.type === 'credit' && edge.to === node.id) addTrack(edge.from);
         if (edge.type === 'artist-album' && edge.from === node.id) addAlbumTracks(edge.to);
         if (edge.type === 'track-work' && edge.to === node.id) addTrack(edge.from);
         if (edge.type === 'track-version' && edge.to === node.id) addTrack(edge.from);
       });
   }
-  return trackIds.map((id) => toTrackRecord(nodeMap.get(id)!));
+  return [...trackIds]
+    .map((id) => nodeMap.get(id))
+    .filter((track): track is MusicGraphNode => Boolean(track && track.type === 'track'))
+    .map(toTrackRecord);
+}
+
+async function playNode(
+  node: MusicGraphNode,
+  data: MusicGraphData,
+  nodeMap: Map<string, MusicGraphNode>,
+  browseData: BrowseData | null,
+  playQueue: (tracks: TrackRecord[]) => Promise<void>,
+  showToast: (message: string) => void,
+) {
+  let tracks = getQueueForNode(node, data, nodeMap);
+  if (browseData && node.type === 'album') {
+    const album = findBrowseAlbum(browseData, node.id);
+    tracks = album?.tracks.map((track) => ({ ...track, artistName: null })) ?? tracks;
+  } else if (browseData && node.type === 'track') {
+    const albumTracks = findAlbumTracks(browseData, node.id);
+    const browseTrack = findBrowseTrack(browseData, node.id);
+    tracks = (albumTracks.length ? albumTracks : browseTrack ? [browseTrack] : [])
+      .map((track) => ({ ...track, artistName: null }));
+  }
+  if (!tracks.length) {
+    showToast('فایل قابل پخشی برای این گره پیدا نشد.');
+    return;
+  }
+  await playQueue(tracks);
 }
 
 function toTrackRecord(node: MusicGraphNode): GraphQueueTrack {
@@ -520,20 +1015,45 @@ function toTrackRecord(node: MusicGraphNode): GraphQueueTrack {
   };
 }
 
-async function playNode(
-  node: MusicGraphNode,
-  data: MusicGraphData,
-  nodeMap: Map<string, MusicGraphNode>,
-  setToast: (value: string) => void,
-) {
-  const tracks = getQueueForNode(node, data, nodeMap);
-  if (!tracks.length) {
-    setToast('فایل قابل پخشی برای این گره پیدا نشد.');
-    return;
+function findAlbumTracks(data: BrowseData, trackId: string): TrackRecord[] {
+  for (const artist of data.artists) {
+    for (const album of artist.albums) {
+      if (album.tracks.some((track) => track.id === trackId)) return album.tracks;
+    }
   }
-  const started = await playTracksInQueue(tracks, 0);
-  setToast(started ? 'صف پخش گراف شروع شد.' : 'پخش از گراف انجام نشد.');
-  if (started) router.push('/player');
+  for (const album of data.unassignedAlbums) {
+    if (album.tracks.some((track) => track.id === trackId)) return album.tracks;
+  }
+  return [];
+}
+
+function findBrowseAlbum(data: BrowseData, albumId: string): GraphAlbum | null {
+  for (const artist of data.artists) {
+    const album = artist.albums.find((item) => item.id === albumId);
+    if (album) return album;
+  }
+  return data.unassignedAlbums.find((album) => album.id === albumId) ?? null;
+}
+
+function findBrowseTrack(data: BrowseData, trackId: string): TrackRecord | null {
+  const albumTracks = findAlbumTracks(data, trackId);
+  if (albumTracks.length) return albumTracks.find((track) => track.id === trackId) ?? null;
+  return data.unassignedTracks.find((track) => track.id === trackId) ?? null;
+}
+
+function chooseBrowseFocus(data: BrowseData): FocusRef | null {
+  const artist = data.artists.find((item) => item.albums.length) ?? data.artists[0];
+  if (artist) return { id: artist.id, type: 'artist', label: artist.name };
+  const album = data.unassignedAlbums[0];
+  if (album) return { id: album.id, type: 'album', label: album.title };
+  const track = data.unassignedTracks[0];
+  return track ? { id: track.id, type: 'track', label: track.title } : null;
+}
+
+function parseNodeType(value: string | undefined): MusicGraphNodeType | null {
+  return value === 'artist' || value === 'album' || value === 'track' || value === 'work' || value === 'version'
+    ? value
+    : null;
 }
 
 function routeForNode(node: MusicGraphNode): `/artist/${string}` | `/album/${string}` | `/track/${string}` | `/work/${string}` | null {
@@ -545,74 +1065,337 @@ function routeForNode(node: MusicGraphNode): `/artist/${string}` | `/album/${str
 }
 
 function nodeTypeLabel(type: MusicGraphNodeType): string {
-  return { artist: 'هنرمند', album: 'آلبوم', track: 'قطعه', work: 'اثر', version: 'نسخه' }[type];
-}
-
-function nodeColor(type: MusicGraphNodeType, colors: ReturnType<typeof useColors>): string {
   return {
-    artist: colors.primary,
-    album: colors.accent,
-    track: colors.secondaryForeground,
-    work: colors.destructive,
-    version: colors.mutedForeground,
+    artist: 'هنرمند',
+    album: 'آلبوم',
+    track: 'قطعه',
+    work: 'اثر',
+    version: 'نسخه',
   }[type];
 }
 
-function isNode(node: MusicGraphNode | undefined): node is MusicGraphNode {
-  return Boolean(node);
+function emptyRelationHint(type: MusicGraphNodeType): string {
+  if (type === 'album') return 'برای این آلبوم هنرمندی ثبت نشده؛ از فرم ویرایش آلبوم اضافه کن.';
+  if (type === 'artist') return 'از فرم آلبوم یا رابطه‌ی هنرمندان، یک ارتباط تازه ثبت کن.';
+  if (type === 'track') return 'این قطعه را به آلبوم، اثر یا مشارکت‌کننده متصل کن.';
+  if (type === 'work') return 'از صفحه‌ی اثر، قطعه‌ها یا نسخه‌های مرتبط را اضافه کن.';
+  return 'این نسخه هنوز به قطعه یا اثر دیگری متصل نشده است.';
 }
 
-const stylesForLegend = StyleSheet.create({
-  item: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
-  shape: { width: 10, height: 10 },
-  label: { fontSize: 10 },
-});
+function artworkIcon(type: MusicGraphNodeType | 'artist'): 'mic' | 'disc' | 'music' | 'book-open' | 'layers' {
+  if (type === 'artist') return 'mic';
+  if (type === 'album') return 'disc';
+  if (type === 'track') return 'music';
+  if (type === 'work') return 'book-open';
+  return 'layers';
+}
+
+function artworkBackground(type: MusicGraphNodeType | 'artist', colors: ReturnType<typeof useColors>): string {
+  if (type === 'artist') return withAlpha(colors.primary, 0.16);
+  if (type === 'album') return withAlpha(colors.accent, 0.18);
+  if (type === 'track') return withAlpha(colors.secondaryForeground, 0.14);
+  if (type === 'work') return withAlpha(colors.destructive, 0.14);
+  return withAlpha(colors.mutedForeground, 0.16);
+}
+
+function artworkIconColor(type: MusicGraphNodeType | 'artist', colors: ReturnType<typeof useColors>): string {
+  if (type === 'artist') return colors.primary;
+  if (type === 'album') return colors.accentForeground;
+  if (type === 'track') return colors.secondaryForeground;
+  if (type === 'work') return colors.destructive;
+  return colors.mutedForeground;
+}
 
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background },
     content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 104 },
     header: { flexDirection: 'row-reverse', alignItems: 'center', gap: 13, marginBottom: 15 },
-    headerIcon: { width: 48, height: 48, borderRadius: 17, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+    headerIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 17,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     headerCopy: { flex: 1, alignItems: 'flex-end' },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, marginBottom: 4, textAlign: 'right' },
     title: { color: colors.foreground, fontSize: 30, lineHeight: 38, fontWeight: '700', textAlign: 'right' },
     intro: { color: colors.mutedForeground, fontSize: 13, lineHeight: 23, textAlign: 'right', marginBottom: 16 },
-    filterRow: { marginHorizontal: -20, marginBottom: 14 },
-    filterContent: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 20 },
-    filterChip: { minHeight: 35, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-    filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    filterText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '700' },
-    filterTextActive: { color: colors.primaryForeground },
-    status: { minHeight: 420, alignItems: 'center', justifyContent: 'center' },
-    errorBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.muted, borderRadius: 15, padding: 13 },
+    modeSwitch: {
+      flexDirection: 'row-reverse',
+      gap: 7,
+      padding: 4,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 16,
+    },
+    modeButton: {
+      flex: 1,
+      minHeight: 40,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+    },
+    modeButtonActive: { backgroundColor: colors.primary },
+    modeButtonText: { color: colors.mutedForeground, fontSize: 12, fontWeight: '700' },
+    modeButtonTextActive: { color: colors.primaryForeground },
+    status: { minHeight: 380, alignItems: 'center', justifyContent: 'center' },
+    errorBox: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: withAlpha(colors.destructive, 0.12),
+      borderRadius: 15,
+      padding: 13,
+    },
     errorText: { flex: 1, color: colors.destructive, fontSize: 13, lineHeight: 21, textAlign: 'right' },
-    emptyState: { minHeight: 360, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 22, padding: 24 },
+    emptyState: {
+      minHeight: 320,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 22,
+      padding: 24,
+    },
     emptyTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', marginTop: 13, textAlign: 'center' },
     emptyText: { color: colors.mutedForeground, fontSize: 13, lineHeight: 22, marginTop: 8, textAlign: 'center' },
-    focusCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, padding: 14, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
-    focusCopy: { flex: 1, alignItems: 'flex-end' },
+    tree: { gap: 16 },
+    artistBranch: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 24,
+      padding: 10,
+    },
+    artistRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, minHeight: 76 },
+    artistContent: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 11,
+      paddingHorizontal: 6,
+      borderRadius: 18,
+    },
+    artistCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+    artistTitle: { color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+    toggle: { width: 31, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+    children: { borderRightWidth: 1, borderRightColor: colors.border, marginRight: 28, paddingRight: 10, marginTop: 8, gap: 9 },
+    albumBranch: { gap: 7 },
+    albumRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
+    albumContent: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 60,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 10,
+      borderRadius: 19,
+      backgroundColor: withAlpha(colors.foreground, 0.055),
+      borderWidth: 1,
+      borderColor: withAlpha(colors.foreground, 0.1),
+    },
+    artwork: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+    nodeCopy: { flex: 1, minWidth: 0 },
+    nodeTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    nodeCaption: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
+    smallPlayButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    trackChildren: { marginRight: 42, borderRightWidth: 1, borderRightColor: colors.border, paddingRight: 10, gap: 6 },
+    trackRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+    trackContent: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 47,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      paddingHorizontal: 12,
+      borderRadius: 17,
+      backgroundColor: withAlpha(colors.foreground, 0.04),
+      borderWidth: 1,
+      borderColor: withAlpha(colors.foreground, 0.08),
+    },
+    trackTitle: { flex: 1, color: colors.cardForeground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+    branchEmpty: { color: colors.mutedForeground, fontSize: 12, lineHeight: 20, textAlign: 'right', padding: 9 },
+    groupLabel: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700', textAlign: 'right', marginBottom: 7 },
+    unassignedBranch: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      padding: 12,
+      gap: 7,
+    },
+    focusCard: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 13,
+      padding: 15,
+      borderRadius: 22,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    focusCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
     focusEyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'right' },
-    focusTitle: { color: colors.foreground, fontSize: 18, fontWeight: '700', marginTop: 4, textAlign: 'right' },
-    focusMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 4, textAlign: 'right' },
-    focusActions: { flexDirection: 'row', gap: 4 },
-    iconButton: { width: 37, height: 37, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary },
-    legend: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, marginBottom: 10 },
-    graphCard: { overflow: 'hidden', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 24, paddingTop: 8 },
-    canvas: { alignSelf: 'center' },
-    nodeHit: { position: 'absolute', width: 108, minHeight: 68, alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 6 },
-    nodeHitLabel: { color: colors.foreground, fontSize: 11, fontWeight: '700', textAlign: 'center', textShadowColor: colors.background, textShadowRadius: 4 },
-    noNeighbors: { height: 300, alignItems: 'center', justifyContent: 'center', padding: 20 },
-    noNeighborsTitle: { color: colors.foreground, fontSize: 15, fontWeight: '700', marginTop: 12, textAlign: 'center' },
-    noNeighborsText: { color: colors.mutedForeground, fontSize: 12, lineHeight: 21, marginTop: 7, textAlign: 'center' },
-    graphHint: { flexDirection: 'row-reverse', gap: 7, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border },
-    graphHintText: { flex: 1, color: colors.mutedForeground, fontSize: 10, lineHeight: 17, textAlign: 'right' },
-    actionRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 12 },
-    primaryAction: { flex: 1, minHeight: 45, flexDirection: 'row-reverse', gap: 7, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: colors.primary },
+    focusTitle: { color: colors.foreground, fontSize: 20, lineHeight: 27, fontWeight: '700', marginTop: 4, textAlign: 'right' },
+    focusMeta: { color: colors.mutedForeground, fontSize: 12, marginTop: 5, textAlign: 'right' },
+    focusActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 11 },
+    primaryAction: {
+      flex: 1,
+      minHeight: 45,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 15,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 10,
+    },
     primaryActionText: { color: colors.primaryForeground, fontSize: 12, fontWeight: '700' },
-    secondaryAction: { minHeight: 45, flexDirection: 'row-reverse', gap: 5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, borderRadius: 15, backgroundColor: colors.secondary },
-    secondaryActionText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
-    toast: { position: 'absolute', left: 20, right: 20, bottom: 90, minHeight: 49, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary, elevation: 8 },
+    secondaryAction: {
+      flex: 1,
+      minHeight: 45,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 15,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 10,
+    },
+    secondaryActionText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    backButton: {
+      minHeight: 42,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 7,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 11,
+      marginTop: 10,
+      borderRadius: 14,
+      backgroundColor: withAlpha(colors.primary, 0.1),
+    },
+    backButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    relationFilterContent: { flexDirection: 'row-reverse', gap: 7, paddingVertical: 14 },
+    relationFilterChip: {
+      minHeight: 36,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 11,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    relationFilterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    relationFilterText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '700' },
+    relationFilterTextActive: { color: colors.primaryForeground },
+    relationGroups: { gap: 15, marginTop: 18 },
+    relationGroup: { gap: 8 },
+    groupHeading: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 3 },
+    groupTitle: { flex: 1, color: colors.foreground, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+    groupCount: {
+      minWidth: 27,
+      height: 27,
+      borderRadius: 14,
+      textAlign: 'center',
+      textAlignVertical: 'center',
+      color: colors.primary,
+      backgroundColor: withAlpha(colors.primary, 0.12),
+      fontSize: 12,
+      fontWeight: '700',
+      overflow: 'hidden',
+    },
+    relationCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      paddingHorizontal: 10,
+    },
+    relationRow: {
+      minHeight: 65,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    relationContent: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 58,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 4,
+      borderRadius: 15,
+    },
+    relationCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+    relationTitle: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+    relationMeta: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, marginTop: 3, textAlign: 'right' },
+    showMoreButton: {
+      minHeight: 40,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      borderRadius: 13,
+      backgroundColor: colors.secondary,
+    },
+    showMoreText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    noRelations: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      padding: 24,
+      marginTop: 18,
+    },
+    noRelationsTitle: { color: colors.foreground, fontSize: 15, fontWeight: '700', textAlign: 'center', marginTop: 11 },
+    noRelationsText: { color: colors.mutedForeground, fontSize: 12, lineHeight: 21, textAlign: 'center', marginTop: 7 },
+    toast: {
+      position: 'absolute',
+      left: 20,
+      right: 20,
+      bottom: 90,
+      minHeight: 49,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      elevation: 8,
+    },
     toastText: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
     pressed: { opacity: 0.72 },
   });
