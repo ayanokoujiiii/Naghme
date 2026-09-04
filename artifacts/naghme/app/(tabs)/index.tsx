@@ -22,7 +22,11 @@ import {
   getFavoriteTracks,
   getLibraryStats,
   getRecentlyAddedTracks,
+  getJournalEntriesPage,
+  getListeningHistoryPage,
   HomeTrackRecord,
+  JournalArchiveRecord,
+  ListeningHistoryArchiveRecord,
   LibraryStats,
 } from '@/src/db/queries';
 import { injectSampleData } from '@/src/db/seed';
@@ -37,6 +41,8 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<LibraryStats>(emptyStats);
   const [recentTracks, setRecentTracks] = useState<HomeTrackRecord[]>([]);
   const [favoriteTracks, setFavoriteTracks] = useState<HomeTrackRecord[]>([]);
+  const [latestJournal, setLatestJournal] = useState<JournalArchiveRecord | null>(null);
+  const [latestListening, setLatestListening] = useState<ListeningHistoryArchiveRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [seeding, setSeeding] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -45,14 +51,18 @@ export default function HomeScreen() {
     setLoading(true);
     setError('');
     try {
-      const [nextStats, nextRecent, nextFavorites] = await Promise.all([
+      const [nextStats, nextRecent, nextFavorites, nextJournal, nextListening] = await Promise.all([
         getLibraryStats(),
         getRecentlyAddedTracks(),
         getFavoriteTracks(),
+        getJournalEntriesPage({}, 1, 0),
+        getListeningHistoryPage({}, 1, 0),
       ]);
       setStats(nextStats);
       setRecentTracks(nextRecent);
       setFavoriteTracks(nextFavorites);
+      setLatestJournal(nextJournal[0] ?? null);
+      setLatestListening(nextListening[0] ?? null);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن صفحه‌ی خانه انجام نشد.');
     } finally {
@@ -166,6 +176,31 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>دفترچه و تاریخچه</Text>
+        <Text style={styles.sectionHint}>آخرین لحظه‌ها</Text>
+      </View>
+      <View style={styles.activityList}>
+        <ActivityCard
+          icon="book-open"
+          title="آخرین یادداشت"
+          primary={latestJournal?.note ?? 'هنوز یادداشتی ثبت نکرده‌ای.'}
+          secondary={latestJournal ? `${latestJournal.trackTitle}  •  ${latestJournal.mood}` : 'حال خودت را کنار هر قطعه بنویس'}
+          colors={colors}
+          styles={styles}
+          onPress={() => router.push('/journal')}
+        />
+        <ActivityCard
+          icon="headphones"
+          title="آخرین شنیده‌شده"
+          primary={latestListening?.trackTitle ?? 'هنوز شنیدنی ثبت نشده است.'}
+          secondary={latestListening ? (latestListening.artistName ?? 'هنرمند نامشخص') : 'با پخش یک قطعه، تاریخچه‌ات ساخته می‌شود'}
+          colors={colors}
+          styles={styles}
+          onPress={() => router.push('/history')}
+        />
+      </View>
+
+      <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>اخیراً اضافه‌شده</Text>
         <Pressable onPress={() => router.push('/archive')} hitSlop={10}>
           <Text style={styles.sectionLink}>مشاهده‌ی همه</Text>
@@ -233,6 +268,42 @@ export default function HomeScreen() {
       </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ActivityCard({
+  icon,
+  title,
+  primary,
+  secondary,
+  colors,
+  styles,
+  onPress,
+}: {
+  icon: 'book-open' | 'headphones';
+  title: string;
+  primary: string;
+  secondary: string;
+  colors: ReturnType<typeof useColors>;
+  styles: ReturnType<typeof createStyles>;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+    >
+      <View style={styles.activityIcon}>
+        <Feather name={icon} size={18} color={colors.primary} />
+      </View>
+      <View style={styles.activityCopy}>
+        <Text style={styles.activityTitle}>{title}</Text>
+        <Text style={styles.activityPrimary} numberOfLines={2}>{primary}</Text>
+        <Text style={styles.activitySecondary} numberOfLines={1}>{secondary}</Text>
+      </View>
+      <Text style={styles.activityLink}>نمایش</Text>
+    </Pressable>
   );
 }
 
@@ -371,6 +442,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
      favoriteCopy: { flex: 1, minWidth: 0 },
     favoriteTitle: { color: colors.cardForeground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     favoriteSubtitle: { color: colors.mutedForeground, fontSize: 12, textAlign: 'right', marginTop: 3 },
+     activityList: { gap: 9 },
+     activityCard: { minHeight: 82, padding: 12, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, flexDirection: 'row-reverse', alignItems: 'center', gap: 11 },
+     activityIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+     activityCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+     activityTitle: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right' },
+     activityPrimary: { color: colors.cardForeground, fontSize: 13, fontWeight: '700', textAlign: 'right', marginTop: 4 },
+     activitySecondary: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 3 },
+     activityLink: { color: colors.primary, fontSize: 11, fontWeight: '700' },
     emptySection: { minHeight: 70, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.muted, paddingHorizontal: 16 },
     emptyText: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right' },
     errorBox: { marginTop: 16, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.muted, borderRadius: 14, padding: 12 },

@@ -532,6 +532,26 @@ export default function TrackDetailScreen() {
       <Text style={styles.listenCount}>
         تعداد دفعات شنیده‌شده: {listeningHistory.length}
       </Text>
+      <View style={styles.archiveLinks}>
+        <Pressable
+          testID="track-open-journal"
+          accessibilityRole="button"
+          onPress={() => router.push(`/journal?trackId=${track.id}`)}
+          style={({ pressed }) => [styles.archiveLink, pressed && styles.pressed]}
+        >
+          <Feather name="book-open" size={16} color={colors.primary} />
+          <Text style={styles.archiveLinkText}>همه‌ی یادداشت‌ها</Text>
+        </Pressable>
+        <Pressable
+          testID="track-open-history"
+          accessibilityRole="button"
+          onPress={() => router.push(`/history?trackId=${track.id}`)}
+          style={({ pressed }) => [styles.archiveLink, pressed && styles.pressed]}
+        >
+          <Feather name="headphones" size={16} color={colors.primary} />
+          <Text style={styles.archiveLinkText}>همه‌ی شنیدن‌ها</Text>
+        </Pressable>
+      </View>
 
       <SectionHeading title="رابطه من با این قطعه" caption="چیزی که فقط برای تو معنا دارد" />
       <DetailCard>
@@ -1206,6 +1226,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginBottom: 18,
     },
     graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    archiveLinks: { flexDirection: 'row-reverse', gap: 9, marginTop: 10, marginBottom: 18 },
+    archiveLink: { flex: 1, minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8 },
+    archiveLinkText: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'center' },
     missingAudioBox: {
       flexDirection: 'row-reverse',
       alignItems: 'center',

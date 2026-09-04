@@ -155,6 +155,53 @@ export interface ListeningHistoryRecord {
   listenedAt: string;
 }
 
+export type ArchiveDateRange = 'all' | 'week' | 'month' | 'year';
+
+export interface JournalArchiveRecord extends JournalEntryRecord {
+  trackTitle: string;
+  artistId: string | null;
+  artistName: string | null;
+  coverImage: string | null;
+}
+
+export interface ListeningHistoryArchiveRecord extends ListeningHistoryRecord {
+  trackTitle: string;
+  artistId: string | null;
+  artistName: string | null;
+  coverImage: string | null;
+  audioUri: string | null;
+  duration: number | null;
+  lyrics: string | null;
+  versionName: string | null;
+  workId: string | null;
+  versionId: string | null;
+}
+
+export interface ArchiveArtistOption {
+  id: string;
+  name: string;
+}
+
+export interface JournalArchiveFilters {
+  mood?: string | null;
+  dateRange?: ArchiveDateRange;
+  artistId?: string | null;
+  trackId?: string | null;
+  search?: string;
+}
+
+export interface ListeningHistoryFilters {
+  dateRange?: ArchiveDateRange;
+  artistId?: string | null;
+  trackId?: string | null;
+}
+
+export interface ListeningHistoryOverview {
+  total: number;
+  topTracks: Array<{ trackId: string; title: string; artistName: string | null; listeningCount: number }>;
+  topArtists: Array<{ artistId: string; name: string; listeningCount: number }>;
+}
+
 export interface VersionTrackRecord extends TrackRecord {
   artistName: string | null;
   albumTitle: string | null;
@@ -2188,6 +2235,118 @@ export async function updateJournalEntry(
   return updated;
 }
 
+function archiveDateCondition(
+  column: 'JournalEntries.createdAt' | 'ListeningHistory.listenedAt',
+  range: ArchiveDateRange = 'all',
+): { sql: string; params: Array<string | number | null> } {
+  const modifierByRange: Record<Exclude<ArchiveDateRange, 'all'>, string> = {
+    week: '-7 days',
+    month: '-1 month',
+    year: '-1 year',
+  };
+  if (range === 'all') return { sql: '', params: [] };
+  return {
+    sql: ` AND datetime(${column}) >= datetime('now', 'localtime', '${modifierByRange[range]}')`,
+    params: [],
+  };
+}
+
+export async function getJournalEntriesPage(
+  filters: JournalArchiveFilters = {},
+  limit = 30,
+  offset = 0,
+): Promise<JournalArchiveRecord[]> {
+  const database = await requireDatabase();
+  const where: string[] = [];
+  const params: Array<string | number | null> = [];
+  const date = archiveDateCondition('JournalEntries.createdAt', filters.dateRange);
+  where.push('1 = 1');
+  if (filters.mood) {
+    where.push('JournalEntries.mood = ?');
+    params.push(filters.mood);
+  }
+  if (filters.artistId) {
+    where.push('Tracks.artistId = ?');
+    params.push(filters.artistId);
+  }
+  if (filters.trackId) {
+    where.push('JournalEntries.trackId = ?');
+    params.push(filters.trackId);
+  }
+  if (filters.search?.trim()) {
+    const pattern = `%${filters.search.trim()}%`;
+    where.push('(JournalEntries.note LIKE ? COLLATE NOCASE OR Tracks.title LIKE ? COLLATE NOCASE)');
+    params.push(pattern, pattern);
+  }
+  where.push(date.sql.replace(/^ AND /, ''));
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+  const safeOffset = Math.max(0, Math.floor(offset));
+  return database.getAllAsync<JournalArchiveRecord>(
+    `SELECT
+       JournalEntries.id,
+       JournalEntries.trackId,
+       JournalEntries.note,
+       JournalEntries.mood,
+       JournalEntries.createdAt,
+       Tracks.title AS trackTitle,
+       Tracks.artistId,
+       Tracks.coverImage,
+       Artists.name AS artistName
+     FROM JournalEntries
+     INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     WHERE ${where.filter(Boolean).join(' AND ')}
+     ORDER BY datetime(JournalEntries.createdAt) DESC
+     LIMIT ? OFFSET ?`,
+    [...params, ...date.params, safeLimit, safeOffset],
+  );
+}
+
+export async function getJournalEntryArtists(): Promise<ArchiveArtistOption[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ArchiveArtistOption>(
+    `SELECT DISTINCT Artists.id, Artists.name
+     FROM JournalEntries
+     INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
+     INNER JOIN Artists ON Artists.id = Tracks.artistId
+     ORDER BY Artists.name COLLATE NOCASE ASC`,
+    [],
+  );
+}
+
+export async function getJournalEntryCount(filters: JournalArchiveFilters = {}): Promise<number> {
+  const database = await requireDatabase();
+  const where: string[] = ['1 = 1'];
+  const params: Array<string | number | null> = [];
+  const date = archiveDateCondition('JournalEntries.createdAt', filters.dateRange);
+  if (filters.mood) {
+    where.push('JournalEntries.mood = ?');
+    params.push(filters.mood);
+  }
+  if (filters.artistId) {
+    where.push('Tracks.artistId = ?');
+    params.push(filters.artistId);
+  }
+  if (filters.trackId) {
+    where.push('JournalEntries.trackId = ?');
+    params.push(filters.trackId);
+  }
+  if (filters.search?.trim()) {
+    const pattern = `%${filters.search.trim()}%`;
+    where.push('(JournalEntries.note LIKE ? COLLATE NOCASE OR Tracks.title LIKE ? COLLATE NOCASE)');
+    params.push(pattern, pattern);
+  }
+  if (date.sql) where.push(date.sql.replace(/^ AND /, ''));
+  const row = await database.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count
+     FROM JournalEntries
+     INNER JOIN Tracks ON Tracks.id = JournalEntries.trackId
+     WHERE ${where.join(' AND ')}`,
+    [...params, ...date.params],
+  );
+  return row?.count ?? 0;
+}
+
 export async function logListen(trackId: string): Promise<ListeningHistoryRecord> {
   const historyEntry: ListeningHistoryRecord = {
     id: createId('listen'),
@@ -2212,6 +2371,135 @@ export async function getListeningHistory(trackId: string): Promise<ListeningHis
      ORDER BY datetime(listenedAt) DESC`,
     [trackId],
   );
+}
+
+export async function getListeningHistoryPage(
+  filters: ListeningHistoryFilters = {},
+  limit = 30,
+  offset = 0,
+): Promise<ListeningHistoryArchiveRecord[]> {
+  const database = await requireDatabase();
+  const date = archiveDateCondition('ListeningHistory.listenedAt', filters.dateRange);
+  const where: string[] = ['1 = 1'];
+  const params: Array<string | number | null> = [];
+  if (filters.artistId) {
+    where.push('Tracks.artistId = ?');
+    params.push(filters.artistId);
+  }
+  if (filters.trackId) {
+    where.push('ListeningHistory.trackId = ?');
+    params.push(filters.trackId);
+  }
+  if (date.sql) where.push(date.sql.replace(/^ AND /, ''));
+  const safeLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+  const safeOffset = Math.max(0, Math.floor(offset));
+  return database.getAllAsync<ListeningHistoryArchiveRecord>(
+    `SELECT
+       ListeningHistory.id,
+       ListeningHistory.trackId,
+       ListeningHistory.listenedAt,
+       Tracks.title AS trackTitle,
+       Tracks.artistId,
+       Tracks.coverImage,
+       Tracks.audioUri,
+       Tracks.duration,
+       Tracks.lyrics,
+       Tracks.versionName,
+       Tracks.workId,
+       Tracks.versionId,
+       Artists.name AS artistName
+     FROM ListeningHistory
+     INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     WHERE ${where.join(' AND ')}
+     ORDER BY datetime(ListeningHistory.listenedAt) DESC
+     LIMIT ? OFFSET ?`,
+    [...params, ...date.params, safeLimit, safeOffset],
+  );
+}
+
+export async function getListeningHistoryOverview(
+  filters: ListeningHistoryFilters = {},
+): Promise<ListeningHistoryOverview> {
+  const database = await requireDatabase();
+  const date = archiveDateCondition('ListeningHistory.listenedAt', filters.dateRange);
+  const whereParts: string[] = ['1 = 1'];
+  const params: Array<string | number | null> = [];
+  if (filters.artistId) {
+    whereParts.push('Tracks.artistId = ?');
+    params.push(filters.artistId);
+  }
+  if (filters.trackId) {
+    whereParts.push('ListeningHistory.trackId = ?');
+    params.push(filters.trackId);
+  }
+  if (date.sql) whereParts.push(date.sql.replace(/^ AND /, ''));
+  const where = whereParts.join(' AND ');
+  const [totalRow, topTracks, topArtists] = await Promise.all([
+    database.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM ListeningHistory
+       INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
+       WHERE ${where}`,
+      [...params, ...date.params],
+    ),
+    database.getAllAsync<ListeningHistoryOverview['topTracks'][number]>(
+      `SELECT
+         Tracks.id AS trackId,
+         Tracks.title,
+         Artists.name AS artistName,
+         COUNT(ListeningHistory.id) AS listeningCount
+       FROM ListeningHistory
+       INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
+       LEFT JOIN Artists ON Artists.id = Tracks.artistId
+       WHERE ${where}
+       GROUP BY Tracks.id
+       ORDER BY listeningCount DESC, Tracks.title COLLATE NOCASE ASC
+       LIMIT 5`,
+      [...params, ...date.params],
+    ),
+    database.getAllAsync<ListeningHistoryOverview['topArtists'][number]>(
+      `SELECT
+         Artists.id AS artistId,
+         Artists.name,
+         COUNT(ListeningHistory.id) AS listeningCount
+       FROM ListeningHistory
+       INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
+       INNER JOIN Artists ON Artists.id = Tracks.artistId
+       WHERE ${where}
+       GROUP BY Artists.id
+       ORDER BY listeningCount DESC, Artists.name COLLATE NOCASE ASC
+       LIMIT 5`,
+      [...params, ...date.params],
+    ),
+  ]);
+  return {
+    total: totalRow?.count ?? 0,
+    topTracks,
+    topArtists,
+  };
+}
+
+export async function deleteListeningHistoryEntry(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM ListeningHistory WHERE id = ?', [id]);
+}
+
+export async function deleteListeningHistory(filters: ListeningHistoryFilters = {}): Promise<void> {
+  const database = await requireDatabase();
+  const date = archiveDateCondition('ListeningHistory.listenedAt', filters.dateRange);
+  const where: string[] = ['1 = 1'];
+  const params: Array<string | number | null> = [];
+  if (filters.artistId) {
+    where.push('trackId IN (SELECT id FROM Tracks WHERE artistId = ?)');
+    params.push(filters.artistId);
+  }
+  if (filters.trackId) {
+    where.push('trackId = ?');
+    params.push(filters.trackId);
+  }
+  if (date.sql) where.push(date.sql.replace(/^ AND /, ''));
+  await database.runAsync(`DELETE FROM ListeningHistory WHERE ${where.join(' AND ')}`, [...params, ...date.params]);
 }
 
 export async function getChatArchiveContext(): Promise<ChatArchiveContext> {

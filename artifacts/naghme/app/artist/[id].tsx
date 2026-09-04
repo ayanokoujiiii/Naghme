@@ -526,6 +526,26 @@ export default function ArtistDetailScreen() {
         <Feather name="git-branch" size={16} color={colors.primary} />
         <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
       </Pressable>
+      <View style={styles.archiveLinks}>
+        <Pressable
+          testID="artist-open-journal"
+          accessibilityRole="button"
+          onPress={() => router.push(`/journal?artistId=${artist.id}`)}
+          style={({ pressed }) => [styles.archiveLink, pressed && styles.pressed]}
+        >
+          <Feather name="book-open" size={16} color={colors.primary} />
+          <Text style={styles.archiveLinkText}>دفترچه‌ی این هنرمند</Text>
+        </Pressable>
+        <Pressable
+          testID="artist-open-history"
+          accessibilityRole="button"
+          onPress={() => router.push(`/history?artistId=${artist.id}`)}
+          style={({ pressed }) => [styles.archiveLink, pressed && styles.pressed]}
+        >
+          <Feather name="headphones" size={16} color={colors.primary} />
+          <Text style={styles.archiveLinkText}>تاریخچه‌ی شنیدن</Text>
+        </Pressable>
+      </View>
 
       <SectionHeading title="یادداشت" />
       <DetailCard>
@@ -1148,6 +1168,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginBottom: 18,
     },
     graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    archiveLinks: { flexDirection: 'row-reverse', gap: 9, marginBottom: 18 },
+    archiveLink: { flex: 1, minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8 },
+    archiveLinkText: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'center' },
     relationshipHeading: {
       flexDirection: 'row-reverse',
       alignItems: 'flex-end',
