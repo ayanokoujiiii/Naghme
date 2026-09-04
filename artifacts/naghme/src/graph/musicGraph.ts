@@ -101,7 +101,7 @@ export async function getMusicGraphData(): Promise<MusicGraphData> {
       'SELECT id, title, releaseYear, coverImage FROM Albums ORDER BY title COLLATE NOCASE ASC',
     ),
     database.getAllAsync<TrackRow>(
-      'SELECT id, title, duration, audioUri, artistId, albumId, coverImage FROM Tracks ORDER BY title COLLATE NOCASE ASC',
+      'SELECT id, title, duration, audioUri, artistId, albumId, coverImage, lyrics, sheetMusicUri, versionName, workId, versionId FROM Tracks ORDER BY title COLLATE NOCASE ASC',
     ),
     database.getAllAsync<WorkRow>(
       'SELECT id, title, genre FROM Works ORDER BY title COLLATE NOCASE ASC',
