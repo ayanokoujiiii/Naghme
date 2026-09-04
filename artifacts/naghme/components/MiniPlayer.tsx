@@ -9,6 +9,7 @@ import {
   getAudioSnapshot,
   subscribeToAudio,
   toggleAudioPlayback,
+  previousAudio,
   nextAudio,
 } from '@/src/audio/audioManager';
 
@@ -28,6 +29,10 @@ export function MiniPlayer() {
   const isPlayerRoute = segments[0] === 'player';
   if (isPlayerRoute) return null;
   const bottom = insets.bottom + (isTabsRoute ? (Platform.OS === 'web' ? 86 : 78) : 12);
+  const hasPrevious = audio.queue.length > 0
+    && (audio.positionMillis > 3000 || audio.queueIndex > 0 || audio.repeatMode === 'context');
+  const hasNext = audio.queue.length > 0
+    && (audio.queueIndex < audio.queue.length - 1 || audio.repeatMode === 'context');
   const toggle = async () => {
     if (!audio.isLoaded || audio.isBuffering) return;
     await toggleAudioPlayback().catch(() => undefined);
@@ -52,10 +57,20 @@ export function MiniPlayer() {
           <View style={styles.copy}>
             <Text style={styles.title} numberOfLines={1}>{audio.track.title}</Text>
             <Text style={styles.subtitle} numberOfLines={1}>
-              {audio.track.versionName || audio.track.artistName || 'در حال پخش'}
+              {audio.track.artistName || audio.track.versionName || 'در حال پخش'}
             </Text>
             {audio.error ? <Text style={styles.error} numberOfLines={1}>{audio.error}</Text> : null}
           </View>
+        </Pressable>
+        <Pressable
+          testID="mini-player-previous"
+          accessibilityRole="button"
+          accessibilityLabel="قطعه‌ی قبلی"
+          disabled={!hasPrevious}
+          onPress={() => void previousAudio().catch(() => undefined)}
+          style={({ pressed }) => [styles.previous, !hasPrevious && styles.disabled, pressed && styles.pressed]}
+        >
+          <Feather name="skip-back" size={17} color={colors.foreground} />
         </Pressable>
         <Pressable
           testID="mini-player-toggle"
@@ -79,9 +94,9 @@ export function MiniPlayer() {
           testID="mini-player-next"
           accessibilityRole="button"
           accessibilityLabel="قطعه‌ی بعدی"
-          disabled={!audio.queue.length}
+          disabled={!hasNext}
           onPress={() => void nextAudio().catch(() => undefined)}
-          style={({ pressed }) => [styles.next, !audio.queue.length && styles.disabled, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.next, !hasNext && styles.disabled, pressed && styles.pressed]}
         >
           <Feather name="skip-forward" size={17} color={colors.foreground} />
         </Pressable>
@@ -115,7 +130,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       minHeight: 76,
       flexDirection: 'row-reverse',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
       paddingHorizontal: 9,
       paddingVertical: 9,
       borderRadius: 18,
@@ -129,7 +144,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       position: 'relative',
       overflow: 'hidden',
     },
-    cardTapArea: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+    cardTapArea: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 8,
+      paddingLeft: 48,
+    },
     cover: { width: 46, height: 46, borderRadius: 13, backgroundColor: colors.secondary },
     coverFallback: {
       width: 46,
@@ -144,12 +166,23 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     subtitle: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 4 },
     error: { color: colors.destructive, fontSize: 9, textAlign: 'right', marginTop: 3 },
     toggle: {
-      width: 40,
-      height: 40,
+      width: 44,
+      height: 44,
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primary,
+      position: 'absolute',
+      left: '50%',
+      marginLeft: -22,
+      zIndex: 2,
+    },
+    previous: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     next: {
       width: 44,

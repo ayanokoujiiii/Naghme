@@ -320,7 +320,7 @@ export default function ArchiveScreen() {
               </View>
               <Text style={styles.emptyTitle}>{emptyTitle}</Text>
               <Text style={styles.emptyCopy}>
-                اولین مورد را اضافه کنید تا آرشیو شخصی‌تان شکل بگیرد.
+                اولین مورد را اضافه کن تا آرشیو شخصی‌ات شکل بگیرد.
               </Text>
               <Pressable
                 testID={`empty-add-${activeView}`}

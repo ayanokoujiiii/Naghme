@@ -86,7 +86,7 @@ const ALBUM_TRACK_BACKUP_COLUMNS =
 async function requireDatabase() {
   const database = await getDatabase();
   if (!database) {
-    throw new Error('خروجی گرفتن از آرشیو روی پیش‌نمایش وب در دسترس نیست؛ برنامه را در Android باز کنید.');
+    throw new Error('خروجی گرفتن از آرشیو روی پیش‌نمایش وب در دسترس نیست؛ برنامه را در Android باز کن.');
   }
   return database;
 }

@@ -207,7 +207,7 @@ export async function getMusicGraphData(): Promise<MusicGraphData> {
       from: link.artistId,
       to: link.albumId,
       type: 'artist-album' as const,
-      label: link.source === 'explicit' ? 'آلبوم هنرمند' : 'ارتباط ثبت‌شده',
+      label: link.source === 'explicit' ? 'آلبوم هنرمند' : 'از روی قطعه‌ها',
     })),
     ...albumTracks.map((link) => ({
       id: `album-track:${link.albumId}:${link.trackId}`,
@@ -377,7 +377,7 @@ export async function getMusicGraphNeighborhood(
         link.albumId,
         'album',
         'artist-album',
-        link.source === 'explicit' ? 'آلبوم هنرمند' : 'ارتباط ثبت‌شده',
+        link.source === 'explicit' ? 'آلبوم هنرمند' : 'از روی قطعه‌ها',
       );
     });
     artistTracks.forEach((track) => {
@@ -416,7 +416,7 @@ export async function getMusicGraphNeighborhood(
         link.albumId,
         'album',
         'artist-album',
-        link.source === 'explicit' ? 'آلبوم هنرمند' : 'ارتباط ثبت‌شده',
+        link.source === 'explicit' ? 'آلبوم هنرمند' : 'از روی قطعه‌ها',
       );
     });
     albumTracks.forEach((link) => {

@@ -440,7 +440,7 @@ const SAMPLE_LISTENING_HISTORY = [
 async function requireDatabase() {
   const database = await getDatabase();
   if (!database) {
-    throw new Error('تزریق داده روی پیش‌نمایش وب در دسترس نیست؛ برنامه را در Android باز کنید.');
+    throw new Error('افزودن داده‌های نمونه در پیش‌نمایش وب در دسترس نیست؛ برنامه را در Android باز کن.');
   }
   return database;
 }

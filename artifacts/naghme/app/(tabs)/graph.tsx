@@ -339,7 +339,6 @@ export default function GraphScreen() {
               onToggle={toggleExpanded}
               onExpandAll={() => setExpanded(createExpandedState(browseData, true))}
               onCollapseAll={() => setExpanded(createExpandedState(browseData, false))}
-              onPlayAlbum={(album) => void playQueue(album.tracks)}
               onPlayTrack={(track) => void playBrowseTrack(track)}
               colors={colors}
               styles={styles}
@@ -399,7 +398,6 @@ function BrowseView({
   onToggle,
   onExpandAll,
   onCollapseAll,
-  onPlayAlbum,
   onPlayTrack,
   colors,
   styles,
@@ -409,7 +407,6 @@ function BrowseView({
   onToggle: (key: string) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
-  onPlayAlbum: (album: GraphAlbum) => void;
   onPlayTrack: (track: TrackRecord) => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
@@ -420,7 +417,7 @@ function BrowseView({
       <View style={styles.emptyState}>
         <Feather name="list" size={28} color={colors.mutedForeground} />
         <Text style={styles.emptyTitle}>آرشیو هنوز خالی است</Text>
-        <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های آزمایشی را تزریق کن یا یک هنرمند اضافه کن.</Text>
+        <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های نمونه اضافه کن یا یک هنرمند اضافه کن.</Text>
       </View>
     );
   }
@@ -464,7 +461,6 @@ function BrowseView({
                   album={album}
                   expanded={Boolean(expanded[`album:${album.id}`])}
                   onToggle={() => onToggle(`album:${album.id}`)}
-                  onPlay={() => onPlayAlbum(album)}
                   onPlayTrack={onPlayTrack}
                   colors={colors}
                   styles={styles}
@@ -486,7 +482,6 @@ function BrowseView({
               album={album}
               expanded={Boolean(expanded[`album:${album.id}`])}
               onToggle={() => onToggle(`album:${album.id}`)}
-              onPlay={() => onPlayAlbum(album)}
               onPlayTrack={onPlayTrack}
               colors={colors}
               styles={styles}
@@ -644,10 +639,11 @@ function BrowseArtistRow({
         <View style={styles.artistCopy}>
           <Text style={styles.artistTitle} numberOfLines={1}>{artist.name}</Text>
           <Text style={styles.nodeCaption}>
-            {artist.albums.length ? `${artist.albums.length} آلبوم` : 'بدون آلبوم ثبت‌شده'}
+            {artist.albums.length
+              ? `${artist.albums.length} آلبوم${expanded ? '' : ' — برای دیدن آلبوم‌ها کلیک کنید'}`
+              : 'بدون آلبوم ثبت‌شده'}
           </Text>
         </View>
-        <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={18} color={colors.mutedForeground} />
       </Pressable>
       <Pressable
         testID={`graph-browse-artist-details-${artist.id}`}
@@ -666,7 +662,6 @@ function BrowseAlbumBranch({
   album,
   expanded,
   onToggle,
-  onPlay,
   onPlayTrack,
   colors,
   styles,
@@ -674,7 +669,6 @@ function BrowseAlbumBranch({
   album: GraphAlbum;
   expanded: boolean;
   onToggle: () => void;
-  onPlay: () => void;
   onPlayTrack: (track: TrackRecord) => void;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
@@ -694,7 +688,6 @@ function BrowseAlbumBranch({
             <Text style={styles.nodeTitle} numberOfLines={1}>{album.title}</Text>
             <Text style={styles.nodeCaption}>{album.tracks.length ? `${album.tracks.length} قطعه` : 'بدون قطعه'}</Text>
           </View>
-          <Feather name={expanded ? 'chevron-down' : 'chevron-left'} size={17} color={colors.mutedForeground} />
         </Pressable>
         <Pressable
           testID={`graph-browse-album-details-${album.id}`}
@@ -704,15 +697,6 @@ function BrowseAlbumBranch({
           style={({ pressed }) => [styles.detailsButton, pressed && styles.pressed]}
         >
           <Text style={styles.detailsButtonText}>صفحه‌ی آلبوم</Text>
-        </Pressable>
-        <Pressable
-          testID={`graph-play-album-${album.id}`}
-          accessibilityRole="button"
-          accessibilityLabel={`پخش صف آلبوم ${album.title}`}
-          onPress={onPlay}
-          style={({ pressed }) => [styles.smallPlayButton, pressed && styles.pressed]}
-        >
-          <Feather name="play" size={15} color={colors.primaryForeground} />
         </Pressable>
       </View>
       {expanded ? (
@@ -756,7 +740,6 @@ function BrowseTrackRow({
       >
         <Feather name="music" size={16} color={colors.accentForeground} />
         <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
-        <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
       </Pressable>
       <Pressable
         testID={`graph-play-track-${track.id}`}
@@ -962,10 +945,10 @@ function RelationsView({
         <View style={styles.noRelations}>
           <Feather name="info" size={23} color={colors.mutedForeground} />
           <Text style={styles.noRelationsTitle}>
-            {groups.length ? 'در این فیلتر رابطه‌ای پیدا نشد.' : 'هنوز رابطه‌ای برای این مورد ثبت نشده است.'}
+            {groups.length ? 'در این دسته رابطه‌ای پیدا نشد.' : 'هنوز رابطه‌ای برای این مورد ثبت نشده است.'}
           </Text>
           <Text style={styles.noRelationsText}>
-            {groups.length ? 'فیلتر دیگری را امتحان کن.' : emptyRelationHint(focusedNode.type)}
+            {groups.length ? 'دسته‌ی دیگری را امتحان کن.' : emptyRelationHint(focusedNode.type)}
           </Text>
         </View>
       )}
@@ -1001,7 +984,7 @@ function RelationRow({
         <View style={styles.relationCopy}>
           <Text style={styles.relationTitle} numberOfLines={2}>{node.label}</Text>
           <Text style={styles.relationMeta} numberOfLines={2}>
-            {nodeTypeLabel(node.type)} · {edge.label ?? 'ارتباط ثبت‌شده'}
+            {nodeTypeLabel(node.type)} · {edge.label ?? 'پیوندی در آرشیو'}
           </Text>
         </View>
         <Feather name="arrow-left" size={15} color={colors.mutedForeground} />
@@ -1079,7 +1062,7 @@ function groupRelationEdges(
 function relationGroupDescription(key: RelationGroupKey): string {
   if (key === 'credits') return 'چه کسی در ساخت این اثر نقش داشته و با چه نقشی.';
   if (key === 'relatedArtists') return 'رابطه‌ی این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص.';
-  return 'ارتباط ثبت‌شده در آرشیو موسیقی.';
+  return 'پیوندی که در آرشیو موسیقی ثبت شده است.';
 }
 
 function relationGroupKey(
@@ -1399,7 +1382,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderRadius: 12,
       backgroundColor: 'transparent',
     },
-    detailsButtonText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', textAlign: 'center' },
+    detailsButtonText: { color: colors.primary, fontSize: 11, fontWeight: '600', textAlign: 'center' },
     children: { borderRightWidth: 1, borderRightColor: colors.border, marginRight: 28, paddingRight: 10, marginTop: 8, gap: 9 },
     albumBranch: { gap: 7 },
     albumRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },

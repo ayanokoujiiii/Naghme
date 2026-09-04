@@ -476,7 +476,7 @@ export async function addArtistRelationship(
   const artistId = input.artistId.trim();
   const relatedArtistId = input.relatedArtistId.trim();
   const reciprocal = input.reciprocal ?? true;
-  if (!artistId || !relatedArtistId) throw new Error('هر دو هنرمند را انتخاب کنید.');
+  if (!artistId || !relatedArtistId) throw new Error('هر دو هنرمند را انتخاب کن.');
   if (artistId === relatedArtistId) throw new Error('یک هنرمند نمی‌تواند با خودش مرتبط شود.');
 
   const database = await requireDatabase();
@@ -1155,14 +1155,14 @@ export async function deleteWork(id: string): Promise<void> {
     [id],
   );
   if (Number(versionCount?.count ?? 0) > 0) {
-    throw new Error('ابتدا نسخه‌های این اثر را حذف یا به اثر دیگری منتقل کنید.');
+    throw new Error('ابتدا نسخه‌های این اثر را حذف یا به اثر دیگری منتقل کن.');
   }
   const trackCount = await database.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) AS count FROM Tracks WHERE workId = ?',
     [id],
   );
   if (Number(trackCount?.count ?? 0) > 0) {
-    throw new Error('ابتدا قطعه‌های متصل به این اثر را جدا کنید.');
+    throw new Error('ابتدا قطعه‌های متصل به این اثر را جدا کن.');
   }
   await database.runAsync('DELETE FROM Works WHERE id = ?', [id]);
 }

@@ -130,7 +130,7 @@ export async function migrateDatabase(database: SQLiteDatabase): Promise<Migrati
   const fromVersion = await getSchemaVersion(database);
   if (fromVersion > CURRENT_SCHEMA_VERSION) {
     throw new Error(
-      `نسخهٔ دیتابیس (${fromVersion}) از نسخهٔ برنامه (${CURRENT_SCHEMA_VERSION}) جدیدتر است.`,
+      `نسخهٔ پایگاه دادهٔ برنامه (${fromVersion}) از نسخهٔ برنامه (${CURRENT_SCHEMA_VERSION}) جدیدتر است.`,
     );
   }
 
@@ -159,14 +159,14 @@ export async function migrateDatabase(database: SQLiteDatabase): Promise<Migrati
         `[Naghme database] migration ${migration.version} failed: ${migration.description}`,
         detail,
       );
-      throw new Error(`مهاجرت دیتابیس در نسخهٔ ${migration.version} انجام نشد: ${detail}`);
+      throw new Error(`به‌روزرسانی ساختار آرشیو در نسخهٔ ${migration.version} انجام نشد: ${detail}`);
     }
   }
 
   const toVersion = await getSchemaVersion(database);
   if (toVersion !== CURRENT_SCHEMA_VERSION) {
     throw new Error(
-      `نسخهٔ دیتابیس پس از migration برابر ${toVersion} است؛ انتظار ${CURRENT_SCHEMA_VERSION} می‌رفت.`,
+      `نسخهٔ آرشیو پس از به‌روزرسانی ساختار برابر ${toVersion} است؛ انتظار ${CURRENT_SCHEMA_VERSION} می‌رفت.`,
     );
   }
 

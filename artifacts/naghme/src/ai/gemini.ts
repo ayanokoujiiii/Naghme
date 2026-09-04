@@ -51,14 +51,14 @@ export async function fetchAvailableGeminiModels(
   apiKey: string,
 ): Promise<GeminiModelOption[]> {
   const cleanKey = apiKey.trim();
-  if (!cleanKey) throw new Error('برای استعلام مدل‌ها ابتدا کلید Gemini را وارد کن.');
+  if (!cleanKey) throw new Error('برای دیدن مدل‌های موجود ابتدا کلید Gemini را وارد کن.');
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`,
   );
   const body = await response.text();
   if (!response.ok) {
-    throw createGeminiApiError(response.status, body, 'استعلام مدل‌های Gemini انجام نشد.');
+    throw createGeminiApiError(response.status, body, 'دریافت فهرست مدل‌های Gemini انجام نشد.');
   }
 
   let payload: { models?: Array<{
@@ -72,7 +72,7 @@ export async function fetchAvailableGeminiModels(
   } catch (parseError: unknown) {
     const message = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
     console.error('[Gemini model fetch parse error]', message, body);
-    throw new Error(`پاسخ استعلام مدل‌ها قابل خواندن نیست: ${message}`);
+    throw new Error(`پاسخ فهرست مدل‌ها قابل خواندن نیست: ${message}`);
   }
 
   const models = (payload.models ?? [])

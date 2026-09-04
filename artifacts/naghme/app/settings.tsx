@@ -76,7 +76,7 @@ export default function SettingsScreen() {
     if (fetchingModels || savingGeminiKey) return;
     const key = geminiApiKey.trim();
     if (!key) {
-      setModelMessage('برای استعلام مدل‌ها ابتدا کلید Gemini را وارد و ذخیره کن.');
+      setModelMessage('برای دیدن مدل‌های موجود ابتدا کلید Gemini را وارد و ذخیره کن.');
       return;
     }
 
@@ -97,7 +97,7 @@ export default function SettingsScreen() {
       setModelPickerVisible(true);
     } catch (fetchError: unknown) {
       const message =
-        fetchError instanceof Error ? fetchError.message : 'استعلام مدل‌ها انجام نشد.';
+        fetchError instanceof Error ? fetchError.message : 'دریافت فهرست مدل‌ها انجام نشد.';
       console.error('[Gemini settings model fetch]', fetchError);
       setModelMessage(message);
     } finally {

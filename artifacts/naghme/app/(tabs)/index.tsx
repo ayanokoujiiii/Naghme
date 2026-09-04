@@ -77,9 +77,9 @@ export default function HomeScreen() {
         `${result.artists} هنرمند، ${result.albums} آلبوم، ${result.tracks} قطعه، ${result.works} اثر، ${result.versions} نسخه، ${result.credits} مشارکت و ${result.relationships} رابطه‌ی هنرمندان به آرشیو نمونه اضافه شد.`,
       );
     } catch (seedError: unknown) {
-      const message = seedError instanceof Error ? seedError.message : 'تزریق داده انجام نشد.';
+        const message = seedError instanceof Error ? seedError.message : 'افزودن داده‌های نمونه انجام نشد.';
       setError(message);
-      Alert.alert('تزریق داده انجام نشد', message);
+        Alert.alert('افزودن داده‌های نمونه انجام نشد', message);
     } finally {
       setSeeding(false);
     }
@@ -227,7 +227,7 @@ export default function HomeScreen() {
           {seeding ? (
             <ActivityIndicator size="small" color={colors.primaryForeground} />
           ) : (
-            <Text style={styles.seedButtonText}>تزریق داده‌های آزمایشی</Text>
+            <Text style={styles.seedButtonText}>افزودن داده‌های نمونه</Text>
           )}
         </Pressable>
       </View>
