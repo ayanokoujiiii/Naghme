@@ -24,6 +24,7 @@ import {
   subscribeToAudio,
   toggleAudioPlayback,
 } from '@/src/audio/audioManager';
+import { audioFileExists } from '@/src/audio/audioFiles';
 import {
   addJournalEntry,
   CreditViewRecord,
@@ -42,7 +43,6 @@ import {
   getWorkById,
   JournalEntryRecord,
   ListeningHistoryRecord,
-  logListen,
   PersonalRelationshipRecord,
   TrackRecord,
   VersionTrackRecord,
@@ -72,6 +72,7 @@ export default function TrackDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const trackId = Array.isArray(id) ? id[0] : id;
   const [track, setTrack] = useState<TrackRecord | null>(null);
+  const [audioAvailable, setAudioAvailable] = useState<boolean>(true);
   const [officialVersionName, setOfficialVersionName] = useState<string | null>(null);
   const [workTitle, setWorkTitle] = useState<string | null>(null);
   const [artistName, setArtistName] = useState<string>('بدون هنرمند');
@@ -114,6 +115,7 @@ export default function TrackDetailScreen() {
       }
 
       setTrack(foundTrack);
+      setAudioAvailable(await audioFileExists(foundTrack.audioUri).catch(() => true));
       const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
@@ -251,17 +253,6 @@ export default function TrackDetailScreen() {
     } finally {
       setSavingJournal(false);
     }
-  };
-
-  const handlePlayStarted = () => {
-    if (!track) return;
-    void logListen(track.id)
-      .then((entry) => {
-        setListeningHistory((currentHistory) => [entry, ...currentHistory]);
-      })
-      .catch(() => {
-        // Playback should remain uninterrupted if a background history write fails.
-      });
   };
 
   const confirmDeleteJournal = (entry: JournalEntryRecord) => {
@@ -495,7 +486,7 @@ export default function TrackDetailScreen() {
         </>
       ) : null}
 
-      {track.audioUri ? (
+      {track.audioUri && audioAvailable ? (
         <AudioPlayer
           trackId={track.id}
           uri={track.audioUri}
@@ -504,8 +495,26 @@ export default function TrackDetailScreen() {
           artistName={artistName}
           colors={colors}
           styles={styles}
-          onPlayStarted={handlePlayStarted}
         />
+      ) : track.audioUri ? (
+        <View style={styles.missingAudioBox}>
+          <Feather name="alert-triangle" size={19} color={colors.destructive} />
+          <View style={styles.missingAudioCopy}>
+            <Text style={styles.missingAudioTitle}>فایل صوتی پیدا نشد</Text>
+            <Text style={styles.missingAudioText}>
+              فایل قبلی از حافظه‌ی دستگاه حذف شده است؛ برای ادامه یک فایل صوتی را دوباره انتخاب کن.
+            </Text>
+          </View>
+          <Pressable
+            testID="track-reselect-audio"
+            accessibilityRole="button"
+            accessibilityLabel="انتخاب دوباره‌ی فایل صوتی"
+            onPress={() => router.push(`/add-track?id=${track.id}`)}
+            style={({ pressed }) => [styles.missingAudioButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.missingAudioButtonText}>انتخاب دوباره</Text>
+          </Pressable>
+        </View>
       ) : null}
       <Text style={styles.listenCount}>
         تعداد دفعات شنیده‌شده: {listeningHistory.length}
@@ -712,7 +721,6 @@ function AudioPlayer({
   artistName,
   colors,
   styles,
-  onPlayStarted,
 }: {
   trackId: string;
   uri: string;
@@ -721,7 +729,6 @@ function AudioPlayer({
   artistName: string;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
-  onPlayStarted?: () => void;
 }) {
   const [audio, setAudio] = useState<AudioPlaybackSnapshot>(() => getAudioSnapshot());
   const [interactionError, setInteractionError] = useState<string>('');
@@ -765,8 +772,7 @@ function AudioPlayer({
       if (!isCurrentTrack) {
         await loadAudio(uri, trackId, metadata);
       }
-      const started = await toggleAudioPlayback();
-      if (started) onPlayStarted?.();
+      await toggleAudioPlayback();
     } catch {
       setInteractionError('پخش فایل صوتی انجام نشد.');
     }
@@ -1173,6 +1179,43 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 13,
       lineHeight: 21,
       textAlign: 'right',
+    },
+    missingAudioBox: {
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 18,
+      padding: 14,
+      borderRadius: 17,
+      borderWidth: 1,
+      borderColor: colors.destructive,
+      backgroundColor: colors.muted,
+    },
+    missingAudioCopy: { flex: 1, alignItems: 'flex-end' },
+    missingAudioTitle: {
+      color: colors.destructive,
+      fontSize: 13,
+      fontWeight: '700',
+      textAlign: 'right',
+    },
+    missingAudioText: {
+      color: colors.mutedForeground,
+      fontSize: 11,
+      lineHeight: 18,
+      textAlign: 'right',
+      marginTop: 4,
+    },
+    missingAudioButton: {
+      minHeight: 38,
+      justifyContent: 'center',
+      paddingHorizontal: 10,
+      borderRadius: 11,
+      backgroundColor: colors.destructive,
+    },
+    missingAudioButtonText: {
+      color: colors.primaryForeground,
+      fontSize: 11,
+      fontWeight: '700',
     },
     preferenceRow: {
       flexDirection: 'row-reverse',

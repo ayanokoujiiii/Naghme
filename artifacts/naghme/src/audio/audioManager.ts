@@ -1,5 +1,6 @@
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logListen } from '@/src/db/queries';
 
 export interface AudioPlaybackSnapshot {
   trackId: string | null;
@@ -81,6 +82,9 @@ let sleepTimerTickInFlight = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let restoringPlaybackState = false;
 let shuffleOrder: number[] = [];
+let playbackWasPlaying = false;
+let completionHandled = false;
+let sleepTimerTracksCurrent = false;
 const listeners = new Set<AudioListener>();
 const PLAYBACK_STATE_KEY = 'naghme.playback-state.v1';
 
@@ -122,6 +126,10 @@ function updateSnapshot(next: Partial<AudioPlaybackSnapshot>): void {
 
 function handlePlaybackStatus(status: AVPlaybackStatus): void {
   if (status.isLoaded) {
+    if (status.isPlaying && !playbackWasPlaying && loadedTrackId) {
+      void logListen(loadedTrackId).catch(() => undefined);
+    }
+    playbackWasPlaying = status.isPlaying;
     updateSnapshot({
       isLoaded: true,
       isLoading: false,
@@ -131,9 +139,17 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
       positionMillis: status.positionMillis,
       durationMillis: status.durationMillis,
       isLooping: status.isLooping,
+      sleepTimerRemainingSeconds: sleepTimerTracksCurrent
+        ? Math.max(0, Math.ceil(((status.durationMillis ?? 0) - status.positionMillis) / 1000))
+        : snapshot.sleepTimerRemainingSeconds,
     });
-    if (status.didJustFinish && snapshot.repeatMode !== 'track') {
-      void nextAudio(true);
+    if (status.didJustFinish && !completionHandled) {
+      completionHandled = true;
+      if (sleepTimerTracksCurrent) {
+        void finishSleepTimer();
+      } else if (snapshot.repeatMode !== 'track') {
+        void nextAudio(true);
+      }
     }
     return;
   }
@@ -146,6 +162,7 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
     error: status.error ? 'پخش این فایل صوتی ممکن نیست.' : snapshot.error,
     positionMillis: 0,
   });
+  playbackWasPlaying = false;
 }
 
 export function getAudioSnapshot(): AudioPlaybackSnapshot {
@@ -256,6 +273,8 @@ export async function loadAudio(
       positionMillis: 0,
       durationMillis: track.durationSeconds ? track.durationSeconds * 1000 : 0,
     });
+    playbackWasPlaying = false;
+    completionHandled = false;
     await configureBackgroundAudio();
 
     if (sound) {
@@ -338,10 +357,15 @@ export async function toggleAudioPlayback(): Promise<boolean> {
   if (!status.isLoaded) return false;
   if (status.isPlaying) {
     await sound.pauseAsync();
+    playbackWasPlaying = false;
     return false;
   }
 
   await sound.playAsync();
+  if (!playbackWasPlaying && loadedTrackId) {
+    playbackWasPlaying = true;
+    void logListen(loadedTrackId).catch(() => undefined);
+  }
   return true;
 }
 
@@ -355,6 +379,10 @@ export async function playAudio(): Promise<boolean> {
   if (!status.isLoaded) return false;
   if (!status.isPlaying) {
     await sound.playAsync();
+    if (!playbackWasPlaying && loadedTrackId) {
+      playbackWasPlaying = true;
+      void logListen(loadedTrackId).catch(() => undefined);
+    }
   }
   return true;
 }
@@ -494,6 +522,7 @@ function clearSleepTimerInterval(): void {
   }
   sleepTimerEndsAt = null;
   sleepTimerTickInFlight = false;
+  sleepTimerTracksCurrent = false;
 }
 
 async function finishSleepTimer(): Promise<void> {
@@ -527,10 +556,20 @@ async function tickSleepTimer(): Promise<void> {
   }
 }
 
-export function setSleepTimer(minutes: 5 | 15 | 30 | 45 | 60 | null): void {
+export function setSleepTimer(minutes: 5 | 15 | 30 | 45 | 60 | 'track' | null): void {
   clearSleepTimerInterval();
   if (minutes === null) {
     updateSnapshot({ sleepTimerRemainingSeconds: 0 });
+    return;
+  }
+  if (minutes === 'track') {
+    sleepTimerTracksCurrent = true;
+    updateSnapshot({
+      sleepTimerRemainingSeconds: Math.max(
+        0,
+        Math.ceil((snapshot.durationMillis - snapshot.positionMillis) / 1000),
+      ),
+    });
     return;
   }
 
@@ -575,6 +614,8 @@ export async function stopAndUnloadAudio(): Promise<void> {
     queueIndex: -1,
     shuffleEnabled: false,
   });
+  playbackWasPlaying = false;
+  completionHandled = false;
 }
 
 export async function rewindAudio(milliseconds = 10000): Promise<number> {

@@ -30,6 +30,7 @@ import {
   getRecommendationTracks,
   RecommendationTrack,
 } from '@/src/db/queries';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 const moodOptions = [
   { value: 'آرام', icon: 'moon' as const },
@@ -130,6 +131,19 @@ export default function RecommendationScreen() {
       );
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const playRecommendationQueue = async () => {
+    if (!result) return;
+    const started = await playTracksInQueue(
+      tracks,
+      Math.max(0, tracks.findIndex((track) => track.id === result.track.id)),
+    );
+    if (started) {
+      router.push('/player');
+    } else {
+      router.push(`/track/${result.track.id}`);
     }
   };
 
@@ -260,11 +274,11 @@ export default function RecommendationScreen() {
           <Pressable
             testID="open-recommended-track"
             accessibilityRole="button"
-            onPress={() => router.push(`/track/${result.track.id}`)}
+            onPress={() => void playRecommendationQueue()}
             style={({ pressed }) => [styles.trackButton, pressed && styles.pressed]}
           >
-            <Text style={styles.trackButtonText}>رفتن به صفحه‌ی قطعه</Text>
-            <Feather name="arrow-left" size={17} color={colors.primaryForeground} />
+            <Text style={styles.trackButtonText}>پخش صف پیشنهادها</Text>
+            <Feather name="play" size={17} color={colors.primaryForeground} />
           </Pressable>
         </View>
       ) : null}

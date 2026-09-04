@@ -44,14 +44,15 @@ import { getLatestJournalMood } from '@/src/db/queries';
 import { getDominantCoverColor, withAlpha } from '@/src/player/coverColors';
 import { PostcardStudio } from '@/src/components/PostcardStudio';
 
-type SleepTimerMinutes = 5 | 15 | 30 | 45 | 60;
+type SleepTimerOption = 5 | 15 | 30 | 45 | 60 | 'track';
 
-const sleepTimerOptions: Array<{ value: SleepTimerMinutes; label: string }> = [
+const sleepTimerOptions: Array<{ value: SleepTimerOption; label: string; icon?: 'clock' | 'music' }> = [
   { value: 5, label: '۵ دقیقه' },
   { value: 15, label: '۱۵ دقیقه' },
   { value: 30, label: '۳۰ دقیقه' },
   { value: 45, label: '۴۵ دقیقه' },
   { value: 60, label: '۶۰ دقیقه' },
+  { value: 'track', label: 'تا پایان همین قطعه', icon: 'music' },
 ];
 
 export default function PlayerScreen() {
@@ -552,7 +553,7 @@ export default function PlayerScreen() {
                   }}
                   style={({ pressed }) => [styles.timerOption, pressed && styles.pressed]}
                 >
-                  <Feather name="clock" size={17} color={colors.primary} />
+                  <Feather name={option.icon ?? 'clock'} size={17} color={colors.primary} />
                   <Text style={styles.timerOptionText}>{option.label}</Text>
                 </Pressable>
               ))}

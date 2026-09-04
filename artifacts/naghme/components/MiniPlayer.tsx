@@ -9,6 +9,7 @@ import {
   getAudioSnapshot,
   subscribeToAudio,
   toggleAudioPlayback,
+  nextAudio,
 } from '@/src/audio/audioManager';
 
 export function MiniPlayer() {
@@ -73,6 +74,16 @@ export function MiniPlayer() {
             />
           )}
         </Pressable>
+        <Pressable
+          testID="mini-player-next"
+          accessibilityRole="button"
+          accessibilityLabel="قطعه‌ی بعدی"
+          disabled={!audio.queue.length}
+          onPress={() => void nextAudio().catch(() => undefined)}
+          style={({ pressed }) => [styles.next, !audio.queue.length && styles.disabled, pressed && styles.pressed]}
+        >
+          <Feather name="skip-forward" size={17} color={colors.foreground} />
+        </Pressable>
       </View>
     </View>
   );
@@ -124,6 +135,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'center',
       backgroundColor: colors.primary,
     },
+    next: {
+      width: 36,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    disabled: { opacity: 0.4 },
     pressed: { opacity: 0.72 },
   });
 }

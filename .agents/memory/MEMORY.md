@@ -6,3 +6,5 @@
 - [GitHub connector transfer](github-connector-transfer.md) — some content uploads hit proxy WAFs; verify response type and preserve bytes with a safe encoding variation.
 - [Album track ordering](album-track-ordering.md) — preserve membership separately from official positions; never infer album order from insertion order or rowid.
 - [Work and Version foundation](work-version-foundation.md) — keep domain links optional and provenance-safe; never infer Work identity from titles.
+- [Expo audio phase boundary](expo-av-phase-boundary.md) — keep expo-av for SDK 54 playback; Android lock-screen controls remain out of scope.
+- [Git transport for push](git-transport-for-push.md) — synchronize repository history with Git push, not connector content uploads.

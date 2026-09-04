@@ -18,11 +18,13 @@ import {
   useMiniPlayerActive,
 } from '@/hooks/useMiniPlayerActive';
 import {
+  getTracks,
   SearchFilter,
   SearchResult,
   SearchResultType,
   searchLibraryByFilter,
 } from '@/src/db/queries';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 const labels: Record<SearchResultType, string> = {
   track: 'قطعه‌ها',
@@ -101,8 +103,26 @@ export default function SearchScreen() {
     [groupedResults],
   );
 
-  const navigateToResult = (result: SearchResult) => {
-    if (result.type === 'track') router.push(`/track/${result.id}`);
+  const navigateToResult = async (result: SearchResult) => {
+    if (result.type === 'track') {
+      try {
+        const allTracks = await getTracks();
+        const trackIds = displayResults
+          .filter((item) => item.type === 'track')
+          .map((item) => item.id);
+        const queue = trackIds
+          .map((trackId) => allTracks.find((track) => track.id === trackId))
+          .filter((track): track is (typeof allTracks)[number] => Boolean(track));
+        const started = await playTracksInQueue(queue, queue.findIndex((track) => track.id === result.id));
+        if (started) {
+          router.push('/player');
+          return;
+        }
+      } catch {
+        // Fall through to the track detail when queue playback is unavailable.
+      }
+      router.push(`/track/${result.id}`);
+    }
     if (result.type === 'album') router.push(`/album/${result.id}`);
     if (result.type === 'artist') router.push(`/artist/${result.id}`);
   };

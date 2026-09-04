@@ -27,6 +27,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { initializeDatabase } from '@/src/db/database';
 import { configureBackgroundAudio } from '@/src/audio/audioManager';
+import { migrateCachedAudioUris } from '@/src/db/queries';
 import colors from '@/constants/colors';
 import { MiniPlayer } from '@/components/MiniPlayer';
 
@@ -93,11 +94,15 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    initializeDatabase().catch((error: unknown) => {
-      if (__DEV__) {
-        console.warn('Naghme database initialization failed', error);
-      }
-    });
+    if (Platform.OS !== 'web') {
+      initializeDatabase()
+        .then(() => migrateCachedAudioUris())
+        .catch((error: unknown) => {
+          if (__DEV__) {
+            console.warn('Naghme database initialization or audio migration failed', error);
+          }
+        });
+    }
     configureBackgroundAudio().catch((error: unknown) => {
       if (__DEV__) {
         console.warn('Naghme background audio setup failed', error);

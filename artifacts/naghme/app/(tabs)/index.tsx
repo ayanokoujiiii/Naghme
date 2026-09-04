@@ -26,6 +26,7 @@ import {
   LibraryStats,
 } from '@/src/db/queries';
 import { injectSampleData } from '@/src/db/seed';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 
 const emptyStats: LibraryStats = { tracks: 0, albums: 0, artists: 0 };
 
@@ -172,8 +173,14 @@ export default function HomeScreen() {
       </View>
       {recentTracks.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentList}>
-          {recentTracks.map((track) => (
-            <TrackTile key={track.id} track={track} colors={colors} styles={styles} />
+          {recentTracks.map((track, index) => (
+            <TrackTile
+              key={track.id}
+              track={track}
+              colors={colors}
+              styles={styles}
+              onPress={() => void playTracksInQueue(recentTracks, index)}
+            />
           ))}
         </ScrollView>
       ) : (
@@ -186,8 +193,14 @@ export default function HomeScreen() {
       </View>
       {favoriteTracks.length > 0 ? (
         <View style={styles.favoriteList}>
-          {favoriteTracks.map((track) => (
-            <FavoriteRow key={track.id} track={track} colors={colors} styles={styles} />
+          {favoriteTracks.map((track, index) => (
+            <FavoriteRow
+              key={track.id}
+              track={track}
+              colors={colors}
+              styles={styles}
+              onPress={() => void playTracksInQueue(favoriteTracks, index)}
+            />
           ))}
         </View>
       ) : (
@@ -247,15 +260,17 @@ function TrackTile({
   track,
   colors,
   styles,
+  onPress,
 }: {
   track: HomeTrackRecord;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
+  onPress: () => void;
 }) {
   return (
     <Pressable
       testID={`home-recent-${track.id}`}
-      onPress={() => router.push(`/track/${track.id}`)}
+      onPress={onPress}
       style={({ pressed }) => [styles.trackTile, pressed && styles.pressed]}
     >
       {track.coverImage ? (
@@ -275,15 +290,17 @@ function FavoriteRow({
   track,
   colors,
   styles,
+  onPress,
 }: {
   track: HomeTrackRecord;
   colors: ReturnType<typeof useColors>;
   styles: ReturnType<typeof createStyles>;
+  onPress: () => void;
 }) {
   return (
     <Pressable
       testID={`home-favorite-${track.id}`}
-      onPress={() => router.push(`/track/${track.id}`)}
+      onPress={onPress}
       style={({ pressed }) => [styles.favoriteRow, pressed && styles.pressed]}
     >
       <Feather name="heart" size={17} color={colors.destructive} />

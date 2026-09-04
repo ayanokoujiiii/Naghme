@@ -1,4 +1,5 @@
 import { getDatabase } from '@/src/db/database';
+import { deleteAudioFile, migrateCachedAudioFiles } from '@/src/audio/audioFiles';
 
 export interface ArtistRecord {
   id: string;
@@ -1792,6 +1793,9 @@ export async function updateTrack(
       id,
     ],
   );
+  if (current.audioUri !== track.audioUri) {
+    await deleteAudioFile(current.audioUri);
+  }
   await ensureLegacyAlbumMembership(database, track.albumId, track.id);
   return track;
 }
@@ -1827,8 +1831,26 @@ export async function assignTrackToVersion(
 }
 
 export async function deleteTrack(id: string): Promise<void> {
+  const track = await getTrackById(id);
+  if (!track) return;
+  await deleteAudioFile(track.audioUri);
   const database = await requireDatabase();
   await database.runAsync('DELETE FROM Tracks WHERE id = ?', [id]);
+}
+
+export async function migrateCachedAudioUris(): Promise<number> {
+  const database = await requireDatabase();
+  const tracks = await database.getAllAsync<{ id: string; audioUri: string | null }>(
+    'SELECT id, audioUri FROM Tracks WHERE audioUri IS NOT NULL',
+  );
+  const migrated = await migrateCachedAudioFiles(tracks);
+  for (const track of migrated) {
+    await database.runAsync('UPDATE Tracks SET audioUri = ? WHERE id = ?', [
+      track.audioUri,
+      track.id,
+    ]);
+  }
+  return migrated.length;
 }
 
 export async function getRecommendationTracks(): Promise<RecommendationTrack[]> {

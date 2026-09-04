@@ -1,10 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormField, FormMessage, ArchiveFormPage, SaveButton } from '@/components/ArchiveForm';
 import { CreditsManager, PendingCreditDraft } from '@/components/CreditsManager';
 import { useColors } from '@/hooks/useColors';
@@ -23,6 +23,7 @@ import {
   VersionRecord,
   WorkRecord,
 } from '@/src/db/queries';
+import { copyAudioToPermanent } from '@/src/audio/audioFiles';
 
 export default function AddTrackScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -191,21 +192,6 @@ export default function AddTrackScreen() {
       return;
     }
     try {
-      const permission = await MediaLibrary.requestPermissionsAsync(false);
-      if (!permission.granted) {
-        Alert.alert(
-          'دسترسی به رسانه‌ها لازم است',
-          'برای انتخاب فایل صوتی، دسترسی رسانه‌ها را از تنظیمات گوشی فعال کن.',
-          [
-            { text: 'بعداً', style: 'cancel' },
-            {
-              text: 'باز کردن تنظیمات',
-              onPress: () => void Linking.openSettings().catch(() => undefined),
-            },
-          ],
-        );
-        return;
-      }
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
@@ -215,8 +201,13 @@ export default function AddTrackScreen() {
 
       const asset = result.assets[0];
       if (!asset) throw new Error('فایل صوتی انتخاب نشد.');
+      const durationSeconds = await getAudioDurationSeconds(asset.uri);
+      if (durationSeconds === null) {
+        throw new Error('مدت واقعی فایل خوانده نشد؛ فایل دیگری را انتخاب کن.');
+      }
       setAudioUri(asset.uri);
       setAudioName(asset.name || 'فایل صوتی انتخاب‌شده');
+      setDuration(String(durationSeconds));
       setError('');
     } catch (pickError: unknown) {
       Alert.alert(
@@ -274,20 +265,23 @@ export default function AddTrackScreen() {
     setSaving(true);
     try {
       if (id) {
+        const permanentAudioUri = audioUri
+          ? await copyAudioToPermanent(audioUri, id)
+          : null;
         await updateTrack(id, {
           title,
           duration: parsedDuration,
           artistId: selectedArtistId,
           albumId: selectedAlbumId,
-          audioUri,
-            versionName: selectedVersionId ? null : versionName.trim() || null,
-            workId: selectedWorkId,
-            versionId: selectedVersionId,
+          audioUri: permanentAudioUri,
+          versionName: selectedVersionId ? null : versionName.trim() || null,
+          workId: selectedWorkId,
+          versionId: selectedVersionId,
           lyrics: lyrics.trim() || null,
           sheetMusicUri,
         });
       } else {
-        await createTrackWithCredits(
+        const createdTrack = await createTrackWithCredits(
           {
             title,
             duration: parsedDuration,
@@ -303,6 +297,12 @@ export default function AddTrackScreen() {
           },
           pendingCredits.map(({ id: _id, ...credit }) => credit),
         );
+        if (audioUri) {
+          const permanentAudioUri = await copyAudioToPermanent(audioUri, createdTrack.id);
+          if (permanentAudioUri !== audioUri) {
+            await updateTrack(createdTrack.id, { audioUri: permanentAudioUri });
+          }
+        }
       }
       setSuccess(editing ? 'تغییرات قطعه ذخیره شد.' : 'قطعه با موفقیت به آرشیو اضافه شد.');
       setTimeout(() => router.back(), 650);
@@ -619,6 +619,20 @@ export default function AddTrackScreen() {
       />
     </ArchiveFormPage>
   );
+}
+
+async function getAudioDurationSeconds(uri: string): Promise<number | null> {
+  let sound: Audio.Sound | null = null;
+  try {
+    const created = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
+    sound = created.sound;
+    if (!created.status.isLoaded || !created.status.durationMillis) return null;
+    return Math.max(1, Math.round(created.status.durationMillis / 1000));
+  } catch {
+    return null;
+  } finally {
+    await sound?.unloadAsync().catch(() => undefined);
+  }
 }
 
 function createStyles(colors: ReturnType<typeof useColors>) {
