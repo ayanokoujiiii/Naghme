@@ -116,6 +116,29 @@ export interface AlbumTrackRecord extends TrackRecord {
   orderSource: AlbumTrackOrderSource;
 }
 
+export interface CollectionRecord {
+  id: string;
+  title: string;
+  description: string | null;
+  coverImage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  trackCount: number;
+  totalDuration: number;
+}
+
+export interface CollectionTrackRecord extends TrackRecord {
+  collectionId: string;
+  position: number;
+  artistName: string | null;
+}
+
+export interface CollectionMembershipRecord {
+  id: string;
+  title: string;
+  coverImage: string | null;
+}
+
 export interface NewAlbumTrack {
   albumId: string;
   trackId: string;
@@ -208,8 +231,13 @@ export interface VersionTrackRecord extends TrackRecord {
 }
 
 export interface WorkDetailRecord extends WorkRecord {
-  versions: VersionRecord[];
+  versions: WorkVersionRecord[];
   tracks: TrackRecord[];
+  credits: CreditViewRecord[];
+}
+
+export interface WorkVersionRecord extends VersionRecord {
+  trackCount: number;
 }
 
 export interface ChatArchiveContext {
@@ -279,9 +307,17 @@ export interface RecommendationTrack extends TrackRecord {
   personalNote: string | null;
 }
 
-export type SearchResultType = 'track' | 'album' | 'artist';
-export type SearchFilter = 'all' | 'track' | 'artist' | 'album' | 'lyrics' | 'journal';
-export type SearchMatchSource = 'title' | 'lyrics' | 'journal';
+export type SearchResultType = 'track' | 'album' | 'artist' | 'work';
+export type SearchFilter =
+  | 'all'
+  | 'track'
+  | 'artist'
+  | 'album'
+  | 'lyrics'
+  | 'journal'
+  | 'credit'
+  | 'work';
+export type SearchMatchSource = 'title' | 'lyrics' | 'journal' | 'credit' | 'work';
 
 export interface SearchResult {
   id: string;
@@ -289,6 +325,7 @@ export interface SearchResult {
   subtitle: string | null;
   type: SearchResultType;
   matchSource: SearchMatchSource;
+  roleName?: string | null;
 }
 
 export type NewArtist = Omit<ArtistRecord, 'id' | 'galleryImages'> & {
@@ -338,6 +375,10 @@ export type NewArtistAlbumLink = {
   albumId: string;
   source?: ArtistAlbumLinkSource;
 };
+
+export type NewCollection = Pick<CollectionRecord, 'title'> &
+  Partial<Pick<CollectionRecord, 'description' | 'coverImage'>>;
+export type UpdateCollection = Partial<NewCollection>;
 
 export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
 export type UpdateJournalEntry = Pick<JournalEntryRecord, 'note' | 'mood'>;
@@ -1348,11 +1389,21 @@ export async function getTracksByWorkId(workId: string): Promise<TrackRecord[]> 
 export async function getWorkDetail(id: string): Promise<WorkDetailRecord | null> {
   const work = await getWorkById(id);
   if (!work) return null;
-  const [versions, tracks] = await Promise.all([
+  const [versions, tracks, credits] = await Promise.all([
     getVersionsByWorkId(id),
     getTracksByWorkId(id),
+    getCreditsForWork(id),
   ]);
-  return { ...work, versions, tracks };
+  const trackCounts = new Map<string, number>();
+  for (const track of tracks) {
+    if (track.versionId) trackCounts.set(track.versionId, (trackCounts.get(track.versionId) ?? 0) + 1);
+  }
+  return {
+    ...work,
+    versions: versions.map((version) => ({ ...version, trackCount: trackCounts.get(version.id) ?? 0 })),
+    tracks,
+    credits,
+  };
 }
 
 export async function getAlbumTracks(albumId: string): Promise<AlbumTrackRecord[]> {
@@ -1721,6 +1772,224 @@ export async function getAlbumsForTrack(trackId: string): Promise<AlbumRecord[]>
   );
 }
 
+export async function getCollections(limit?: number): Promise<CollectionRecord[]> {
+  const database = await requireDatabase();
+  const safeLimit = limit === undefined ? null : Math.max(1, Math.min(Math.floor(limit), 50));
+  const rows = await database.getAllAsync<CollectionRecord>(
+    `SELECT
+       Collections.id, Collections.title, Collections.description, Collections.coverImage,
+       Collections.createdAt, Collections.updatedAt,
+       COUNT(CollectionTracks.trackId) AS trackCount,
+       COALESCE(SUM(Tracks.duration), 0) AS totalDuration
+     FROM Collections
+     LEFT JOIN CollectionTracks ON CollectionTracks.collectionId = Collections.id
+     LEFT JOIN Tracks ON Tracks.id = CollectionTracks.trackId
+     GROUP BY Collections.id
+     ORDER BY datetime(Collections.updatedAt) DESC, Collections.rowid DESC
+     ${safeLimit === null ? '' : 'LIMIT ?'}`,
+    safeLimit === null ? [] : [safeLimit],
+  );
+  return rows;
+}
+
+export async function getCollectionById(id: string): Promise<CollectionRecord | null> {
+  const collections = await getCollections();
+  return collections.find((collection) => collection.id === id) ?? null;
+}
+
+export async function getCollectionTracks(collectionId: string): Promise<CollectionTrackRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CollectionTrackRecord>(
+    `SELECT
+       Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId,
+       Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri,
+       Tracks.versionName, Tracks.workId, Tracks.versionId,
+       CollectionTracks.collectionId, CollectionTracks.position,
+       Artists.name AS artistName
+     FROM CollectionTracks
+     INNER JOIN Tracks ON Tracks.id = CollectionTracks.trackId
+     LEFT JOIN Artists ON Artists.id = Tracks.artistId
+     WHERE CollectionTracks.collectionId = ?
+     ORDER BY CollectionTracks.position ASC`,
+    [collectionId],
+  );
+}
+
+export async function getCollectionsForTrack(trackId: string): Promise<CollectionMembershipRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<CollectionMembershipRecord>(
+    `SELECT Collections.id, Collections.title, Collections.coverImage
+       FROM Collections
+       INNER JOIN CollectionTracks ON CollectionTracks.collectionId = Collections.id
+      WHERE CollectionTracks.trackId = ?
+      ORDER BY Collections.title COLLATE NOCASE ASC`,
+    [trackId],
+  );
+}
+
+export async function createCollection(input: NewCollection): Promise<CollectionRecord> {
+  const title = input.title.trim();
+  if (!title) throw new Error('نام مجموعه را وارد کن.');
+  const now = new Date().toISOString();
+  const collection = {
+    id: createId('collection'),
+    title,
+    description: trimNullable(input.description),
+    coverImage: trimNullable(input.coverImage),
+    createdAt: now,
+    updatedAt: now,
+  };
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO Collections (id, title, description, coverImage, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      collection.id,
+      collection.title,
+      collection.description,
+      collection.coverImage,
+      collection.createdAt,
+      collection.updatedAt,
+    ],
+  );
+  return { ...collection, trackCount: 0, totalDuration: 0 };
+}
+
+export async function updateCollection(
+  id: string,
+  input: UpdateCollection,
+): Promise<CollectionRecord> {
+  const current = await getCollectionById(id);
+  if (!current) throw new Error('مجموعه پیدا نشد.');
+  const title = input.title === undefined ? current.title : input.title.trim();
+  if (!title) throw new Error('نام مجموعه را وارد کن.');
+  const description = input.description === undefined
+    ? current.description
+    : trimNullable(input.description);
+  const coverImage = input.coverImage === undefined
+    ? current.coverImage
+    : trimNullable(input.coverImage);
+  const updatedAt = new Date().toISOString();
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE Collections
+        SET title = ?, description = ?, coverImage = ?, updatedAt = ?
+      WHERE id = ?`,
+    [title, description, coverImage, updatedAt, id],
+  );
+  return {
+    ...current,
+    title,
+    description,
+    coverImage,
+    updatedAt,
+  };
+}
+
+export async function deleteCollection(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM Collections WHERE id = ?', [id]);
+}
+
+export async function addTrackToCollection(collectionId: string, trackId: string): Promise<CollectionTrackRecord> {
+  const database = await requireDatabase();
+  const collection = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Collections WHERE id = ?',
+    [collectionId],
+  );
+  if (!collection) throw new Error('مجموعه پیدا نشد.');
+  const track = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Tracks WHERE id = ?',
+    [trackId],
+  );
+  if (!track) throw new Error('قطعه پیدا نشد.');
+  const existing = await database.getFirstAsync<{ position: number }>(
+    'SELECT position FROM CollectionTracks WHERE collectionId = ? AND trackId = ?',
+    [collectionId, trackId],
+  );
+  if (existing) throw new Error('این قطعه از قبل در این مجموعه هست.');
+  const last = await database.getFirstAsync<{ position: number | null }>(
+    'SELECT MAX(position) AS position FROM CollectionTracks WHERE collectionId = ?',
+    [collectionId],
+  );
+  const position = (last?.position ?? -1) + 1;
+  await database.runAsync(
+    'INSERT INTO CollectionTracks (collectionId, trackId, position) VALUES (?, ?, ?)',
+    [collectionId, trackId, position],
+  );
+  await database.runAsync(
+    'UPDATE Collections SET updatedAt = ? WHERE id = ?',
+    [new Date().toISOString(), collectionId],
+  );
+  const saved = (await getCollectionTracks(collectionId)).find((item) => item.id === trackId);
+  if (!saved) throw new Error('افزودن قطعه به مجموعه انجام نشد.');
+  return saved;
+}
+
+export async function removeTrackFromCollection(collectionId: string, trackId: string): Promise<void> {
+  const database = await requireDatabase();
+  const removed = await database.getFirstAsync<{ position: number }>(
+    'SELECT position FROM CollectionTracks WHERE collectionId = ? AND trackId = ?',
+    [collectionId, trackId],
+  );
+  await database.runAsync(
+    'DELETE FROM CollectionTracks WHERE collectionId = ? AND trackId = ?',
+    [collectionId, trackId],
+  );
+  if (removed) {
+    await database.runAsync(
+      `UPDATE CollectionTracks
+          SET position = position - 1
+        WHERE collectionId = ? AND position > ?`,
+      [collectionId, removed.position],
+    );
+  }
+  await database.runAsync(
+    'UPDATE Collections SET updatedAt = ? WHERE id = ?',
+    [new Date().toISOString(), collectionId],
+  );
+}
+
+export async function moveCollectionTrack(
+  collectionId: string,
+  trackId: string,
+  direction: 'up' | 'down',
+): Promise<void> {
+  const database = await requireDatabase();
+  const current = await database.getFirstAsync<{ position: number }>(
+    'SELECT position FROM CollectionTracks WHERE collectionId = ? AND trackId = ?',
+    [collectionId, trackId],
+  );
+  if (!current) throw new Error('قطعه در این مجموعه نیست.');
+  const neighbor = await database.getFirstAsync<{ trackId: string; position: number }>(
+    `SELECT trackId, position
+       FROM CollectionTracks
+      WHERE collectionId = ? AND position ${direction === 'up' ? '<' : '>'} ?
+      ORDER BY position ${direction === 'up' ? 'DESC' : 'ASC'}
+      LIMIT 1`,
+    [collectionId, current.position],
+  );
+  if (!neighbor) return;
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      'UPDATE CollectionTracks SET position = -1 WHERE collectionId = ? AND trackId = ?',
+      [collectionId, trackId],
+    );
+    await database.runAsync(
+      'UPDATE CollectionTracks SET position = ? WHERE collectionId = ? AND trackId = ?',
+      [current.position, collectionId, neighbor.trackId],
+    );
+    await database.runAsync(
+      'UPDATE CollectionTracks SET position = ? WHERE collectionId = ? AND trackId = ?',
+      [neighbor.position, collectionId, trackId],
+    );
+    await database.runAsync(
+      'UPDATE Collections SET updatedAt = ? WHERE id = ?',
+      [new Date().toISOString(), collectionId],
+    );
+  });
+}
+
 export async function getMusicGraphRows(): Promise<MusicGraphRow[]> {
   const database = await requireDatabase();
   return database.getAllAsync<MusicGraphRow>(
@@ -1869,7 +2138,61 @@ export async function searchLibraryByFilter(
     );
   }
 
-  const [trackResults, albumResults, artistResults, journalResults] = await Promise.all([
+  if (filter === 'credit') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT Tracks.id, Tracks.title,
+          Artists.name || ' • ' || Roles.name AS subtitle,
+          'track' AS type, 'credit' AS matchSource, Roles.name AS roleName
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Tracks ON Tracks.id = Credits.trackId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Albums.id, Albums.title,
+          Artists.name || ' • ' || Roles.name,
+          'album', 'credit', Roles.name
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Albums ON Albums.id = Credits.albumId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Works.id, Works.title,
+          Artists.name || ' • ' || Roles.name,
+          'work', 'credit', Roles.name
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Works ON Works.id = Credits.workId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, pattern, pattern, pattern, pattern, pattern, safeLimit],
+    );
+  }
+
+  if (filter === 'work') {
+    return database.getAllAsync<SearchResult>(
+      `SELECT id, title, alternateTitles AS subtitle,
+          'work' AS type, 'work' AS matchSource
+       FROM Works
+       WHERE title LIKE ? COLLATE NOCASE
+          OR COALESCE(alternateTitles, '') LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, pattern, safeLimit],
+    );
+  }
+
+  const [
+    trackResults,
+    albumResults,
+    artistResults,
+    journalResults,
+    workResults,
+    creditResults,
+  ] = await Promise.all([
     database.getAllAsync<SearchResult>(
       `SELECT
          Tracks.id,
@@ -1887,7 +2210,7 @@ export async function searchLibraryByFilter(
        LEFT JOIN Albums ON Albums.id = Tracks.albumId
        WHERE Tracks.title LIKE ? COLLATE NOCASE
           OR COALESCE(Tracks.lyrics, '') LIKE ? COLLATE NOCASE
-       ORDER BY Tracks.title COLLATE NOCASE ASC
+       ORDER BY title COLLATE NOCASE ASC
        LIMIT ?`,
       [pattern, pattern, pattern, pattern, safeLimit],
     ),
@@ -1925,10 +2248,58 @@ export async function searchLibraryByFilter(
        LIMIT ?`,
       [pattern, pattern, safeLimit],
     ),
+    database.getAllAsync<SearchResult>(
+      `SELECT id, title, alternateTitles AS subtitle,
+          'work' AS type, 'work' AS matchSource
+       FROM Works
+       WHERE title LIKE ? COLLATE NOCASE
+          OR COALESCE(alternateTitles, '') LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, pattern, safeLimit],
+    ),
+    database.getAllAsync<SearchResult>(
+      `SELECT Tracks.id, Tracks.title,
+          Artists.name || ' • ' || Roles.name AS subtitle,
+          'track' AS type, 'credit' AS matchSource, Roles.name AS roleName
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Tracks ON Tracks.id = Credits.trackId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Albums.id, Albums.title,
+          Artists.name || ' • ' || Roles.name,
+          'album', 'credit', Roles.name
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Albums ON Albums.id = Credits.albumId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       UNION ALL
+       SELECT Works.id, Works.title,
+          Artists.name || ' • ' || Roles.name,
+          'work', 'credit', Roles.name
+       FROM Credits
+       INNER JOIN Artists ON Artists.id = Credits.artistId
+       INNER JOIN Roles ON Roles.id = Credits.roleId
+       INNER JOIN Works ON Works.id = Credits.workId
+       WHERE Artists.name LIKE ? COLLATE NOCASE OR Roles.name LIKE ? COLLATE NOCASE
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ?`,
+      [pattern, pattern, pattern, pattern, pattern, pattern, safeLimit],
+    ),
   ]);
 
   const seen = new Set<string>();
-  return [...trackResults, ...albumResults, ...artistResults, ...journalResults]
+  return [
+    ...trackResults,
+    ...albumResults,
+    ...artistResults,
+    ...journalResults,
+    ...workResults,
+    ...creditResults,
+  ]
     .filter((result) => {
       const key = `${result.type}:${result.id}`;
       if (seen.has(key)) return false;

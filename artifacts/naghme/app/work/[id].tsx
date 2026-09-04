@@ -4,7 +4,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
 import { useColors } from '@/hooks/useColors';
+import { playTracksInQueue } from '@/src/audio/audioManager';
 import {
+  CreditViewRecord,
   deleteVersion,
   deleteWork,
   getWorkDetail,
@@ -85,6 +87,16 @@ export default function WorkDetailScreen() {
     );
   };
 
+  const playWork = () => {
+    if (!work) return;
+    const playable = work.tracks.filter((track) => track.audioUri);
+    if (!playable.length) {
+      Alert.alert('فایل صوتی پیدا نشد', 'قطعه‌های این اثر در آرشیو هستند، اما فعلاً فایل صوتی قابل پخش ندارند.');
+      return;
+    }
+    void playTracksInQueue(work.tracks, 0);
+  };
+
   if (loading) {
     return (
       <DetailShell eyebrow="در حال خواندن" title="اثر" icon="book-open">
@@ -110,6 +122,15 @@ export default function WorkDetailScreen() {
       onDelete={confirmDeleteWork}
     >
       {error ? <View style={styles.errorBox}><Feather name="alert-circle" size={17} color={colors.destructive} /><Text style={styles.errorText}>{error}</Text></View> : null}
+      <Pressable
+        testID="work-play-all"
+        accessibilityRole="button"
+        onPress={playWork}
+        style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
+      >
+        <Feather name="play" size={17} color={colors.primaryForeground} />
+        <Text style={styles.playButtonText}>پخش همهٔ اجراها</Text>
+      </Pressable>
       <Pressable
         testID="work-open-graph"
         accessibilityRole="button"
@@ -159,11 +180,18 @@ export default function WorkDetailScreen() {
             </View>
             <View style={styles.rowCopy}>
               <Text style={styles.versionName}>{version.name}</Text>
-              <Text style={styles.versionMeta}>{version.kind ?? 'نوع نسخه ثبت نشده'}</Text>
+              <Text style={styles.versionMeta}>{version.kind ?? 'نوع نسخه ثبت نشده'}  •  {version.trackCount} قطعه</Text>
               {version.description ? <Text style={styles.versionDescription}>{version.description}</Text> : null}
             </View>
           </View>
         )) : <Text style={styles.mutedText}>هنوز نسخه‌ای برای این اثر ثبت نشده است.</Text>}
+      </DetailCard>
+
+      <SectionHeading title="مشارکت‌کنندگان اثر" caption={`${work.credits.length} مشارکت`} />
+      <DetailCard>
+        {work.credits.length ? work.credits.map((credit) => (
+          <CreditRow key={credit.id} credit={credit} styles={styles} />
+        )) : <Text style={styles.mutedText}>برای این اثر هنوز مشارکتی ثبت نشده است.</Text>}
       </DetailCard>
 
       <SectionHeading title="قطعه‌های متصل" caption={`${work.tracks.length} قطعه`} />
@@ -174,10 +202,27 @@ export default function WorkDetailScreen() {
   );
 }
 
+function CreditRow({
+  credit,
+  styles,
+}: {
+  credit: CreditViewRecord;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.creditRow}>
+      <View style={styles.creditCopy}>
+        <Text style={styles.creditArtist}>{credit.artistName}</Text>
+        <Text style={styles.creditRole}>{credit.roleName}</Text>
+      </View>
+      <Feather name="user" size={17} color={styles.creditIcon.color as string} />
+    </View>
+  );
+}
+
 function TrackRow({ track, styles, onPress }: { track: TrackRecord; styles: ReturnType<typeof createStyles>; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.trackRow, pressed && styles.pressed]}>
-      <Feather name="chevron-left" size={18} color={styles.iconColor.color} />
       <Text style={styles.trackTitle}>{track.title}</Text>
     </Pressable>
   );
@@ -190,6 +235,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     errorText: { flex: 1, color: colors.destructive, fontSize: 13, lineHeight: 21, textAlign: 'right' },
     graphButton: { minHeight: 43, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 14, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border, marginBottom: 18 },
     graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    playButton: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: colors.primary, marginBottom: 16 },
+    playButtonText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
     description: { color: colors.foreground, fontSize: 14, lineHeight: 23, textAlign: 'right', marginTop: 13 },
     headingWithAction: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
     addButton: { minHeight: 36, borderRadius: 12, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, marginBottom: 12 },
@@ -204,6 +251,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     trackRow: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
     trackTitle: { flex: 1, color: colors.foreground, fontSize: 14, textAlign: 'right' },
     mutedText: { color: colors.mutedForeground, fontSize: 13, lineHeight: 21, textAlign: 'right' },
+    creditRow: { minHeight: 55, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+    creditCopy: { flex: 1, alignItems: 'flex-end' },
+    creditArtist: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+    creditRole: { color: colors.primary, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    creditIcon: { color: colors.primary },
     iconColor: { color: colors.mutedForeground },
     pressed: { opacity: 0.72 },
   });

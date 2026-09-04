@@ -20,11 +20,13 @@ import {
 } from '@/hooks/useMiniPlayerActive';
 import {
   getFavoriteTracks,
+  getCollections,
   getLibraryStats,
   getRecentlyAddedTracks,
   getJournalEntriesPage,
   getListeningHistoryPage,
   HomeTrackRecord,
+  CollectionRecord,
   JournalArchiveRecord,
   ListeningHistoryArchiveRecord,
   LibraryStats,
@@ -41,6 +43,7 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<LibraryStats>(emptyStats);
   const [recentTracks, setRecentTracks] = useState<HomeTrackRecord[]>([]);
   const [favoriteTracks, setFavoriteTracks] = useState<HomeTrackRecord[]>([]);
+  const [collections, setCollections] = useState<CollectionRecord[]>([]);
   const [latestJournal, setLatestJournal] = useState<JournalArchiveRecord | null>(null);
   const [latestListening, setLatestListening] = useState<ListeningHistoryArchiveRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -51,16 +54,18 @@ export default function HomeScreen() {
     setLoading(true);
     setError('');
     try {
-      const [nextStats, nextRecent, nextFavorites, nextJournal, nextListening] = await Promise.all([
+      const [nextStats, nextRecent, nextFavorites, nextCollections, nextJournal, nextListening] = await Promise.all([
         getLibraryStats(),
         getRecentlyAddedTracks(),
         getFavoriteTracks(),
+        getCollections(4),
         getJournalEntriesPage({}, 1, 0),
         getListeningHistoryPage({}, 1, 0),
       ]);
       setStats(nextStats);
       setRecentTracks(nextRecent);
       setFavoriteTracks(nextFavorites);
+      setCollections(nextCollections);
       setLatestJournal(nextJournal[0] ?? null);
       setLatestListening(nextListening[0] ?? null);
     } catch (loadError: unknown) {
@@ -84,7 +89,7 @@ export default function HomeScreen() {
       await loadHome();
       Alert.alert(
         'داده‌ها آماده‌اند',
-        `${result.artists} هنرمند، ${result.albums} آلبوم، ${result.tracks} قطعه، ${result.works} اثر، ${result.versions} نسخه، ${result.credits} مشارکت و ${result.relationships} رابطه‌ی هنرمندان به آرشیو نمونه اضافه شد.`,
+        `${result.artists} هنرمند، ${result.albums} آلبوم، ${result.tracks} قطعه، ${result.works} اثر، ${result.versions} نسخه، ${result.credits} مشارکت، ${result.collections} مجموعه و ${result.collectionTracks} عضویت مجموعه به آرشیو نمونه اضافه شد.`,
       );
     } catch (seedError: unknown) {
         const message = seedError instanceof Error ? seedError.message : 'افزودن داده‌های نمونه انجام نشد.';
@@ -174,6 +179,40 @@ export default function HomeScreen() {
         <StatCard icon="disc" value={stats.albums} label="آلبوم" colors={colors} styles={styles} />
         <StatCard icon="mic" value={stats.artists} label="هنرمند" colors={colors} styles={styles} />
       </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>مجموعه‌ها</Text>
+        <Pressable onPress={() => router.push('/collections')} hitSlop={10}>
+          <Text style={styles.sectionLink}>{collections.length ? 'دیدن همه' : 'ساخت مجموعه'}</Text>
+        </Pressable>
+      </View>
+      {collections.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionList}>
+          {collections.map((collection) => (
+            <Pressable
+              key={collection.id}
+              onPress={() => router.push(`/collection/${collection.id}`)}
+              style={({ pressed }) => [styles.collectionTile, pressed && styles.pressed]}
+            >
+              <View style={styles.collectionTileCover}>
+                {collection.coverImage ? (
+                  <Image source={{ uri: collection.coverImage }} style={styles.collectionTileImage} />
+                ) : (
+                  <Feather name="layers" size={24} color={colors.primary} />
+                )}
+              </View>
+              <Text style={styles.collectionTileTitle} numberOfLines={1}>{collection.title}</Text>
+              <Text style={styles.collectionTileMeta}>{collection.trackCount} قطعه</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : (
+        <Pressable onPress={() => router.push('/collections')} style={({ pressed }) => [styles.emptySection, pressed && styles.pressed]}>
+          <Feather name="layers" size={17} color={colors.primary} />
+          <Text style={styles.emptyText}>برای حال‌وهوای خودت یک مجموعه بساز.</Text>
+          <Feather name="plus" size={16} color={colors.primary} />
+        </Pressable>
+      )}
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>دفترچه و تاریخچه</Text>
@@ -432,6 +471,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     statValue: { color: colors.foreground, fontSize: 25, fontWeight: '700', lineHeight: 30 },
     statLabel: { color: colors.mutedForeground, fontSize: 12 },
     recentList: { gap: 12, paddingBottom: 2 },
+    collectionList: { gap: 10, paddingBottom: 2 },
+    collectionTile: { width: 128, padding: 9, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+    collectionTileCover: { width: 110, height: 92, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    collectionTileImage: { width: '100%', height: '100%' },
+    collectionTileTitle: { color: colors.cardForeground, fontSize: 13, fontWeight: '700', textAlign: 'right', marginTop: 8 },
+    collectionTileMeta: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 3 },
      trackTile: { width: 170, padding: 11, borderRadius: 21, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, elevation: 3 },
      trackCover: { width: 148, height: 148, borderRadius: 16, backgroundColor: colors.accent },
      trackCoverFallback: { width: 148, height: 148, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },

@@ -25,6 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { CollectionPicker } from '@/components/CollectionPicker';
 import {
   AudioPlaybackSnapshot,
   getAudioSnapshot,
@@ -66,6 +67,7 @@ export default function PlayerScreen() {
   const [latestMood, setLatestMood] = useState<string | null>(null);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
   const [queueVisible, setQueueVisible] = useState<boolean>(false);
+  const [collectionPickerTrackId, setCollectionPickerTrackId] = useState<string | null>(null);
   const [isSliding, setIsSliding] = useState<boolean>(false);
   const [sliderValue, setSliderValue] = useState<number>(0);
   const posterMotionStyle = useMoodPosterStyle(latestMood);
@@ -233,6 +235,15 @@ export default function PlayerScreen() {
             style={({ pressed }) => [styles.timerButton, pressed && styles.pressed]}
           >
             <Feather name="list" size={19} color={colors.foreground} />
+          </Pressable>
+          <Pressable
+            testID="player-add-to-collection"
+            accessibilityRole="button"
+            accessibilityLabel="افزودن قطعه به مجموعه"
+            onPress={() => setCollectionPickerTrackId(audio.trackId)}
+            style={({ pressed }) => [styles.timerButton, pressed && styles.pressed]}
+          >
+            <Feather name="plus" size={19} color={colors.foreground} />
           </Pressable>
           <Pressable
             testID="player-sleep-timer"
@@ -527,6 +538,18 @@ export default function PlayerScreen() {
                       {item.metadata.artistName || 'هنرمند ناشناس'}
                     </Text>
                   </View>
+                  <Pressable
+                    testID={`player-queue-add-${item.trackId}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`افزودن ${item.metadata.title} به مجموعه`}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setCollectionPickerTrackId(item.trackId);
+                    }}
+                    style={({ pressed }) => [styles.queueAddButton, pressed && styles.pressed]}
+                  >
+                    <Feather name="plus" size={17} color={colors.primary} />
+                  </Pressable>
                 </Pressable>
               ))}
             </ScrollView>
@@ -600,6 +623,11 @@ export default function PlayerScreen() {
         coverImage={audio.track.coverImage}
         artistName={audio.track.artistName ?? undefined}
         onClose={() => setPostcardVisible(false)}
+      />
+      <CollectionPicker
+        trackId={collectionPickerTrackId}
+        visible={collectionPickerTrackId !== null}
+        onClose={() => setCollectionPickerTrackId(null)}
       />
     </View>
   );
@@ -991,6 +1019,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     queueItemCopy: { flex: 1, alignItems: 'flex-end' },
     queueItemTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'right' },
     queueItemMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 3, textAlign: 'right' },
+    queueAddButton: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
     timerSheetHandle: {
       alignSelf: 'center',
       width: 42,

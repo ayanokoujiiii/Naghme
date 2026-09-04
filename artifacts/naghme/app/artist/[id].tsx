@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
+import { CollectionPicker } from '@/components/CollectionPicker';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -71,6 +72,7 @@ export default function ArtistDetailScreen() {
   const [gridGalleryVisible, setGridGalleryVisible] = useState<boolean>(false);
   const [savingProfile, setSavingProfile] = useState<boolean>(false);
   const [profileMessage, setProfileMessage] = useState<string>('');
+  const [pickerTrackId, setPickerTrackId] = useState<string | null>(null);
   const galleryToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -678,15 +680,29 @@ export default function ArtistDetailScreen() {
         styles={styles}
         colors={colors}
         onTrackPress={(trackId) => router.push(`/track/${trackId}`)}
+        onAddToCollection={setPickerTrackId}
       />
 
-      {credits.length > 0 ? (
-        <>
-          <SectionHeading
-            title="مشارکت‌کنندگان"
-            caption={`${credits.length} مشارکت`}
-            description="چه کسی در ساخت این اثر نقش داشته و با چه نقشی."
-          />
+      <>
+        <View style={styles.creditHeading}>
+          <View style={styles.creditHeadingCopy}>
+            <SectionHeading
+              title="مشارکت‌کنندگان"
+              caption={`${credits.length} مشارکت`}
+              description="چه کسی در ساخت این اثر نقش داشته و با چه نقشی."
+            />
+          </View>
+          <Pressable
+            testID="artist-open-works"
+            accessibilityRole="button"
+            onPress={() => router.push(`/artist/works/${artist.id}`)}
+            style={({ pressed }) => [styles.creditExploreButton, pressed && styles.pressed]}
+          >
+            <Feather name="layers" size={15} color={colors.primary} />
+            <Text style={styles.creditExploreText}>کاوش مشارکت‌ها</Text>
+          </Pressable>
+        </View>
+        {credits.length > 0 ? (
           <DetailCard>
             {credits.map((credit) => (
               <CreditRow
@@ -701,8 +717,24 @@ export default function ArtistDetailScreen() {
               />
             ))}
           </DetailCard>
-        </>
-      ) : null}
+        ) : (
+          <DetailCard>
+            <Text style={styles.mutedText}>هنوز مشارکتی برای این هنرمند ثبت نشده است.</Text>
+            <Pressable
+              onPress={() => router.push('/add-track')}
+              style={({ pressed }) => [styles.registerCreditButton, pressed && styles.pressed]}
+            >
+              <Feather name="plus" size={16} color={colors.primary} />
+              <Text style={styles.registerCreditText}>ثبت مشارکت هنگام افزودن قطعه</Text>
+            </Pressable>
+          </DetailCard>
+        )}
+      </>
+      <CollectionPicker
+        trackId={pickerTrackId}
+        visible={pickerTrackId !== null}
+        onClose={() => setPickerTrackId(null)}
+      />
 
       <Modal
         visible={relationshipModalVisible}
@@ -939,7 +971,6 @@ function CreditRow({
       onPress={onPress}
       style={({ pressed }) => [styles.creditRow, pressed && styles.pressed]}
     >
-      <Feather name="chevron-left" size={17} color={colors.mutedForeground} />
       <View style={styles.creditCopy}>
         <Text style={styles.creditRole}>{credit.roleName}</Text>
         <Text style={styles.creditTarget} numberOfLines={2}>
@@ -970,6 +1001,7 @@ function Discography({
   styles,
   colors,
   onTrackPress,
+  onAddToCollection,
 }: {
   tracks: TrackRecord[];
   albums: AlbumRecord[];
@@ -978,6 +1010,7 @@ function Discography({
   styles: ReturnType<typeof createStyles>;
   colors: ReturnType<typeof useColors>;
   onTrackPress: (trackId: string) => void;
+  onAddToCollection: (trackId: string) => void;
 }) {
   const albumGroups = albums.map((album) => ({
     album,
@@ -1007,7 +1040,6 @@ function Discography({
                 {album.releaseYear ? `سال ${album.releaseYear}` : 'سال ثبت نشده'}  •  {albumTracks.length} قطعه
               </Text>
             </View>
-            <Feather name="chevron-left" size={18} color={colors.mutedForeground} />
           </Pressable>
           {albumTracks.map((track, index) => (
             <View
@@ -1034,6 +1066,14 @@ function Discography({
                   <Feather name="play" size={13} color={colors.primaryForeground} />
                 </Pressable>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`افزودن ${track.title} به مجموعه`}
+                onPress={() => onAddToCollection(track.id)}
+                style={({ pressed }) => [styles.discographyAddButton, pressed && styles.pressed]}
+              >
+                <Feather name="plus" size={14} color={colors.primary} />
+              </Pressable>
             </View>
           ))}
         </View>
@@ -1065,6 +1105,14 @@ function Discography({
                 <Feather name="play" size={13} color={colors.primaryForeground} />
               </Pressable>
             ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`افزودن ${track.title} به مجموعه`}
+              onPress={() => onAddToCollection(track.id)}
+              style={({ pressed }) => [styles.discographyAddButton, pressed && styles.pressed]}
+            >
+              <Feather name="plus" size={14} color={colors.primary} />
+            </Pressable>
           </View>
         )) : <Text style={styles.mutedText}>تک‌آهنگی ثبت نشده است.</Text>}
       </View>
@@ -1319,6 +1367,15 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.primary,
       marginLeft: 5,
     },
+    discographyAddButton: {
+      width: 29,
+      height: 29,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+      marginLeft: 4,
+    },
     discographyNumber: { width: 22, color: colors.mutedForeground, fontSize: 11, textAlign: 'center' },
     discographyTrackTitle: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
     singlesSection: {
@@ -1338,6 +1395,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    creditHeading: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
+    creditHeadingCopy: { flex: 1 },
+    creditExploreButton: { minHeight: 36, flexDirection: 'row-reverse', alignItems: 'center', gap: 5, borderRadius: 12, paddingHorizontal: 10, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+    creditExploreText: { color: colors.primary, fontSize: 10, fontWeight: '700' },
+    registerCreditButton: { minHeight: 40, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, backgroundColor: colors.secondary, marginTop: 12 },
+    registerCreditText: { color: colors.primary, fontSize: 11, fontWeight: '700' },
     creditCopy: { flex: 1, alignItems: 'flex-end' },
     creditRole: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right' },
     creditTarget: { color: colors.foreground, fontSize: 13, textAlign: 'right', marginTop: 3 },

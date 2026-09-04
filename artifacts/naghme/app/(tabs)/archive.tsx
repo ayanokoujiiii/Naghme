@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { CollectionPicker } from '@/components/CollectionPicker';
 import {
   MINI_PLAYER_CONTENT_PADDING,
   useMiniPlayerActive,
@@ -52,6 +53,7 @@ export default function ArchiveScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [pickerTrackId, setPickerTrackId] = useState<string | null>(null);
 
   const loadArchive = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -137,6 +139,14 @@ export default function ArchiveScreen() {
           <Feather name="play" size={16} color={colors.primaryForeground} />
         </Pressable>
       ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`افزودن ${item.title} به مجموعه`}
+        onPress={() => setPickerTrackId(item.id)}
+        style={({ pressed }) => [styles.collectionAddButton, pressed && styles.pressed]}
+      >
+        <Feather name="plus" size={15} color={colors.primary} />
+      </Pressable>
     </View>
   );
 
@@ -334,6 +344,11 @@ export default function ArchiveScreen() {
           }
         />
       )}
+      <CollectionPicker
+        trackId={pickerTrackId}
+        visible={pickerTrackId !== null}
+        onClose={() => setPickerTrackId(null)}
+      />
     </View>
   );
 }
@@ -453,6 +468,15 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'center',
       backgroundColor: colors.primary,
       marginRight: 10,
+    },
+    collectionAddButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+      marginRight: 7,
     },
     itemPressed: { opacity: 0.72 },
     itemIcon: {

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export interface AppliedMigration {
   version: number;
@@ -114,6 +114,11 @@ const migrations: readonly Migration[] = [
     version: 7,
     description: 'افزودن رابطهٔ واقعی و قابل مدیریت بین هنرمند و آلبوم',
     migrate: addArtistAlbums,
+  },
+  {
+    version: 8,
+    description: 'افزودن مجموعه‌های شخصی و ترتیب قطعه‌های هر مجموعه',
+    migrate: addCollections,
   },
 ];
 
@@ -436,4 +441,32 @@ async function addArtistAlbums(database: SQLiteDatabase): Promise<void> {
        FROM Tracks
       WHERE Tracks.artistId IS NOT NULL AND Tracks.albumId IS NOT NULL`,
   );
+}
+
+async function addCollections(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS Collections (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      coverImage TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS CollectionTracks (
+      collectionId TEXT NOT NULL,
+      trackId TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (collectionId, trackId),
+      FOREIGN KEY (collectionId) REFERENCES Collections(id) ON DELETE CASCADE,
+      FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE,
+      UNIQUE (collectionId, position)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collection_tracks_position
+      ON CollectionTracks (collectionId, position);
+    CREATE INDEX IF NOT EXISTS idx_collection_tracks_track
+      ON CollectionTracks (trackId);
+  `);
 }

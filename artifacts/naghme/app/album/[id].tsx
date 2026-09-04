@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
+import { CollectionPicker } from '@/components/CollectionPicker';
 import { useColors } from '@/hooks/useColors';
 import {
   AlbumRecord,
@@ -45,6 +46,7 @@ export default function AlbumDetailScreen() {
   const [error, setError] = useState<string>('');
   const [savingCover, setSavingCover] = useState<boolean>(false);
   const [coverMessage, setCoverMessage] = useState<string>('');
+  const [pickerTrackId, setPickerTrackId] = useState<string | null>(null);
 
   const loadAlbum = useCallback(async () => {
     if (!albumId) {
@@ -364,6 +366,14 @@ export default function AlbumDetailScreen() {
                       <Feather name="play" size={14} color={colors.primaryForeground} />
                     </Pressable>
                   ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`افزودن ${track.title} به مجموعه`}
+                    onPress={() => setPickerTrackId(track.id)}
+                    style={({ pressed }) => [styles.collectionAddButton, pressed && styles.pressed]}
+                  >
+                    <Feather name="plus" size={15} color={colors.primary} />
+                  </Pressable>
                 </View>
               ))}
             </View>
@@ -391,6 +401,14 @@ export default function AlbumDetailScreen() {
                   <Feather name="play" size={14} color={colors.primaryForeground} />
                 </Pressable>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`افزودن ${track.title} به مجموعه`}
+                onPress={() => setPickerTrackId(track.id)}
+                style={({ pressed }) => [styles.collectionAddButton, pressed && styles.pressed]}
+              >
+                <Feather name="plus" size={15} color={colors.primary} />
+              </Pressable>
             </View>
           ))
         ) : (
@@ -417,6 +435,11 @@ export default function AlbumDetailScreen() {
           </DetailCard>
         </>
       ) : null}
+      <CollectionPicker
+        trackId={pickerTrackId}
+        visible={pickerTrackId !== null}
+        onClose={() => setPickerTrackId(null)}
+      />
     </DetailShell>
   );
 }
@@ -530,6 +553,15 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primary,
+      marginLeft: 4,
+    },
+    collectionAddButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
       marginLeft: 4,
     },
     discGroup: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 3, marginBottom: 7 },

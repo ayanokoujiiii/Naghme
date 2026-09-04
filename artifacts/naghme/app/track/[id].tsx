@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { DetailCard, DetailRow, DetailShell, SectionHeading } from '@/components/DetailScreen';
+import { CollectionPicker } from '@/components/CollectionPicker';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { PostcardStudio } from '@/src/components/PostcardStudio';
 import { useColors } from '@/hooks/useColors';
@@ -32,6 +33,7 @@ import {
   getAlbumById,
   getAlbumsForTrack,
   getCreditsForTrack,
+  getCollectionsForTrack,
   getJournalEntries,
   getListeningHistory,
   deleteTrack,
@@ -84,6 +86,8 @@ export default function TrackDetailScreen() {
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryRecord[]>([]);
   const [otherVersions, setOtherVersions] = useState<VersionTrackRecord[]>([]);
   const [credits, setCredits] = useState<CreditViewRecord[]>([]);
+  const [collections, setCollections] = useState<Array<{ id: string; title: string; coverImage: string | null }>>([]);
+  const [collectionPickerVisible, setCollectionPickerVisible] = useState<boolean>(false);
   const [journalModalVisible, setJournalModalVisible] = useState<boolean>(false);
   const [lyricsModalVisible, setLyricsModalVisible] = useState<boolean>(false);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
@@ -116,7 +120,7 @@ export default function TrackDetailScreen() {
 
       setTrack(foundTrack);
       setAudioAvailable(await audioFileExists(foundTrack.audioUri).catch(() => true));
-      const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums] = await Promise.all([
+      const [album, artist, versions, trackCredits, officialVersion, work, relatedAlbums, trackCollections] = await Promise.all([
         foundTrack.albumId ? getAlbumById(foundTrack.albumId) : Promise.resolve(null),
         foundTrack.artistId ? getArtistById(foundTrack.artistId) : Promise.resolve(null),
         getOtherTracksWithSameTitle(foundTrack.id, foundTrack.title),
@@ -124,6 +128,7 @@ export default function TrackDetailScreen() {
         foundTrack.versionId ? getVersionById(foundTrack.versionId) : Promise.resolve(null),
         foundTrack.workId ? getWorkById(foundTrack.workId) : Promise.resolve(null),
         getAlbumsForTrack(foundTrack.id),
+        getCollectionsForTrack(foundTrack.id),
       ]);
       const albumNames = Array.from(new Set([
         ...(foundTrack.albumId && album?.title ? [album.title] : []),
@@ -133,6 +138,7 @@ export default function TrackDetailScreen() {
       setArtistName(foundTrack.artistId ? artist?.name ?? 'هنرمند پیدا نشد' : 'بدون هنرمند');
       setOtherVersions(versions);
       setCredits(trackCredits);
+      setCollections(trackCollections);
       setOfficialVersionName(officialVersion?.name ?? null);
       setWorkTitle(work?.title ?? null);
 
@@ -385,6 +391,24 @@ export default function TrackDetailScreen() {
         <Feather name="git-branch" size={16} color={colors.primary} />
         <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
       </Pressable>
+      <Pressable
+        testID="track-add-to-collection"
+        accessibilityRole="button"
+        onPress={() => setCollectionPickerVisible(true)}
+        style={({ pressed }) => [styles.collectionButton, pressed && styles.pressed]}
+      >
+        <Feather name="plus" size={16} color={colors.primary} />
+        <Text style={styles.collectionButtonText}>افزودن به مجموعه</Text>
+      </Pressable>
+      <SectionHeading title="مجموعه‌های این قطعه" caption={`${collections.length} مجموعه`} />
+      <DetailCard>
+        {collections.length ? collections.map((item) => (
+          <Pressable key={item.id} onPress={() => router.push(`/collection/${item.id}`)} style={({ pressed }) => [styles.collectionRow, pressed && styles.pressed]}>
+            <Text style={styles.collectionRowTitle}>{item.title}</Text>
+            <Feather name="layers" size={16} color={colors.primary} />
+          </Pressable>
+        )) : <Text style={styles.mutedText}>این قطعه هنوز در مجموعه‌ای نیست.</Text>}
+      </DetailCard>
 
       {credits.length > 0 ? (
         <>
@@ -733,6 +757,14 @@ export default function TrackDetailScreen() {
         coverImage={track.coverImage}
         artistName={artistName}
         onClose={() => setPostcardVisible(false)}
+      />
+      <CollectionPicker
+        trackId={track.id}
+        visible={collectionPickerVisible}
+        onClose={() => setCollectionPickerVisible(false)}
+        onChanged={() => {
+          void getCollectionsForTrack(track.id).then(setCollections);
+        }}
       />
       <SheetMusicModal
         visible={sheetMusicModalVisible}
@@ -1226,6 +1258,29 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginBottom: 18,
     },
     graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    collectionButton: {
+      minHeight: 43,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 14,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 18,
+    },
+    collectionButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    collectionRow: {
+      minHeight: 42,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    collectionRowTitle: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
+    mutedText: { color: colors.mutedForeground, fontSize: 13, lineHeight: 21, textAlign: 'right' },
     archiveLinks: { flexDirection: 'row-reverse', gap: 9, marginTop: 10, marginBottom: 18 },
     archiveLink: { flex: 1, minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8 },
     archiveLinkText: { color: colors.primary, fontSize: 11, fontWeight: '700', textAlign: 'center' },

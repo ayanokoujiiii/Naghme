@@ -38,6 +38,12 @@ export const SAMPLE_VERSION_IDS = {
   shabSokoutKavirLive: 'sample_version_shab_sokout_kavir_live',
 } as const;
 
+export const SAMPLE_COLLECTION_IDS = {
+  evening: 'sample_collection_evening',
+  favorites: 'sample_collection_favorites',
+  instrumental: 'sample_collection_instrumental',
+} as const;
+
 export interface SeedArtistAlbumLink {
   artistId: string;
   albumId: string;
@@ -351,6 +357,30 @@ const SAMPLE_CREDITS: readonly SampleCredit[] = [
   { id: 'sample_credit_bahar_work_lyricist', artistId: SAMPLE_ARTIST_IDS.taraghi, roleId: 'role_lyricist', workId: SAMPLE_WORK_IDS.baharDelneshin },
 ] as const;
 
+const SAMPLE_COLLECTIONS = [
+  {
+    id: SAMPLE_COLLECTION_IDS.evening,
+    title: 'برای شب‌های آرام',
+    description: 'قطعه‌هایی برای شنیدن در خلوت شبانه.',
+    coverImage: SAMPLE_ALBUMS[0].coverImage,
+    trackIds: [SAMPLE_TRACK_IDS.tasnifBidad, SAMPLE_TRACK_IDS.shabSokoutKavir],
+  },
+  {
+    id: SAMPLE_COLLECTION_IDS.favorites,
+    title: 'انتخاب‌های ماندگار',
+    description: 'چند قطعهٔ نمونه برای شروع آرشیو.',
+    coverImage: SAMPLE_ALBUMS[1].coverImage,
+    trackIds: [SAMPLE_TRACK_IDS.baroun, SAMPLE_TRACK_IDS.khaneh],
+  },
+  {
+    id: SAMPLE_COLLECTION_IDS.instrumental,
+    title: 'ساز و سکوت',
+    description: 'اجراهای سازی و آرام برای تمرکز.',
+    coverImage: null,
+    trackIds: [SAMPLE_TRACK_IDS.shabSokoutKavir],
+  },
+] as const;
+
 const SAMPLE_ARTIST_RELATIONSHIPS = [
   {
     id: 'sample_artist_relationship_shajarian_alizadeh',
@@ -453,6 +483,8 @@ export interface SeedResult {
   versions: number;
   credits: number;
   relationships: number;
+  collections: number;
+  collectionTracks: number;
 }
 
 export async function injectSampleData(): Promise<SeedResult> {
@@ -575,6 +607,22 @@ export async function injectSampleData(): Promise<SeedResult> {
     );
   }
 
+  for (const collection of SAMPLE_COLLECTIONS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO Collections
+         (id, title, description, coverImage, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [collection.id, collection.title, collection.description, collection.coverImage, now, now],
+    );
+    for (const [position, trackId] of collection.trackIds.entries()) {
+      await database.runAsync(
+        `INSERT OR IGNORE INTO CollectionTracks (collectionId, trackId, position)
+         VALUES (?, ?, ?)`,
+        [collection.id, trackId, position],
+      );
+    }
+  }
+
   for (const relationship of SAMPLE_ARTIST_RELATIONSHIPS) {
     const directions = [
       [relationship.artistId, relationship.relatedArtistId, `${relationship.id}:forward`],
@@ -628,5 +676,7 @@ export async function injectSampleData(): Promise<SeedResult> {
     versions: SAMPLE_VERSIONS.length,
     credits: SAMPLE_CREDITS.length,
     relationships: SAMPLE_ARTIST_RELATIONSHIPS.length,
+    collections: SAMPLE_COLLECTIONS.length,
+    collectionTracks: SAMPLE_COLLECTIONS.reduce((count, collection) => count + collection.trackIds.length, 0),
   };
 }

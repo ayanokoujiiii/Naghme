@@ -30,12 +30,14 @@ const labels: Record<SearchResultType, string> = {
   track: 'قطعه‌ها',
   album: 'آلبوم‌ها',
   artist: 'هنرمندان',
+  work: 'آثار',
 };
 
-const icons: Record<SearchResultType, 'music' | 'disc' | 'mic'> = {
+const icons: Record<SearchResultType, 'music' | 'disc' | 'mic' | 'book-open'> = {
   track: 'music',
   album: 'disc',
   artist: 'mic',
+  work: 'book-open',
 };
 
 const filterOptions: Array<{ value: SearchFilter; label: string }> = [
@@ -45,12 +47,16 @@ const filterOptions: Array<{ value: SearchFilter; label: string }> = [
   { value: 'album', label: 'آلبوم' },
   { value: 'lyrics', label: 'متن ترانه' },
   { value: 'journal', label: 'دفترچه خاطرات' },
+  { value: 'credit', label: 'مشارکت' },
+  { value: 'work', label: 'اثر' },
 ];
 
 const matchLabels = {
   title: 'نام',
   lyrics: 'متن ترانه',
   journal: 'دفترچه خاطرات',
+  credit: 'مشارکت',
+  work: 'اثر',
 } as const;
 
 export default function SearchScreen() {
@@ -92,7 +98,7 @@ export default function SearchScreen() {
 
   const groupedResults = useMemo(
     () =>
-      (['track', 'album', 'artist'] as SearchResultType[]).map((type) => ({
+      (['track', 'album', 'artist', 'work'] as SearchResultType[]).map((type) => ({
         type,
         items: results.filter((result) => result.type === type),
       })),
@@ -125,6 +131,7 @@ export default function SearchScreen() {
     }
     if (result.type === 'album') router.push(`/album/${result.id}`);
     if (result.type === 'artist') router.push(`/artist/${result.id}`);
+    if (result.type === 'work') router.push(`/work/${result.id}`);
   };
 
   const selectFilter = (nextFilter: SearchFilter) => {
