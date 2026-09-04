@@ -58,6 +58,7 @@ export default function ArtistDetailScreen() {
   const [relationshipModalVisible, setRelationshipModalVisible] = useState<boolean>(false);
   const [relationshipSearch, setRelationshipSearch] = useState<string>('');
   const [relationshipDescription, setRelationshipDescription] = useState<string>('');
+  const [relationshipReciprocal, setRelationshipReciprocal] = useState<boolean>(true);
   const [selectedRelatedArtistId, setSelectedRelatedArtistId] = useState<string | null>(null);
   const [savingRelationship, setSavingRelationship] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -362,6 +363,7 @@ export default function ArtistDetailScreen() {
   const openRelationshipModal = () => {
     setRelationshipSearch('');
     setRelationshipDescription('');
+    setRelationshipReciprocal(true);
     setSelectedRelatedArtistId(null);
     setRelationshipModalVisible(true);
   };
@@ -374,6 +376,7 @@ export default function ArtistDetailScreen() {
         artistId: artist.id,
         relatedArtistId: selectedRelatedArtistId,
         description: relationshipDescription.trim() || null,
+        reciprocal: relationshipReciprocal,
       });
       setRelationships((current) =>
         [...current, relationship].sort((left, right) =>
@@ -514,6 +517,15 @@ export default function ArtistDetailScreen() {
         <DetailRow label="نوع" value={artist.type ?? 'ثبت نشده'} />
         <DetailRow label="سبک‌ها" value={artist.genres ?? 'ثبت نشده'} />
       </DetailCard>
+      <Pressable
+        testID="artist-open-graph"
+        accessibilityRole="button"
+        onPress={() => router.push(`/graph?focusType=artist&focusId=${artist.id}`)}
+        style={({ pressed }) => [styles.graphButton, pressed && styles.pressed]}
+      >
+        <Feather name="git-branch" size={16} color={colors.primary} />
+        <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
+      </Pressable>
 
       <SectionHeading title="یادداشت" />
       <DetailCard>
@@ -711,6 +723,27 @@ export default function ArtistDetailScreen() {
                 </Pressable>
               )) : <Text style={styles.mutedText}>هنرمند دیگری برای انتخاب پیدا نشد.</Text>}
             </ScrollView>
+            <Pressable
+              testID="artist-relationship-reciprocal"
+              accessibilityRole="button"
+              accessibilityState={{ checked: relationshipReciprocal }}
+              onPress={() => setRelationshipReciprocal((current) => !current)}
+              style={styles.reciprocalToggle}
+            >
+              <Feather
+                name={relationshipReciprocal ? 'check-square' : 'square'}
+                size={18}
+                color={relationshipReciprocal ? colors.primary : colors.mutedForeground}
+              />
+              <View style={styles.reciprocalCopy}>
+                <Text style={styles.reciprocalTitle}>رابطه‌ی متقابل</Text>
+                <Text style={styles.reciprocalHint}>
+                  {relationshipReciprocal
+                    ? 'در صفحه‌ی هر دو هنرمند دیده می‌شود.'
+                    : 'فقط از این هنرمند به طرف مقابل ثبت می‌شود.'}
+                </Text>
+              </View>
+            </Pressable>
             <TextInput
               value={relationshipDescription}
               onChangeText={setRelationshipDescription}
@@ -1085,6 +1118,19 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 14,
       textAlign: 'right',
     },
+    graphButton: {
+      minHeight: 43,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 14,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 18,
+    },
+    graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     relationshipHeading: {
       flexDirection: 'row-reverse',
       alignItems: 'flex-end',
@@ -1166,6 +1212,19 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 12,
       marginTop: 10,
     },
+    reciprocalToggle: {
+      minHeight: 54,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      paddingHorizontal: 10,
+      marginTop: 9,
+      borderRadius: 13,
+      backgroundColor: colors.secondary,
+    },
+    reciprocalCopy: { flex: 1, alignItems: 'flex-end' },
+    reciprocalTitle: { color: colors.foreground, fontSize: 12, fontWeight: '700', textAlign: 'right' },
+    reciprocalHint: { color: colors.mutedForeground, fontSize: 10, lineHeight: 16, marginTop: 2, textAlign: 'right' },
     relationshipSave: {
       minHeight: 46,
       borderRadius: 14,

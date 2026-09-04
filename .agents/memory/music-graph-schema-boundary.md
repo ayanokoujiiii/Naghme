@@ -1,10 +1,10 @@
 ---
 name: Music graph schema boundary
-description: How the music graph represents artist-to-album links without changing the Phase 3 SQLite schema.
+description: How the music graph stores explicit and inferred artist-to-album links in SQLite.
 ---
 
-The Phase 3 SQLite schema relates Tracks to Albums but has no artistId column or artist-album join table. Seeded graph links therefore live beside the seed catalogue, while user-created albums are shown as unassigned branches.
+Artist-to-album membership is now a first-class SQLite join table with a source of explicit or inferred. Migration 7 backfills inferred links from existing track/album membership, while seed data is inserted into the same table.
 
-**Why:** The Phase 4 requirement explicitly protects the stable native/web SQLite adapters and existing routing, so adding a migration just for the first graph version would increase risk and break the established foundation.
+**Why:** The graph must represent user-created relationships and migrated legacy data consistently; deriving links in the UI makes the graph incomplete and impossible to edit safely.
 
-**How to apply:** If a later phase needs editable artist-album relationships for arbitrary user data, add a deliberate schema migration and CRUD flow rather than silently extending the current seed-only association.
+**How to apply:** Keep graph reads pointed at the persisted join table. Preserve source provenance when importing legacy data, and write user edits as explicit links.

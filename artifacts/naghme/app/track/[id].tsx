@@ -376,6 +376,15 @@ export default function TrackDetailScreen() {
           value={track.duration === null ? 'ثبت نشده' : formatDuration(track.duration)}
         />
       </DetailCard>
+      <Pressable
+        testID="track-open-graph"
+        accessibilityRole="button"
+        onPress={() => router.push(`/graph?focusType=track&focusId=${track.id}`)}
+        style={({ pressed }) => [styles.graphButton, pressed && styles.pressed]}
+      >
+        <Feather name="git-branch" size={16} color={colors.primary} />
+        <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
+      </Pressable>
 
       {credits.length > 0 ? (
         <>
@@ -1180,6 +1189,19 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       lineHeight: 21,
       textAlign: 'right',
     },
+    graphButton: {
+      minHeight: 43,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 14,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 18,
+    },
+    graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     missingAudioBox: {
       flexDirection: 'row-reverse',
       alignItems: 'center',

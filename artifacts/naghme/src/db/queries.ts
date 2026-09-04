@@ -22,6 +22,16 @@ export interface ArtistRelationshipRecord {
   createdAt: string;
 }
 
+export type ArtistAlbumLinkSource = 'explicit' | 'inferred';
+
+export interface ArtistAlbumLinkRecord {
+  artistId: string;
+  albumId: string;
+  source: ArtistAlbumLinkSource;
+  artistName: string;
+  albumTitle: string;
+}
+
 export interface AlbumRecord {
   id: string;
   title: string;
@@ -271,7 +281,15 @@ export type NewArtistRelationship = Pick<
   ArtistRelationshipRecord,
   'artistId' | 'relatedArtistId'
 > &
-  Partial<Pick<ArtistRelationshipRecord, 'description'>>;
+  Partial<Pick<ArtistRelationshipRecord, 'description'>> & {
+    reciprocal?: boolean;
+  };
+
+export type NewArtistAlbumLink = {
+  artistId: string;
+  albumId: string;
+  source?: ArtistAlbumLinkSource;
+};
 
 export type NewJournalEntry = Pick<JournalEntryRecord, 'trackId' | 'note' | 'mood'>;
 export type UpdateJournalEntry = Pick<JournalEntryRecord, 'note' | 'mood'>;
@@ -456,6 +474,7 @@ export async function addArtistRelationship(
 ): Promise<ArtistRelationshipRecord> {
   const artistId = input.artistId.trim();
   const relatedArtistId = input.relatedArtistId.trim();
+  const reciprocal = input.reciprocal ?? true;
   if (!artistId || !relatedArtistId) throw new Error('هر دو هنرمند را انتخاب کنید.');
   if (artistId === relatedArtistId) throw new Error('یک هنرمند نمی‌تواند با خودش مرتبط شود.');
 
@@ -487,18 +506,27 @@ export async function addArtistRelationship(
     createdAt: new Date().toISOString(),
   };
   try {
-    await database.runAsync(
-      `INSERT INTO ArtistRelationships
-        (id, artistId, relatedArtistId, description, createdAt)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        relationship.id,
-        relationship.artistId,
-        relationship.relatedArtistId,
-        relationship.description,
-        relationship.createdAt,
-      ],
-    );
+    await database.withTransactionAsync(async () => {
+      await insertArtistRelationship(database, relationship);
+      if (reciprocal) {
+        await insertArtistRelationship(database, {
+          ...relationship,
+          id: createId('artist_relation'),
+          artistId: relatedArtistId,
+          relatedArtistId: artistId,
+          relatedArtistName:
+            (await database.getFirstAsync<{ name: string }>(
+              'SELECT name FROM Artists WHERE id = ?',
+              [artistId],
+            ))?.name ?? 'هنرمند',
+          relatedArtistType:
+            (await database.getFirstAsync<{ type: string | null }>(
+              'SELECT type FROM Artists WHERE id = ?',
+              [artistId],
+            ))?.type ?? null,
+        });
+      }
+    });
   } catch (error: unknown) {
     if (error instanceof Error && error.message.toLowerCase().includes('unique')) {
       throw new Error('این ارتباط قبلاً برای این هنرمند ثبت شده است.');
@@ -510,7 +538,43 @@ export async function addArtistRelationship(
 
 export async function deleteArtistRelationship(id: string): Promise<void> {
   const database = await requireDatabase();
-  await database.runAsync('DELETE FROM ArtistRelationships WHERE id = ?', [id]);
+  const relationship = await database.getFirstAsync<{
+    artistId: string;
+    relatedArtistId: string;
+  }>(
+    'SELECT artistId, relatedArtistId FROM ArtistRelationships WHERE id = ?',
+    [id],
+  );
+  if (!relationship) return;
+  await database.runAsync(
+    `DELETE FROM ArtistRelationships
+      WHERE (artistId = ? AND relatedArtistId = ?)
+         OR (artistId = ? AND relatedArtistId = ?)`,
+    [
+      relationship.artistId,
+      relationship.relatedArtistId,
+      relationship.relatedArtistId,
+      relationship.artistId,
+    ],
+  );
+}
+
+async function insertArtistRelationship(
+  database: Awaited<ReturnType<typeof requireDatabase>>,
+  relationship: ArtistRelationshipRecord,
+): Promise<void> {
+  await database.runAsync(
+    `INSERT INTO ArtistRelationships
+      (id, artistId, relatedArtistId, description, createdAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      relationship.id,
+      relationship.artistId,
+      relationship.relatedArtistId,
+      relationship.description,
+      relationship.createdAt,
+    ],
+  );
 }
 
 export async function addAlbum(input: NewAlbum): Promise<AlbumRecord> {
@@ -558,41 +622,117 @@ export async function getAlbums(): Promise<AlbumRecord[]> {
 export async function getAlbumsForArtist(artistId: string): Promise<AlbumRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<AlbumRecord>(
-    `SELECT DISTINCT Albums.id, Albums.title, Albums.releaseYear, Albums.coverImage
+    `SELECT Albums.id, Albums.title, Albums.releaseYear, Albums.coverImage
        FROM Albums
-      WHERE EXISTS (
-        SELECT 1
-          FROM Tracks
-         WHERE Tracks.albumId = Albums.id
-           AND Tracks.artistId = ?
-      )
-      OR EXISTS (
-        SELECT 1
-          FROM AlbumTracks
-          INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
-         WHERE AlbumTracks.albumId = Albums.id
-           AND Tracks.artistId = ?
-      )
-      OR EXISTS (
-        SELECT 1
-          FROM Credits
-         WHERE Credits.albumId = Albums.id
-           AND Credits.artistId = ?
-      )
-      OR EXISTS (
-        SELECT 1
-          FROM Credits
-          INNER JOIN Tracks ON Tracks.id = Credits.trackId
-         WHERE Credits.artistId = ?
-           AND (Tracks.albumId = Albums.id OR EXISTS (
-             SELECT 1 FROM AlbumTracks
-              WHERE AlbumTracks.albumId = Albums.id
-                AND AlbumTracks.trackId = Tracks.id
-           ))
-      )
+       INNER JOIN ArtistAlbums ON ArtistAlbums.albumId = Albums.id
+      WHERE ArtistAlbums.artistId = ?
       ORDER BY Albums.title COLLATE NOCASE ASC`,
-    [artistId, artistId, artistId, artistId],
+    [artistId],
   );
+}
+
+export async function getAlbumArtistLinks(albumId: string): Promise<ArtistAlbumLinkRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ArtistAlbumLinkRecord>(
+    `SELECT ArtistAlbums.artistId, ArtistAlbums.albumId, ArtistAlbums.source,
+            Artists.name AS artistName, Albums.title AS albumTitle
+       FROM ArtistAlbums
+       INNER JOIN Artists ON Artists.id = ArtistAlbums.artistId
+       INNER JOIN Albums ON Albums.id = ArtistAlbums.albumId
+      WHERE ArtistAlbums.albumId = ?
+      ORDER BY Artists.name COLLATE NOCASE ASC`,
+    [albumId],
+  );
+}
+
+export async function getArtistAlbumLinks(artistId: string): Promise<ArtistAlbumLinkRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ArtistAlbumLinkRecord>(
+    `SELECT ArtistAlbums.artistId, ArtistAlbums.albumId, ArtistAlbums.source,
+            Artists.name AS artistName, Albums.title AS albumTitle
+       FROM ArtistAlbums
+       INNER JOIN Artists ON Artists.id = ArtistAlbums.artistId
+       INNER JOIN Albums ON Albums.id = ArtistAlbums.albumId
+      WHERE ArtistAlbums.artistId = ?
+      ORDER BY Albums.title COLLATE NOCASE ASC`,
+    [artistId],
+  );
+}
+
+export async function addArtistAlbumLink(
+  input: NewArtistAlbumLink,
+): Promise<ArtistAlbumLinkRecord> {
+  const database = await requireDatabase();
+  const artist = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Artists WHERE id = ?',
+    [input.artistId],
+  );
+  const album = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Albums WHERE id = ?',
+    [input.albumId],
+  );
+  if (!artist) throw new Error('هنرمند پیدا نشد.');
+  if (!album) throw new Error('آلبوم پیدا نشد.');
+  await database.runAsync(
+    `INSERT OR REPLACE INTO ArtistAlbums (artistId, albumId, source)
+     VALUES (?, ?, ?)`,
+    [input.artistId, input.albumId, input.source ?? 'explicit'],
+  );
+  const link = await database.getFirstAsync<ArtistAlbumLinkRecord>(
+    `SELECT ArtistAlbums.artistId, ArtistAlbums.albumId, ArtistAlbums.source,
+            Artists.name AS artistName, Albums.title AS albumTitle
+       FROM ArtistAlbums
+       INNER JOIN Artists ON Artists.id = ArtistAlbums.artistId
+       INNER JOIN Albums ON Albums.id = ArtistAlbums.albumId
+      WHERE ArtistAlbums.artistId = ? AND ArtistAlbums.albumId = ?`,
+    [input.artistId, input.albumId],
+  );
+  if (!link) throw new Error('اتصال هنرمند و آلبوم ذخیره نشد.');
+  return link;
+}
+
+export async function deleteArtistAlbumLink(
+  artistId: string,
+  albumId: string,
+): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync(
+    'DELETE FROM ArtistAlbums WHERE artistId = ? AND albumId = ?',
+    [artistId, albumId],
+  );
+}
+
+export async function replaceAlbumArtists(
+  albumId: string,
+  artistIds: string[],
+): Promise<ArtistAlbumLinkRecord[]> {
+  const database = await requireDatabase();
+  const album = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM Albums WHERE id = ?',
+    [albumId],
+  );
+  if (!album) throw new Error('آلبوم پیدا نشد.');
+
+  const uniqueArtistIds = [...new Set(artistIds.map((artistId) => artistId.trim()).filter(Boolean))];
+  for (const artistId of uniqueArtistIds) {
+    const artist = await database.getFirstAsync<{ id: string }>(
+      'SELECT id FROM Artists WHERE id = ?',
+      [artistId],
+    );
+    if (!artist) throw new Error('یکی از هنرمندان انتخاب‌شده پیدا نشد.');
+  }
+
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM ArtistAlbums WHERE albumId = ?', [albumId]);
+    for (const artistId of uniqueArtistIds) {
+      await database.runAsync(
+        `INSERT INTO ArtistAlbums (artistId, albumId, source)
+         VALUES (?, ?, 'explicit')`,
+        [artistId, albumId],
+      );
+    }
+  });
+  return getAlbumArtistLinks(albumId);
 }
 
 export async function getAlbumById(id: string): Promise<AlbumRecord | null> {

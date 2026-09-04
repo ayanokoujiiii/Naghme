@@ -40,6 +40,7 @@ export default function AddTrackScreen() {
   const [lyrics, setLyrics] = useState<string>('');
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [audioName, setAudioName] = useState<string>('');
+  const [audioDurationNotice, setAudioDurationNotice] = useState<string>('');
   const [sheetMusicUri, setSheetMusicUri] = useState<string | null>(null);
   const [artists, setArtists] = useState<ArtistRecord[]>([]);
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
@@ -202,12 +203,14 @@ export default function AddTrackScreen() {
       const asset = result.assets[0];
       if (!asset) throw new Error('فایل صوتی انتخاب نشد.');
       const durationSeconds = await getAudioDurationSeconds(asset.uri);
-      if (durationSeconds === null) {
-        throw new Error('مدت واقعی فایل خوانده نشد؛ فایل دیگری را انتخاب کن.');
-      }
       setAudioUri(asset.uri);
       setAudioName(asset.name || 'فایل صوتی انتخاب‌شده');
-      setDuration(String(durationSeconds));
+      setAudioDurationNotice(
+        durationSeconds === null
+          ? 'مدت فایل خوانده نشد؛ می‌توانی آن را دستی وارد کنی.'
+          : '',
+      );
+      if (durationSeconds !== null) setDuration(String(durationSeconds));
       setError('');
     } catch (pickError: unknown) {
       Alert.alert(
@@ -220,6 +223,7 @@ export default function AddTrackScreen() {
   const clearAudio = () => {
     setAudioUri(null);
     setAudioName('');
+    setAudioDurationNotice('');
   };
 
   const pickSheetMusic = async () => {
@@ -542,6 +546,9 @@ export default function AddTrackScreen() {
               {audioName || (audioUri ? 'فایل صوتی انتخاب‌شده' : 'هنوز فایلی انتخاب نشده')}
             </Text>
             <Text style={styles.audioHint}>فایل روی همین دستگاه نگهداری می‌شود.</Text>
+            {audioDurationNotice ? (
+              <Text style={styles.audioNotice}>{audioDurationNotice}</Text>
+            ) : null}
           </View>
           {audioUri ? (
             <Pressable
@@ -719,6 +726,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     audioCopy: { flex: 1, alignItems: 'flex-end' },
     audioTitle: { color: colors.foreground, fontSize: 13, fontWeight: '600', textAlign: 'right' },
     audioHint: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
+    audioNotice: { color: colors.primary, fontSize: 10, lineHeight: 17, textAlign: 'right', marginTop: 3 },
     audioAction: { padding: 7 },
     audioButton: {
       minHeight: 44,

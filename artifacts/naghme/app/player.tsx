@@ -66,9 +66,15 @@ export default function PlayerScreen() {
   const [latestMood, setLatestMood] = useState<string | null>(null);
   const [postcardVisible, setPostcardVisible] = useState<boolean>(false);
   const [queueVisible, setQueueVisible] = useState<boolean>(false);
+  const [isSliding, setIsSliding] = useState<boolean>(false);
+  const [sliderValue, setSliderValue] = useState<number>(0);
   const posterMotionStyle = useMoodPosterStyle(latestMood);
 
   useEffect(() => subscribeToAudio(setAudio), []);
+
+  useEffect(() => {
+    if (!isSliding) setSliderValue(audio.positionMillis);
+  }, [audio.positionMillis, isSliding]);
 
   useEffect(() => {
     let mounted = true;
@@ -195,6 +201,7 @@ export default function PlayerScreen() {
   }
 
   const durationMillis = audio.durationMillis || (audio.track.durationSeconds ?? 0) * 1000;
+  const displayedPositionMillis = isSliding ? sliderValue : audio.positionMillis;
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -301,15 +308,24 @@ export default function PlayerScreen() {
             style={styles.slider}
             minimumValue={0}
             maximumValue={Math.max(durationMillis, 1)}
-            value={Math.min(audio.positionMillis, Math.max(durationMillis, 1))}
+            value={Math.min(displayedPositionMillis, Math.max(durationMillis, 1))}
             minimumTrackTintColor={colors.primary}
             maximumTrackTintColor={colors.border}
             thumbTintColor={colors.primary}
             disabled={!audio.isLoaded || audio.isBuffering || durationMillis <= 0}
-            onSlidingComplete={(value) => void seek(value)}
+            onSlidingStart={(value) => {
+              setIsSliding(true);
+              setSliderValue(value);
+            }}
+            onValueChange={setSliderValue}
+            onSlidingComplete={(value) => {
+              setIsSliding(false);
+              setSliderValue(value);
+              void seek(value);
+            }}
           />
           <View style={styles.timeRow}>
-            <Text style={styles.time}>{formatTime(audio.positionMillis)}</Text>
+            <Text style={styles.time}>{formatTime(displayedPositionMillis)}</Text>
             <Text style={styles.time}>{formatTime(durationMillis)}</Text>
           </View>
         </View>

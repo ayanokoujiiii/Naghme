@@ -18,9 +18,11 @@ import { useColors } from '@/hooks/useColors';
 import {
   AlbumRecord,
   AlbumTrackRecord,
+  ArtistAlbumLinkRecord,
   CreditViewRecord,
   deleteAlbum,
   getAlbumById,
+  getAlbumArtistLinks,
   getAlbumTracks,
   getCreditsForAlbum,
   getTracksByAlbumId,
@@ -38,6 +40,7 @@ export default function AlbumDetailScreen() {
   const [tracks, setTracks] = useState<TrackRecord[]>([]);
   const [albumTrackEntries, setAlbumTrackEntries] = useState<AlbumTrackRecord[]>([]);
   const [credits, setCredits] = useState<CreditViewRecord[]>([]);
+  const [albumArtists, setAlbumArtists] = useState<ArtistAlbumLinkRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [savingCover, setSavingCover] = useState<boolean>(false);
@@ -52,11 +55,12 @@ export default function AlbumDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundAlbum, albumTracks, albumCredits, orderedAlbumTracks] = await Promise.all([
+      const [foundAlbum, albumTracks, albumCredits, orderedAlbumTracks, linkedArtists] = await Promise.all([
         getAlbumById(albumId),
         getTracksByAlbumId(albumId),
         getCreditsForAlbum(albumId),
         getAlbumTracks(albumId),
+        getAlbumArtistLinks(albumId),
       ]);
       if (!foundAlbum) {
         setError('آلبوم پیدا نشد.');
@@ -65,6 +69,7 @@ export default function AlbumDetailScreen() {
         setTracks(albumTracks);
         setAlbumTrackEntries(orderedAlbumTracks);
         setCredits(albumCredits);
+        setAlbumArtists(linkedArtists);
       }
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'خواندن آلبوم انجام نشد.');
@@ -286,6 +291,29 @@ export default function AlbumDetailScreen() {
         </View>
       </View>
       {coverMessage ? <Text style={styles.coverMessage}>{coverMessage}</Text> : null}
+      <Pressable
+        testID="album-open-graph"
+        accessibilityRole="button"
+        onPress={() => router.push(`/graph?focusType=album&focusId=${album.id}`)}
+        style={({ pressed }) => [styles.graphButton, pressed && styles.pressed]}
+      >
+        <Feather name="git-branch" size={16} color={colors.primary} />
+        <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
+      </Pressable>
+      <SectionHeading title="هنرمندان آلبوم" caption={`${albumArtists.length} هنرمند`} />
+      <DetailCard>
+        {albumArtists.length ? albumArtists.map((link) => (
+          <Pressable
+            key={link.artistId}
+            testID={`album-artist-${link.artistId}`}
+            onPress={() => router.push(`/artist/${link.artistId}`)}
+            style={({ pressed }) => [styles.artistRow, pressed && styles.pressed]}
+          >
+            <Feather name="mic" size={16} color={colors.primary} />
+            <Text style={styles.artistRowText}>{link.artistName}</Text>
+          </Pressable>
+        )) : <Text style={styles.mutedText}>هنوز هنرمندی برای این آلبوم ثبت نشده است.</Text>}
+      </DetailCard>
       <SectionHeading title="اطلاعات آلبوم" caption="جزئیات ثبت‌شده" />
       <DetailCard>
         <DetailRow label="عنوان" value={album.title} />
@@ -443,6 +471,28 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     posterActionSecondary: { backgroundColor: colors.secondary },
     posterActionSecondaryText: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600' },
     coverMessage: { color: colors.primary, fontSize: 11, lineHeight: 18, textAlign: 'right', marginBottom: 10 },
+    graphButton: {
+      minHeight: 43,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 14,
+      backgroundColor: colors.secondary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 16,
+    },
+    graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+    artistRow: {
+      minHeight: 45,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 9,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    artistRowText: { flex: 1, color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
     trackRow: {
       flexDirection: 'row-reverse',
       alignItems: 'center',

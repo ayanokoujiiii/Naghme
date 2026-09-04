@@ -8,11 +8,15 @@ import { CreditsManager, PendingCreditDraft } from '@/components/CreditsManager'
 import { useColors } from '@/hooks/useColors';
 import {
   AlbumTrackRecord,
+  ArtistRecord,
   createAlbumWithCredits,
+  getAlbumArtistLinks,
   getAlbumById,
   getAlbumTracks,
+  getArtists,
   getTracks,
   NewAlbumTrack,
+  replaceAlbumArtists,
   replaceAlbumTracks,
   TrackRecord,
   updateAlbum,
@@ -38,16 +42,27 @@ export default function AddAlbumScreen() {
   const [loadingRecord, setLoadingRecord] = useState<boolean>(editing);
   const [pendingCredits, setPendingCredits] = useState<PendingCreditDraft[]>([]);
   const [allTracks, setAllTracks] = useState<TrackRecord[]>([]);
+  const [allArtists, setAllArtists] = useState<ArtistRecord[]>([]);
+  const [selectedArtistIds, setSelectedArtistIds] = useState<string[]>([]);
+  const [artistPickerOpen, setArtistPickerOpen] = useState<boolean>(false);
   const [albumTracks, setAlbumTracks] = useState<AlbumTrackDraft[]>([]);
   const [trackPickerOpen, setTrackPickerOpen] = useState<boolean>(false);
   const [loadingTracks, setLoadingTracks] = useState<boolean>(true);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getTracks(), id ? getAlbumById(id) : Promise.resolve(null), id ? getAlbumTracks(id) : Promise.resolve([])])
-      .then(([trackItems, album, existingTracks]) => {
+    Promise.all([
+      getTracks(),
+      getArtists(),
+      id ? getAlbumById(id) : Promise.resolve(null),
+      id ? getAlbumTracks(id) : Promise.resolve([]),
+      id ? getAlbumArtistLinks(id) : Promise.resolve([]),
+    ])
+      .then(([trackItems, artistItems, album, existingTracks, existingArtists]) => {
         if (!mounted) return;
         setAllTracks(trackItems);
+        setAllArtists(artistItems);
+        setSelectedArtistIds(existingArtists.map((link) => link.artistId));
         setAlbumTracks(existingTracks.map(toDraft));
         if (!album) {
           if (id) setError('آلبوم پیدا نشد.');
@@ -75,6 +90,16 @@ export default function AddAlbumScreen() {
   const availableTracks = allTracks.filter(
     (track) => !albumTracks.some((albumTrack) => albumTrack.trackId === track.id),
   );
+
+  const selectedArtists = allArtists.filter((artist) => selectedArtistIds.includes(artist.id));
+
+  const toggleArtist = (artistId: string) => {
+    setSelectedArtistIds((current) =>
+      current.includes(artistId)
+        ? current.filter((idValue) => idValue !== artistId)
+        : [...current, artistId],
+    );
+  };
 
   const addTrackToAlbum = (track: TrackRecord) => {
     setAlbumTracks((current) => [
@@ -143,12 +168,14 @@ export default function AddAlbumScreen() {
       });
       if (id) {
         await updateAlbum(id, { title, releaseYear: parsedYear });
+        await replaceAlbumArtists(id, selectedArtistIds);
         await replaceAlbumTracks(id, entries.map((entry) => ({ ...entry, albumId: id })));
       } else {
         const createdAlbum = await createAlbumWithCredits(
           { title, releaseYear: parsedYear, coverImage: null },
           pendingCredits.map(({ id: _id, ...credit }) => credit),
         );
+        await replaceAlbumArtists(createdAlbum.id, selectedArtistIds);
         await replaceAlbumTracks(
           createdAlbum.id,
           entries.map((entry) => ({ ...entry, albumId: createdAlbum.id })),
@@ -184,6 +211,62 @@ export default function AddAlbumScreen() {
         onChangeText={setReleaseYear}
         keyboardType="number-pad"
       />
+      <View style={styles.artistSection}>
+        <View style={styles.sectionHeading}>
+          <View style={styles.sectionCopy}>
+            <Text style={styles.sectionTitle}>هنرمندان آلبوم</Text>
+            <Text style={styles.sectionHint}>یک یا چند هنرمند را به‌صورت صریح متصل کن</Text>
+          </View>
+          <Pressable
+            testID="album-toggle-artist-picker"
+            accessibilityRole="button"
+            onPress={() => setArtistPickerOpen((open) => !open)}
+            style={({ pressed }) => [styles.addTrackButton, pressed && styles.pressed]}
+          >
+            <Feather name="plus" size={16} color={colors.primaryForeground} />
+            <Text style={styles.addTrackText}>افزودن</Text>
+          </Pressable>
+        </View>
+        {selectedArtists.length ? (
+          <View style={styles.selectedArtists}>
+            {selectedArtists.map((artist) => (
+              <View key={artist.id} style={styles.artistChip}>
+                <Pressable
+                  testID={`album-remove-artist-${artist.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`حذف ${artist.name} از آلبوم`}
+                  onPress={() => toggleArtist(artist.id)}
+                  style={styles.artistChipRemove}
+                >
+                  <Feather name="x" size={13} color={colors.destructive} />
+                </Pressable>
+                <Text style={styles.artistChipText}>{artist.name}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.noArtistText}>هنوز هنرمندی برای این آلبوم انتخاب نشده است.</Text>
+        )}
+        {artistPickerOpen ? (
+          <View style={styles.artistMenu}>
+            {allArtists.length ? allArtists.map((artist) => (
+              <Pressable
+                key={artist.id}
+                testID={`album-artist-option-${artist.id}`}
+                onPress={() => toggleArtist(artist.id)}
+                style={styles.artistMenuItem}
+              >
+                <Feather
+                  name={selectedArtistIds.includes(artist.id) ? 'check-square' : 'square'}
+                  size={17}
+                  color={selectedArtistIds.includes(artist.id) ? colors.primary : colors.mutedForeground}
+                />
+                <Text style={styles.artistMenuText}>{artist.name}</Text>
+              </Pressable>
+            )) : <Text style={styles.noArtistText}>ابتدا یک هنرمند ثبت کن.</Text>}
+          </View>
+        ) : null}
+      </View>
       <View style={styles.trackSection}>
         <View style={styles.sectionHeading}>
           <View style={styles.sectionCopy}>
@@ -297,6 +380,15 @@ function toDraft(track: AlbumTrackRecord): AlbumTrackDraft {
 
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
+    artistSection: { marginBottom: 20 },
+    selectedArtists: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7, marginBottom: 8 },
+    artistChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 9, borderRadius: 14, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border },
+    artistChipText: { color: colors.foreground, fontSize: 11, fontWeight: '700' },
+    artistChipRemove: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+    artistMenu: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.secondary, borderRadius: 15, overflow: 'hidden', marginTop: 4 },
+    artistMenuItem: { minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+    artistMenuText: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
+    noArtistText: { color: colors.mutedForeground, fontSize: 12, lineHeight: 20, paddingVertical: 7, textAlign: 'right' },
     trackSection: { marginBottom: 20 },
     sectionHeading: {
       flexDirection: 'row-reverse',

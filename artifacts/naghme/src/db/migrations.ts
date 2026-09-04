@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export interface AppliedMigration {
   version: number;
@@ -109,6 +109,11 @@ const migrations: readonly Migration[] = [
     version: 6,
     description: 'افزودن رابطهٔ قابل مدیریت بین هنرمندان',
     migrate: addArtistRelationships,
+  },
+  {
+    version: 7,
+    description: 'افزودن رابطهٔ واقعی و قابل مدیریت بین هنرمند و آلبوم',
+    migrate: addArtistAlbums,
   },
 ];
 
@@ -395,4 +400,40 @@ async function addArtistRelationships(database: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_artist_relationships_related
       ON ArtistRelationships (relatedArtistId);
   `);
+}
+
+async function addArtistAlbums(database: SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS ArtistAlbums (
+      artistId TEXT NOT NULL,
+      albumId TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'inferred'
+        CHECK (source IN ('explicit', 'inferred')),
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (artistId, albumId),
+      FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE CASCADE,
+      FOREIGN KEY (albumId) REFERENCES Albums(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_artist_albums_artist
+      ON ArtistAlbums (artistId);
+    CREATE INDEX IF NOT EXISTS idx_artist_albums_album
+      ON ArtistAlbums (albumId);
+  `);
+
+  // Preserve existing relationships without changing their IDs or legacy columns.
+  // These rows are inferred because the old schema did not distinguish explicit links.
+  await database.runAsync(
+    `INSERT OR IGNORE INTO ArtistAlbums (artistId, albumId, source)
+     SELECT DISTINCT Tracks.artistId, AlbumTracks.albumId, 'inferred'
+       FROM AlbumTracks
+       INNER JOIN Tracks ON Tracks.id = AlbumTracks.trackId
+      WHERE Tracks.artistId IS NOT NULL`,
+  );
+  await database.runAsync(
+    `INSERT OR IGNORE INTO ArtistAlbums (artistId, albumId, source)
+     SELECT DISTINCT Tracks.artistId, Tracks.albumId, 'inferred'
+       FROM Tracks
+      WHERE Tracks.artistId IS NOT NULL AND Tracks.albumId IS NOT NULL`,
+  );
 }

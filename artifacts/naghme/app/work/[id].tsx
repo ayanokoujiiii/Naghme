@@ -110,6 +110,15 @@ export default function WorkDetailScreen() {
       onDelete={confirmDeleteWork}
     >
       {error ? <View style={styles.errorBox}><Feather name="alert-circle" size={17} color={colors.destructive} /><Text style={styles.errorText}>{error}</Text></View> : null}
+      <Pressable
+        testID="work-open-graph"
+        accessibilityRole="button"
+        onPress={() => router.push(`/graph?focusType=work&focusId=${work.id}`)}
+        style={({ pressed }) => [styles.graphButton, pressed && styles.pressed]}
+      >
+        <Feather name="git-branch" size={16} color={colors.primary} />
+        <Text style={styles.graphButtonText}>باز کردن در نقشه‌ی موسیقی</Text>
+      </Pressable>
       <SectionHeading title="اطلاعات اثر" caption="جزئیات ثبت‌شده" />
       <DetailCard>
         <DetailRow label="عنوان‌های جایگزین" value={work.alternateTitles ?? 'ثبت نشده'} />
@@ -179,6 +188,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     loading: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
     errorBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: 'rgba(217, 107, 95, 0.14)', borderRadius: 14, padding: 12, marginBottom: 18 },
     errorText: { flex: 1, color: colors.destructive, fontSize: 13, lineHeight: 21, textAlign: 'right' },
+    graphButton: { minHeight: 43, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 14, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.border, marginBottom: 18 },
+    graphButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     description: { color: colors.foreground, fontSize: 14, lineHeight: 23, textAlign: 'right', marginTop: 13 },
     headingWithAction: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
     addButton: { minHeight: 36, borderRadius: 12, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, marginBottom: 12 },

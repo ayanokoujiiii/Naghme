@@ -25,9 +25,8 @@ export interface SeedArtistAlbumLink {
 }
 
 /**
- * The current Phase 3 schema intentionally has no artistId column on Albums.
- * These links keep the seeded catalogue relational without changing that
- * stable schema. User-created albums remain visible as unassigned branches.
+ * Seed-only catalogue input. The graph reads ArtistAlbums from SQLite; this
+ * list is used only when the user explicitly injects the sample catalogue.
  */
 export const SAMPLE_ARTIST_ALBUM_LINKS: readonly SeedArtistAlbumLink[] = [
   {
@@ -287,6 +286,14 @@ export async function injectSampleData(): Promise<SeedResult> {
          releaseYear = excluded.releaseYear,
          coverImage = excluded.coverImage`,
       [album.id, album.title, album.releaseYear, album.coverImage],
+    );
+  }
+
+  for (const link of SAMPLE_ARTIST_ALBUM_LINKS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO ArtistAlbums (artistId, albumId, source)
+       VALUES (?, ?, 'inferred')`,
+      [link.artistId, link.albumId],
     );
   }
 

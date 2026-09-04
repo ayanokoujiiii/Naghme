@@ -9,6 +9,9 @@ out-tsc/
 .expo-shared/
 android/
 ios/
+/*.zip
+/*.tar
+/*.tar.gz
 
 # dependencies
 node_modules/

@@ -35,6 +35,8 @@ export const REQUIRED_INDEXES = [
   'idx_credits_unique_album',
   'idx_artist_relationships_artist',
   'idx_artist_relationships_related',
+  'idx_artist_albums_artist',
+  'idx_artist_albums_album',
 ] as const;
 
 export async function runDatabaseIntegrityCheck(
@@ -130,6 +132,22 @@ export async function runDatabaseIntegrityCheck(
        FROM ArtistRelationships
        LEFT JOIN Artists ON Artists.id = ArtistRelationships.relatedArtistId
        WHERE Artists.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_artist_album_artist',
+      `SELECT COUNT(*) AS count
+       FROM ArtistAlbums
+       LEFT JOIN Artists ON Artists.id = ArtistAlbums.artistId
+       WHERE Artists.id IS NULL`,
+    ),
+    countIssue(
+      database,
+      'orphaned_artist_album_album',
+      `SELECT COUNT(*) AS count
+       FROM ArtistAlbums
+       LEFT JOIN Albums ON Albums.id = ArtistAlbums.albumId
+       WHERE Albums.id IS NULL`,
     ),
     countIssue(
       database,
