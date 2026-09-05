@@ -417,7 +417,7 @@ function BrowseView({
       <View style={styles.emptyState}>
         <Feather name="list" size={28} color={colors.mutedForeground} />
         <Text style={styles.emptyTitle}>آرشیو هنوز خالی است</Text>
-         <Text style={styles.emptyText}>از صفحه‌ی خانه چند داده‌ی نمونه اضافه کن یا یک هنرمند تازه بساز.</Text>
+         <Text style={styles.emptyText}>برای شروع، یک هنرمند تازه به آرشیوت اضافه کن.</Text>
       </View>
     );
   }

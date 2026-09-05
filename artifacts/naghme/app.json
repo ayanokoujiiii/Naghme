@@ -22,7 +22,8 @@
       }
     },
     "android": {
-      "package": "com.user.naghme"
+      "package": "com.user.naghme",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/images/icon.png"

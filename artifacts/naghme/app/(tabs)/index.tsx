@@ -4,7 +4,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -31,7 +30,6 @@ import {
   ListeningHistoryArchiveRecord,
   LibraryStats,
 } from '@/src/db/queries';
-import { injectSampleData } from '@/src/db/seed';
 import { playTracksInQueue } from '@/src/audio/audioManager';
 
 const emptyStats: LibraryStats = { tracks: 0, albums: 0, artists: 0 };
@@ -47,7 +45,6 @@ export default function HomeScreen() {
   const [latestJournal, setLatestJournal] = useState<JournalArchiveRecord | null>(null);
   const [latestListening, setLatestListening] = useState<ListeningHistoryArchiveRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [seeding, setSeeding] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
   const loadHome = useCallback(async () => {
@@ -80,25 +77,6 @@ export default function HomeScreen() {
       void loadHome();
     }, [loadHome]),
   );
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    setError('');
-    try {
-      const result = await injectSampleData();
-      await loadHome();
-      Alert.alert(
-        'داده‌ها آماده‌اند',
-        `${result.artists} هنرمند، ${result.albums} آلبوم، ${result.tracks} قطعه، ${result.works} اثر، ${result.versions} نسخه، ${result.credits} مشارکت، ${result.collections} مجموعه و ${result.collectionTracks} عضویت مجموعه به آرشیو نمونه اضافه شد.`,
-      );
-    } catch (seedError: unknown) {
-        const message = seedError instanceof Error ? seedError.message : 'افزودن داده‌های نمونه انجام نشد.';
-      setError(message);
-        Alert.alert('افزودن داده‌های نمونه انجام نشد', message);
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -287,30 +265,6 @@ export default function HomeScreen() {
         <EmptySection text="قطعه‌های محبوبت را با قلب‌زدن اینجا جمع کن." colors={colors} styles={styles} />
       )}
 
-      <View style={styles.seedCard}>
-        <View style={styles.seedIcon}>
-          <Feather name="download-cloud" size={21} color={colors.primary} />
-        </View>
-        <View style={styles.seedCopy}>
-          <Text style={styles.seedTitle}>آرشیو را با موسیقی ایرانی شروع کن</Text>
-          <Text style={styles.seedDescription}>
-            هنرمندها، آلبوم‌ها، قطعه‌ها، اثرها، نسخه‌ها، مشارکت‌ها و ارتباط‌های هنرمندان آماده‌ی مشاهده‌اند.
-          </Text>
-        </View>
-        <Pressable
-          testID="inject-sample-data"
-          accessibilityRole="button"
-          disabled={seeding}
-          onPress={() => void handleSeed()}
-          style={({ pressed }) => [styles.seedButton, pressed && styles.pressed]}
-        >
-          {seeding ? (
-            <ActivityIndicator size="small" color={colors.primaryForeground} />
-          ) : (
-            <Text style={styles.seedButtonText}>افزودن داده‌های نمونه</Text>
-          )}
-        </Pressable>
-      </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -510,13 +464,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     emptyText: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right' },
     errorBox: { marginTop: 16, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.muted, borderRadius: 14, padding: 12 },
     errorText: { flex: 1, color: colors.destructive, fontSize: 12, lineHeight: 20, textAlign: 'right' },
-    seedCard: { marginTop: 28, padding: 14, borderRadius: 20, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.border, alignItems: 'center', gap: 12 },
-    seedIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-    seedCopy: { alignItems: 'center' },
-    seedTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-    seedDescription: { color: colors.mutedForeground, fontSize: 12, textAlign: 'center', marginTop: 4 },
-    seedButton: { minHeight: 42, width: '100%', borderRadius: 13, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-    seedButtonText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
     pressed: { opacity: 0.76 },
   });
 }
