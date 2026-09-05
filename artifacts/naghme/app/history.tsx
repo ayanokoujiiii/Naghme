@@ -195,7 +195,7 @@ export default function HistoryScreen() {
               <View style={styles.headerCopy}>
                 <Text style={styles.eyebrow}>ردپای شنیدن‌های تو</Text>
                 <Text style={styles.title}>تاریخچه‌ی شنیدن</Text>
-                <Text style={styles.subtitle}>{routeArtistId ? 'فیلترشده بر اساس هنرمند' : routeTrackId ? 'فیلترشده بر اساس قطعه' : 'هر بار که موسیقی دوباره زنده شد'}</Text>
+                <Text style={styles.subtitle}>{routeArtistId ? 'نمایش بر اساس هنرمند' : routeTrackId ? 'نمایش بر اساس قطعه' : 'هر بار که موسیقی دوباره زنده شد'}</Text>
               </View>
               <View style={styles.headerIcon}><Feather name="headphones" size={23} color={colors.primary} /></View>
             </View>
@@ -203,7 +203,7 @@ export default function HistoryScreen() {
             <View style={styles.filterCard}>
               <View style={styles.filterHeading}>
                 <Text style={styles.filterTitle}>بازه‌ی زمانی</Text>
-                <Text style={styles.resultCount}>{overview.total} بار شنیدن</Text>
+                 <Text style={styles.resultCount}>{overview.total} بار پخش</Text>
               </View>
               <View style={styles.chips}>
                 {dateOptions.map((option) => {
@@ -270,7 +270,7 @@ function HistoryStats({
         <Feather name="bar-chart-2" size={18} color={colors.primary} />
         <View style={styles.statHeroCopy}>
           <Text style={styles.statHeroValue}>{overview.total}</Text>
-          <Text style={styles.statHeroLabel}>بار شنیدن در این بازه</Text>
+           <Text style={styles.statHeroLabel}>بار پخش در این بازه</Text>
         </View>
       </View>
       <View style={styles.topColumns}>
@@ -381,7 +381,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     content: { paddingHorizontal: 20, paddingTop: (Platform.OS === 'web' ? 67 : 0) + 16, paddingBottom: 34, flexGrow: 1 },
     header: { flexDirection: 'row-reverse', alignItems: 'flex-start', marginBottom: 22 },
     backButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-    headerCopy: { flex: 1, paddingHorizontal: 3 },
+     headerCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', paddingHorizontal: 3 },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 5 },
     title: { color: colors.foreground, fontSize: 28, lineHeight: 36, fontWeight: '700', textAlign: 'right' },
     subtitle: { color: colors.primary, fontSize: 12, textAlign: 'right', marginTop: 6 },
@@ -437,7 +437,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 }
 
 function formatDuration(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return 'مدت قدیمی';
+   if (value === null || !Number.isFinite(value)) return 'مدت ثبت نشده';
   const seconds = Math.max(0, Math.round(value));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, '0')} دقیقه`;
@@ -445,5 +445,5 @@ function formatDuration(value: number | null): string {
 
 function formatCompletion(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return 'کامل';
-  return `${Math.round(Math.max(0, Math.min(100, value)))}٪ تکمیل`;
+   return `${Math.round(Math.max(0, Math.min(100, value)))}٪ پخش شد`;
 }

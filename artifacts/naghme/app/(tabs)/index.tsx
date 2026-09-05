@@ -110,7 +110,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
       <View style={styles.topRow}>
-        <View>
+        <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>آرشیو شخصی من</Text>
           <Text style={styles.title}>نغمه</Text>
         </View>
@@ -139,7 +139,8 @@ export default function HomeScreen() {
         <View style={styles.heroOrbLarge} />
         <View style={styles.heroOrbSmall} />
         <Text style={styles.heroKicker}>صدای خاطره‌ها</Text>
-        <Text style={styles.heroTitle}>موسیقی‌هایت را{'\n'}با حس خودت نگه دار</Text>
+        <Text style={styles.heroTitle}>بدون موسیقی، زندگی یک اشتباه خواهد بود</Text>
+        <Text style={styles.heroAttribution}>فریدریش نیچه</Text>
         <Text style={styles.heroCopy}>
           قطعه‌ها، هنرمندها و یادداشت‌های شنیداری‌ات؛ همه در یک جای آرام و شخصی.
         </Text>
@@ -172,12 +173,12 @@ export default function HomeScreen() {
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>آرشیو تو</Text>
-        {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.sectionHint}>آخرین وضعیت آرشیو</Text>}
+        {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.sectionHint}>نگاهی به آرشیوت</Text>}
       </View>
-      <Pressable testID="home-open-postcards" onPress={() => router.push('/postcards')} style={({ pressed }) => [styles.emptySection, pressed && styles.pressed]}>
+      <Pressable testID="home-open-postcards" onPress={() => router.push('/postcards')} style={({ pressed }) => [styles.postcardEntry, pressed && styles.pressed]}>
         <Feather name="image" size={17} color={colors.primary} />
-        <Text style={styles.emptyText}>آرشیو عکس‌نوشته‌ها</Text>
-        <Text style={styles.sectionLink}>نمایش</Text>
+        <Text style={styles.postcardEntryText}>آرشیو عکس‌نوشته‌ها</Text>
+        <Text style={styles.postcardEntryLink}>نمایش</Text>
       </Pressable>
       <View style={styles.statsRow}>
         <StatCard icon="music" value={stats.tracks} label="قطعه" colors={colors} styles={styles} />
@@ -293,7 +294,7 @@ export default function HomeScreen() {
         <View style={styles.seedCopy}>
           <Text style={styles.seedTitle}>آرشیو را با موسیقی ایرانی شروع کن</Text>
           <Text style={styles.seedDescription}>
-            هنرمندها، آلبوم‌ها، قطعه‌ها، اثرها، نسخه‌ها، مشارکت‌ها و رابطه‌های هنرمندان آماده‌ی مشاهده‌اند.
+            هنرمندها، آلبوم‌ها، قطعه‌ها، اثرها، نسخه‌ها، مشارکت‌ها و ارتباط‌های هنرمندان آماده‌ی مشاهده‌اند.
           </Text>
         </View>
         <Pressable
@@ -452,6 +453,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     screen: { flex: 1, backgroundColor: colors.background },
      content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 104 },
     topRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 26 },
+     headerCopy: { flex: 1, alignItems: 'flex-end', minWidth: 0 },
     headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 5 },
     title: { color: colors.foreground, fontSize: 34, lineHeight: 42, fontWeight: '700', textAlign: 'right' },
@@ -460,7 +462,8 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     heroOrbLarge: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: colors.primary, opacity: 0.12, top: -82, left: -42 },
     heroOrbSmall: { position: 'absolute', width: 90, height: 90, borderRadius: 45, borderWidth: 1, borderColor: colors.accentForeground, opacity: 0.55, top: 30, right: 32 },
     heroKicker: { color: colors.accentForeground, fontSize: 13, fontWeight: '600', textAlign: 'right', marginBottom: 9 },
-    heroTitle: { color: colors.foreground, fontSize: 28, lineHeight: 38, fontWeight: '700', textAlign: 'right', marginBottom: 10 },
+     heroTitle: { color: colors.foreground, fontSize: 28, lineHeight: 38, fontWeight: '700', textAlign: 'right', marginBottom: 6 },
+     heroAttribution: { color: colors.mutedForeground, fontSize: 12, textAlign: 'right', marginBottom: 10 },
     heroCopy: { color: colors.mutedForeground, fontSize: 14, lineHeight: 24, textAlign: 'right', marginBottom: 20 },
     heroActions: { alignItems: 'flex-end', gap: 9 },
     heroButton: { alignSelf: 'flex-end', flexDirection: 'row-reverse', alignItems: 'center', gap: 9, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
@@ -501,6 +504,9 @@ function createStyles(colors: ReturnType<typeof useColors>) {
      activitySecondary: { color: colors.mutedForeground, fontSize: 10, textAlign: 'right', marginTop: 3 },
      activityLink: { color: colors.primary, fontSize: 11, fontWeight: '700' },
     emptySection: { minHeight: 70, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.muted, paddingHorizontal: 16 },
+    postcardEntry: { minHeight: 70, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 12, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, paddingHorizontal: 16, marginBottom: 16 },
+     postcardEntryText: { flex: 1, color: colors.foreground, fontSize: 13, textAlign: 'right' },
+     postcardEntryLink: { color: colors.primary, fontSize: 12, fontWeight: '700' },
     emptyText: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right' },
     errorBox: { marginTop: 16, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: colors.muted, borderRadius: 14, padding: 12 },
     errorText: { flex: 1, color: colors.destructive, fontSize: 12, lineHeight: 20, textAlign: 'right' },

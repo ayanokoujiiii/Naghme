@@ -669,7 +669,7 @@ export default function ArtistDetailScreen() {
         <SectionHeading
           title="هنرمندان مرتبط"
           caption={relationships.length ? `${relationships.length} ارتباط` : 'همکار، استاد، الهام‌بخش…'}
-          description="رابطه‌ی این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص."
+          description="ارتباط این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص."
         />
         <Pressable
           testID="artist-add-relationship"
@@ -886,7 +886,7 @@ export default function ArtistDetailScreen() {
                 <Text style={styles.relationshipModalTitle}>هنرمند مرتبط</Text>
                 <Text style={styles.relationshipModalSubtitle}>یک هنرمند موجود را انتخاب کن</Text>
               <Text style={styles.relationshipModalHint}>
-                اینجا رابطه‌ی مستقیم دو هنرمند را ثبت می‌کنی؛ مستقل از قطعه یا آلبوم و بدون نقش مشارکت.
+                اینجا ارتباط مستقیم دو هنرمند را ثبت می‌کنی؛ مستقل از قطعه یا آلبوم و بدون نقش مشارکت.
               </Text>
               </View>
             </View>
@@ -931,7 +931,7 @@ export default function ArtistDetailScreen() {
                 color={relationshipReciprocal ? colors.primary : colors.mutedForeground}
               />
               <View style={styles.reciprocalCopy}>
-                <Text style={styles.reciprocalTitle}>رابطه‌ی متقابل</Text>
+                <Text style={styles.reciprocalTitle}>ارتباط متقابل</Text>
                 <Text style={styles.reciprocalHint}>
                   {relationshipReciprocal
                     ? 'در صفحه‌ی هر دو هنرمند دیده می‌شود.'

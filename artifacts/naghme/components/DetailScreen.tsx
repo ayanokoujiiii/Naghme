@@ -159,7 +159,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'center',
       marginLeft: 12,
     },
-    headerCopy: { flex: 1, paddingHorizontal: 3 },
+     headerCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', paddingHorizontal: 3 },
     eyebrow: {
       color: colors.mutedForeground,
       fontSize: 13,
@@ -225,13 +225,17 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'space-between',
       marginBottom: 12,
     },
-    sectionTitle: {
+     sectionTitle: {
+       flex: 1,
+       minWidth: 0,
       color: colors.foreground,
       fontSize: 19,
       fontWeight: '700',
       textAlign: 'right',
     },
-    sectionCaption: {
+     sectionCaption: {
+       flex: 1,
+       minWidth: 0,
       color: colors.mutedForeground,
       fontSize: 12,
       textAlign: 'right',

@@ -31,9 +31,16 @@ export default function PostcardsScreen() {
   const [projects, setProjects] = useState<PostcardProjectRecord[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    setProjects(await getPostcardProjects(trackId));
+    setError('');
+    try {
+      setProjects(await getPostcardProjects(trackId));
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : 'خواندن عکس‌نوشته‌ها انجام نشد.');
+      setProjects([]);
+    }
   }, [trackId]);
 
   useFocusEffect(
@@ -54,7 +61,7 @@ export default function PostcardsScreen() {
 
   const remove = (project: PostcardProjectRecord) => {
     Alert.alert(
-      'حذف پروژه',
+      'حذف عکس‌نوشته',
       `«${project.title}» حذف شود؟ تصویر ذخیره‌شده در گالری حذف نمی‌شود.`,
       [
         { text: 'لغو', style: 'cancel' },
@@ -74,10 +81,10 @@ export default function PostcardsScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" accessibilityLabel="بازگشت" onPress={() => router.back()}>
           <Feather name="arrow-right" size={24} color={colors.foreground} />
         </Pressable>
-        <View>
+        <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>آرشیو خلاقیت</Text>
           <Text style={styles.title}>عکس‌نوشته‌ها</Text>
         </View>
@@ -93,7 +100,13 @@ export default function PostcardsScreen() {
           },
         ]}
         scrollEnabled={projects.length > 0}
-        ListEmptyComponent={<Text style={styles.empty}>هنوز پروژه‌ای ذخیره نکرده‌ای.</Text>}
+        ListEmptyComponent={
+          error ? (
+            <Text style={styles.emptyError}>{error}</Text>
+          ) : (
+            <Text style={styles.empty}>هنوز عکس‌نوشته‌ای ذخیره نکرده‌ای.</Text>
+          )
+        }
         renderItem={({ item }) => (
           <PostcardRow
             item={item}
@@ -161,7 +174,7 @@ function PostcardRow({
           <Text style={styles.cardTitle}>{item.title}</Text>
         )}
         <Text style={styles.meta}>
-          {item.trackTitle}  •  {new Date(item.updatedAt).toLocaleDateString('fa-IR')}
+           {item.trackTitle}، به‌روزشده در {new Date(item.updatedAt).toLocaleDateString('fa-IR')}
         </Text>
         <View style={styles.actions}>
           {editing ? (
@@ -174,7 +187,7 @@ function PostcardRow({
             </Pressable>
           )}
           <Pressable onPress={onOpen}>
-            <Text style={styles.action}>بازکردن</Text>
+              <Text style={styles.action}>باز کردن</Text>
           </Pressable>
           <Pressable onPress={onDelete}>
             <Text style={styles.delete}>حذف</Text>
@@ -199,9 +212,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'space-between',
       marginBottom: 22,
     },
+    headerCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
     eyebrow: { color: colors.mutedForeground, fontSize: 12, textAlign: 'right' },
     title: { color: colors.foreground, fontSize: 28, fontWeight: '700', textAlign: 'right' },
     list: { gap: 12, paddingBottom: 30 },
+    emptyError: { color: colors.destructive, fontSize: 13, lineHeight: 21, textAlign: 'right', paddingVertical: 58 },
     card: {
       flexDirection: 'row-reverse',
       gap: 12,

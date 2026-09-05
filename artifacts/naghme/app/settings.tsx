@@ -48,7 +48,7 @@ function chooseRestoreMode(): Promise<ArchiveRestoreMode | null> {
           onPress: () => {
             Alert.alert(
               'تأیید نهایی جایگزینی',
-              'این کار همه‌ی اطلاعات آرشیو فعلی را حذف و محتوای فایل را جایگزین می‌کند. ادامه می‌دهی؟',
+               'این کار همه‌ی اطلاعات آرشیو فعلی را حذف و محتوای فایل را جایگزین می‌کند. می‌خواهی ادامه بدهی؟',
               [
                 { text: 'لغو', style: 'cancel', onPress: () => resolve(null) },
                 {
@@ -162,7 +162,7 @@ export default function SettingsScreen() {
     }
     setExporting(true);
     cancelOperation.current = false;
-    setBackupProgress(complete ? 'آماده‌سازی فایل‌ها…' : 'ساخت پشتیبان سبک…');
+    setBackupProgress(complete ? 'آماده‌سازی فایل‌ها…' : 'ساخت نسخه‌ی کم‌حجم…');
     try {
       const directory = FileSystem.documentDirectory;
       if (!directory) throw new Error('مسیر ذخیره‌سازی دستگاه پیدا نشد.');
@@ -170,7 +170,7 @@ export default function SettingsScreen() {
       let fileName: string;
       if (complete) {
         const result = await createCompleteArchiveBackup((completed, total) => {
-          setBackupProgress(`پردازش فایل‌ها: ${completed} از ${total}`);
+           setBackupProgress(`پردازش فایل‌ها: ${completed} از ${total} فایل`);
         }, () => cancelOperation.current);
         fileUri = result.uri;
         fileName = result.fileName;
@@ -233,7 +233,7 @@ export default function SettingsScreen() {
         data,
         asset.name ?? (isComplete ? 'archive.naghme' : 'archive.json'),
         mode,
-        (completed, total) => setBackupProgress(`بازیابی فایل‌ها: ${completed} از ${total}`),
+         (completed, total) => setBackupProgress(`بازیابی فایل‌ها: ${completed} از ${total} فایل`),
         () => cancelOperation.current,
       );
       const missingAudioMessage =
@@ -246,7 +246,7 @@ export default function SettingsScreen() {
           : '';
       Alert.alert(
         mode === 'replace' ? 'جایگزینی کامل انجام شد' : 'بازیابی و ادغام انجام شد',
-         `${mode === 'replace' ? 'آرشیو قبلی با محتوای فایل جایگزین شد.' : 'چیزی از آرشیو فعلی حذف نشد.'} ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.collections} مجموعه، ${summary.collectionTracks} عضویت مجموعه، ${summary.postcardProjects} عکس‌نوشته، ${summary.conversations} گفتگو، ${summary.conversationMessages} پیام گفتگو، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}${missingMediaMessage}`,
+         `${mode === 'replace' ? 'آرشیو قبلی با محتوای فایل جایگزین شد.' : 'چیزی از آرشیو فعلی حذف نشد.'} ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.tracks} قطعه، ${summary.works} اثر، ${summary.collections} مجموعه، ${summary.postcardProjects} عکس‌نوشته، ${summary.conversations} گفتگو، ${summary.journalEntries} یادداشت و ${summary.listeningHistory} سابقه‌ی پخش بازیابی شد.${missingAudioMessage}${missingMediaMessage}`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {
@@ -305,17 +305,17 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.aiCardCopy}>
             <Text style={styles.actionTitle}>پیشنهادهای هوشمند Gemini</Text>
-            <Text style={styles.actionDescription}>
-              کلید API فقط روی این دستگاه ذخیره می‌شود و برای پیشنهاد قطعه‌ای برای امشب استفاده خواهد شد.
-            </Text>
+             <Text style={styles.actionDescription}>
+               کلید فقط روی این دستگاه می‌ماند و برای پیشنهاد موسیقی استفاده می‌شود.
+             </Text>
           </View>
         </View>
         <TextInput
           testID="gemini-api-key"
-          accessibilityLabel="کلید API جمنای"
+          accessibilityLabel="کلید دسترسی Gemini"
           value={geminiApiKey}
           onChangeText={setGeminiApiKey}
-          placeholder="کلید API جمنای (Gemini API Key)"
+          placeholder="کلید دسترسی Gemini"
           placeholderTextColor={colors.mutedForeground}
           secureTextEntry
           autoCapitalize="none"
@@ -381,7 +381,7 @@ export default function SettingsScreen() {
           )}
         </Pressable>
         <Text style={styles.aiHint}>
-          بدون کلید هم پیشنهاد محلی نغمه فعال است. برای حذف کلید، فیلد را خالی ذخیره کن.
+          بدون کلید هم پیشنهاد محلی نغمه فعال است. برای حذف کلید، این بخش را خالی ذخیره کن.
         </Text>
       </View>
 
@@ -393,7 +393,7 @@ export default function SettingsScreen() {
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>خروجی گرفتن از آرشیو</Text>
           <Text style={styles.actionDescription}>
-             پشتیبان سبک فقط اطلاعات آرشیو را نگه می‌دارد. پشتیبان کامل، فایل‌های صوتی و تصویری را هم همراه خود می‌برد.
+              نسخه‌ی کم‌حجم فقط اطلاعات آرشیو را نگه می‌دارد. نسخه‌ی کامل، فایل‌های صوتی و تصویری را هم همراه خود می‌برد.
           </Text>
         </View>
         <Pressable
@@ -409,7 +409,7 @@ export default function SettingsScreen() {
           ) : (
             <>
               <Feather name="share-2" size={16} color={colors.primaryForeground} />
-              <Text style={styles.exportButtonText}>پشتیبان سبک</Text>
+              <Text style={styles.exportButtonText}>نسخه‌ی کم‌حجم</Text>
             </>
           )}
         </Pressable>
@@ -420,7 +420,7 @@ export default function SettingsScreen() {
           <Feather name="archive" size={20} color={colors.primary} />
         </View>
         <View style={styles.actionCopy}>
-          <Text style={styles.actionTitle}>پشتیبان کامل</Text>
+          <Text style={styles.actionTitle}>نسخه‌ی کامل</Text>
           <Text style={styles.actionDescription}>
             اطلاعات و فایل‌های موجود روی دستگاه را یکی‌یکی آماده می‌کند؛ برای انتقال آرشیو به گوشی دیگر مناسب است.
           </Text>
@@ -432,7 +432,7 @@ export default function SettingsScreen() {
           onPress={() => void exportArchive(true)}
           style={({ pressed }) => [styles.exportButton, pressed && styles.pressed]}
         >
-          {exporting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={styles.exportButtonText}>ساخت پشتیبان کامل</Text>}
+          {exporting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={styles.exportButtonText}>ساخت نسخه‌ی کامل</Text>}
         </Pressable>
       </View>
 
@@ -559,7 +559,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     content: { paddingHorizontal: 20 },
     header: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginBottom: 26 },
     backButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-    headerCopy: { flex: 1 },
+     headerCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 4 },
     title: { color: colors.foreground, fontSize: 32, lineHeight: 40, fontWeight: '700', textAlign: 'right' },
     headerIcon: { width: 48, height: 48, borderRadius: 17, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },

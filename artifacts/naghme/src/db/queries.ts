@@ -463,7 +463,7 @@ function trimNullable(value: string | null | undefined): string | null {
 async function requireDatabase() {
   const database = await getDatabase();
   if (!database) {
-    throw new Error('ذخیره‌سازی SQLite در این محیط در دسترس نیست.');
+    throw new Error('ذخیره‌سازی آرشیو در این محیط در دسترس نیست.');
   }
   return database;
 }
@@ -2486,7 +2486,7 @@ export async function searchLibraryByFilter(
       `SELECT id, title, CAST(releaseYear AS TEXT) AS subtitle, 'album' AS type, 'title' AS matchSource
        FROM Albums
        WHERE title LIKE ? COLLATE NOCASE
-       ORDER BY title COLLATE NOCASE ASC
+         ORDER BY Albums.title COLLATE NOCASE ASC
        LIMIT ?`,
       [pattern, safeLimit],
     );
@@ -2610,7 +2610,7 @@ export async function searchLibraryByFilter(
        LEFT JOIN Albums ON Albums.id = Tracks.albumId
        WHERE Tracks.title LIKE ? COLLATE NOCASE
           OR COALESCE(Tracks.lyrics, '') LIKE ? COLLATE NOCASE
-       ORDER BY title COLLATE NOCASE ASC
+       ORDER BY Tracks.title COLLATE NOCASE ASC
        LIMIT ?`,
       [pattern, pattern, pattern, pattern, safeLimit],
     ),

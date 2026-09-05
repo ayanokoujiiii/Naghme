@@ -289,8 +289,8 @@ export default function GraphScreen() {
             <Text style={styles.title}>نقشه‌ی موسیقی</Text>
           </View>
         </View>
-        <Text style={styles.intro}>
-          آرشیو را به‌صورت درختی مرور کن یا رابطه‌های هر هنرمند، آلبوم یا قطعه را خوانا ببین.
+           <Text style={styles.intro}>
+           آرشیو را به‌صورت درختی مرور کن یا ارتباط‌های هر هنرمند، آلبوم یا قطعه را راحت ببین.
         </Text>
 
         <View style={styles.modeSwitch} accessibilityRole="tablist">
@@ -417,7 +417,7 @@ function BrowseView({
       <View style={styles.emptyState}>
         <Feather name="list" size={28} color={colors.mutedForeground} />
         <Text style={styles.emptyTitle}>آرشیو هنوز خالی است</Text>
-        <Text style={styles.emptyText}>از صفحه‌ی خانه داده‌های نمونه اضافه کن یا یک هنرمند اضافه کن.</Text>
+         <Text style={styles.emptyText}>از صفحه‌ی خانه چند داده‌ی نمونه اضافه کن یا یک هنرمند تازه بساز.</Text>
       </View>
     );
   }
@@ -572,7 +572,7 @@ function RelationsPicker({
       <View style={styles.pickerHeading}>
         <View style={styles.pickerHeadingCopy}>
           <Text style={styles.emptyTitle}>چه چیزی را ببینیم؟</Text>
-          <Text style={styles.pickerHint}>هنرمند، آلبوم، قطعه یا اثر را برای دیدن رابطه‌ها انتخاب کن.</Text>
+           <Text style={styles.pickerHint}>هنرمند، آلبوم، قطعه یا اثر را برای دیدن ارتباط‌ها انتخاب کن.</Text>
         </View>
         <Feather name="search" size={20} color={colors.primary} />
       </View>
@@ -640,7 +640,7 @@ function BrowseArtistRow({
           <Text style={styles.artistTitle} numberOfLines={1}>{artist.name}</Text>
           <Text style={styles.nodeCaption}>
             {artist.albums.length
-              ? `${artist.albums.length} آلبوم${expanded ? '' : ' — برای دیدن آلبوم‌ها کلیک کنید'}`
+              ? `${artist.albums.length} آلبوم${expanded ? '' : ' — برای دیدن آلبوم‌ها انتخاب کن'}`
               : 'بدون آلبوم ثبت‌شده'}
           </Text>
         </View>
@@ -945,7 +945,7 @@ function RelationsView({
         <View style={styles.noRelations}>
           <Feather name="info" size={23} color={colors.mutedForeground} />
           <Text style={styles.noRelationsTitle}>
-            {groups.length ? 'در این دسته رابطه‌ای پیدا نشد.' : 'هنوز رابطه‌ای برای این مورد ثبت نشده است.'}
+             {groups.length ? 'در این دسته ارتباطی پیدا نشد.' : 'هنوز ارتباطی برای این مورد ثبت نشده است.'}
           </Text>
           <Text style={styles.noRelationsText}>
             {groups.length ? 'دسته‌ی دیگری را امتحان کن.' : emptyRelationHint(focusedNode.type)}
@@ -1061,7 +1061,7 @@ function groupRelationEdges(
 
 function relationGroupDescription(key: RelationGroupKey): string {
   if (key === 'credits') return 'چه کسی در ساخت این اثر نقش داشته و با چه نقشی.';
-  if (key === 'relatedArtists') return 'رابطه‌ی این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص.';
+  if (key === 'relatedArtists') return 'ارتباط این هنرمند با هنرمندان دیگر، مستقل از یک اثر خاص.';
   return 'پیوندی که در آرشیو موسیقی ثبت شده است.';
 }
 
@@ -1245,7 +1245,7 @@ function nodeTypeLabel(type: MusicGraphNodeType): string {
 
 function emptyRelationHint(type: MusicGraphNodeType): string {
   if (type === 'album') return 'برای این آلبوم هنرمندی ثبت نشده؛ از فرم ویرایش آلبوم اضافه کن.';
-  if (type === 'artist') return 'از فرم آلبوم یا رابطه‌ی هنرمندان، یک ارتباط تازه ثبت کن.';
+   if (type === 'artist') return 'از فرم آلبوم یا ارتباط هنرمندان، یک ارتباط تازه ثبت کن.';
   if (type === 'track') return 'این قطعه را به آلبوم، اثر یا مشارکت‌کننده متصل کن.';
   if (type === 'work') return 'از صفحه‌ی اثر، قطعه‌ها یا نسخه‌های مرتبط را اضافه کن.';
   return 'این نسخه هنوز به قطعه یا اثر دیگری متصل نشده است.';
@@ -1290,7 +1290,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    headerCopy: { flex: 1, alignItems: 'flex-end' },
+   headerCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, marginBottom: 4, textAlign: 'right' },
     title: { color: colors.foreground, fontSize: 30, lineHeight: 38, fontWeight: '700', textAlign: 'right' },
     intro: { color: colors.mutedForeground, fontSize: 13, lineHeight: 23, textAlign: 'right', marginBottom: 16 },

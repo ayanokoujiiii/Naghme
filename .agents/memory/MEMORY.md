@@ -9,3 +9,4 @@
 - [Expo audio phase boundary](expo-av-phase-boundary.md) — keep expo-av for SDK 54 playback; Android lock-screen controls remain out of scope.
 - [Git transport for push](git-transport-for-push.md) — synchronize repository history with Git push, not connector content uploads.
 - [Postcard project persistence](postcard-project-persistence.md) — keep studio settings versioned and validate missing device assets without dropping the project.
+- [Pre-APK sample-data entry](pre-apk-sample-entry.md) — remove the home-screen sample-data entry before the final APK while keeping the helper available.

@@ -42,20 +42,20 @@ const icons: Record<SearchResultType, 'music' | 'disc' | 'mic' | 'book-open'> = 
 
 const filterOptions: Array<{ value: SearchFilter; label: string }> = [
   { value: 'all', label: 'همه' },
-  { value: 'track', label: 'نام قطعه' },
+  { value: 'track', label: 'قطعه' },
   { value: 'artist', label: 'هنرمند' },
   { value: 'album', label: 'آلبوم' },
   { value: 'lyrics', label: 'متن ترانه' },
-  { value: 'journal', label: 'دفترچه خاطرات' },
+  { value: 'journal', label: 'یادداشت‌ها' },
   { value: 'credit', label: 'مشارکت' },
   { value: 'work', label: 'اثر' },
 ];
 
 const matchLabels: Record<SearchResult['matchSource'], string> = {
   title: 'نام',
-  artist: 'نام جایگزین',
+  artist: 'هنرمند',
   lyrics: 'متن ترانه',
-  journal: 'دفترچه خاطرات',
+  journal: 'یادداشت',
   credit: 'مشارکت',
   work: 'اثر',
 } as const;
@@ -147,8 +147,8 @@ export default function SearchScreen() {
         { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 96 },
       ]}
     >
-      <View style={styles.header}>
-        <View>
+       <View style={styles.header}>
+         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>پیدا کردن یک خاطره</Text>
           <Text style={styles.title}>جست‌وجو</Text>
         </View>
@@ -292,6 +292,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 20 },
     header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    headerCopy: { flex: 1, alignItems: 'flex-end', minWidth: 0 },
     eyebrow: { color: colors.mutedForeground, fontSize: 13, textAlign: 'right', marginBottom: 4 },
     title: { color: colors.foreground, fontSize: 34, lineHeight: 42, fontWeight: '700', textAlign: 'right' },
     headerIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },

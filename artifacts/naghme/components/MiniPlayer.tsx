@@ -43,7 +43,7 @@ export function MiniPlayer() {
         <Pressable
           testID="mini-player"
           accessibilityRole="button"
-          accessibilityLabel="بازکردن پخش‌کننده"
+          accessibilityLabel="باز کردن پخش‌کننده"
           onPress={() => router.push('/player')}
           style={({ pressed }) => [styles.cardTapArea, pressed && styles.pressed]}
         >

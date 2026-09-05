@@ -379,7 +379,7 @@ export async function createCompleteArchiveBackup(
   files['archive.json'] = new TextEncoder().encode(JSON.stringify(backup));
   const zipped = zipSync(files, { level: 6 });
   const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-  if (!directory) throw new Error('مسیر ذخیره‌سازی موقت دستگاه پیدا نشد.');
+  if (!directory) throw new Error('جای ذخیره‌سازی موقت دستگاه پیدا نشد.');
   const fileName = `naghme_complete_backup_${Date.now()}.naghme`;
   const uri = `${directory}${fileName}`;
   await FileSystem.writeAsStringAsync(uri, bytesToBase64(zipped), {
@@ -1036,7 +1036,7 @@ export async function restoreArchiveFile(
       try {
         json = new TextDecoder().decode(base64ToBytes(data));
       } catch {
-        throw new Error('فایل پشتیبان JSON معتبر نیست.');
+        throw new Error('فایل پشتیبان معتبر نیست.');
       }
     }
     return restoreArchiveBackup(json, mode);
@@ -1145,7 +1145,7 @@ function parseBackup(json: string): ArchiveBackup {
   try {
     parsed = JSON.parse(json);
   } catch {
-    throw new Error('فایل انتخاب‌شده JSON معتبر نیست.');
+    throw new Error('فایل انتخاب‌شده معتبر نیست.');
   }
 
   if (!isRecord(parsed) || parsed.format !== 'naghme-archive' || parsed.version !== 1) {
@@ -1237,10 +1237,10 @@ function parseMediaManifest(value: unknown): ArchiveMediaManifest[] {
       throw new Error('نوع دادهٔ فایل رسانه‌ای در پشتیبان معتبر نیست.');
     }
     return {
-      archivePath: requiredString(record.archivePath, 'مسیر فایل رسانه‌ای'),
+      archivePath: requiredString(record.archivePath, 'نشانی فایل رسانه‌ای'),
       entityType,
       entityId: requiredString(record.entityId, 'شناسهٔ فایل رسانه‌ای'),
-      field: requiredString(record.field, 'فیلد فایل رسانه‌ای'),
+      field: requiredString(record.field, 'بخش فایل رسانه‌ای'),
       sourceUri: requiredString(record.sourceUri, 'مسیر اصلی فایل رسانه‌ای'),
       mediaType,
     };
@@ -1461,7 +1461,7 @@ function parseAlbumTracks(value: unknown): AlbumTrackRecord[] {
       duration: nullableInteger(record.duration, 'مدت‌زمان قطعه در رابطهٔ آلبوم'),
       artistId: nullableString(record.artistId, 'شناسهٔ هنرمند قطعه در رابطهٔ آلبوم'),
       albumId: nullableString(record.albumId, 'شناسهٔ آلبوم قطعه در رابطهٔ آلبوم'),
-      audioUri: nullableString(record.audioUri, 'مسیر فایل صوتی رابطهٔ آلبوم'),
+      audioUri: nullableString(record.audioUri, 'نشانی فایل صوتی ارتباط آلبوم'),
       coverImage: nullableString(record.coverImage, 'تصویر قطعه در رابطهٔ آلبوم'),
       lyrics: nullableString(record.lyrics, 'متن قطعه در رابطهٔ آلبوم'),
       sheetMusicUri: nullableString(record.sheetMusicUri, 'نت قطعه در رابطهٔ آلبوم'),
@@ -1619,7 +1619,7 @@ function parseTracks(value: unknown): TrackRecord[] {
       duration: nullableInteger(record.duration, 'مدت‌زمان قطعه'),
       artistId: nullableString(record.artistId, 'شناسه‌ی هنرمند قطعه'),
       albumId: nullableString(record.albumId, 'شناسه‌ی آلبوم قطعه'),
-      audioUri: nullableString(record.audioUri, 'مسیر فایل صوتی'),
+      audioUri: nullableString(record.audioUri, 'نشانی فایل صوتی'),
       coverImage: nullableString(record.coverImage, 'تصویر قطعه'),
       lyrics: nullableString(record.lyrics, 'متن ترانه'),
       sheetMusicUri: nullableString(record.sheetMusicUri, 'نت موسیقی'),

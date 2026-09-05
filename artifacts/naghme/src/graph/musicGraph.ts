@@ -78,7 +78,7 @@ type VersionRow = { id: string; name: string; kind: string | null; workId?: stri
 
 export async function getMusicGraphData(): Promise<MusicGraphData> {
   const database = await getDatabase();
-  if (!database) throw new Error('ذخیره‌سازی SQLite در این محیط در دسترس نیست.');
+  if (!database) throw new Error('ذخیره‌سازی آرشیو در این محیط در دسترس نیست.');
 
   const [
     artists,
@@ -314,7 +314,7 @@ export async function getMusicGraphNeighborhood(
   focusId: string,
 ): Promise<MusicGraphData> {
   const database = await getDatabase();
-  if (!database) throw new Error('ذخیره‌سازی SQLite در این محیط در دسترس نیست.');
+  if (!database) throw new Error('ذخیره‌سازی آرشیو در این محیط در دسترس نیست.');
   if (!focusId.trim()) return { nodes: [], edges: [] };
 
   const focusType = requestedType ?? await resolveNodeType(database, focusId);

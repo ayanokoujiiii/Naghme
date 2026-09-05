@@ -70,7 +70,7 @@ export async function fetchAvailableGeminiModels(
   try {
     payload = JSON.parse(body) as typeof payload;
   } catch (parseError: unknown) {
-    const message = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    const message = parseError instanceof Error ? parseError.message : 'پاسخ دریافت‌شده قابل خواندن نیست.';
     console.error('[Gemini model fetch parse error]', message, body);
     throw new Error(`پاسخ فهرست مدل‌ها قابل خواندن نیست: ${message}`);
   }
@@ -150,7 +150,7 @@ ${archiveSummary}`,
   try {
     payload = JSON.parse(body) as typeof payload;
   } catch (parseError: unknown) {
-    const message = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    const message = parseError instanceof Error ? parseError.message : 'پاسخ دریافت‌شده قابل خواندن نیست.';
     console.error('[Gemini recommendation parse error]', message, body);
     throw new Error(`پاسخ Gemini قابل خواندن نیست: ${message}`);
   }
@@ -230,7 +230,7 @@ ${archiveContext}`,
   try {
     payload = JSON.parse(body) as typeof payload;
   } catch (parseError: unknown) {
-    const detail = parseError instanceof Error ? parseError.message : 'پاسخ JSON نامعتبر است.';
+    const detail = parseError instanceof Error ? parseError.message : 'پاسخ دریافت‌شده قابل خواندن نیست.';
     throw new Error(`پاسخ گفت‌وگوی Gemini قابل خواندن نیست: ${detail}`);
   }
 

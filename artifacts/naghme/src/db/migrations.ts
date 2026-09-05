@@ -138,7 +138,7 @@ export async function getSchemaVersion(database: SQLiteDatabase): Promise<number
   const row = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = row?.user_version;
   if (version === undefined || !Number.isInteger(version) || version < 0) {
-    throw new Error('نسخهٔ SQLite نغمه قابل خواندن نیست.');
+    throw new Error('نسخهٔ آرشیو نغمه قابل خواندن نیست.');
   }
   return version;
 }
@@ -147,7 +147,7 @@ export async function migrateDatabase(database: SQLiteDatabase): Promise<Migrati
   const fromVersion = await getSchemaVersion(database);
   if (fromVersion > CURRENT_SCHEMA_VERSION) {
     throw new Error(
-      `نسخهٔ پایگاه دادهٔ برنامه (${fromVersion}) از نسخهٔ برنامه (${CURRENT_SCHEMA_VERSION}) جدیدتر است.`,
+      `نسخهٔ آرشیو برنامه (${fromVersion}) از نسخهٔ برنامه (${CURRENT_SCHEMA_VERSION}) جدیدتر است.`,
     );
   }
 

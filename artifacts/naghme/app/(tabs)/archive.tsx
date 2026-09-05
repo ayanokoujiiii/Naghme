@@ -221,10 +221,10 @@ export default function ArchiveScreen() {
           ? artists
           : works;
   const emptyTitle = {
-    tracks: 'هنوز قطعه‌ای اضافه نکرده‌اید.',
-    albums: 'هنوز آلبومی اضافه نکرده‌اید.',
-    artists: 'هنوز هنرمندی اضافه نکرده‌اید.',
-    works: 'هنوز اثری اضافه نکرده‌اید.',
+    tracks: 'هنوز قطعه‌ای اضافه نکرده‌ای.',
+    albums: 'هنوز آلبومی اضافه نکرده‌ای.',
+    artists: 'هنوز هنرمندی اضافه نکرده‌ای.',
+    works: 'هنوز اثری اضافه نکرده‌ای.',
   }[activeView];
 
   return (
@@ -372,7 +372,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       justifyContent: 'space-between',
       marginBottom: 22,
     },
-    headerCopy: { flex: 1 },
+    headerCopy: { flex: 1, alignItems: 'flex-end', minWidth: 0 },
     eyebrow: {
       color: colors.mutedForeground,
       fontSize: 13,

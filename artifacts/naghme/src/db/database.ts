@@ -85,7 +85,7 @@ export async function initializeDatabase(): Promise<SQLiteDatabase | null> {
           'PRAGMA foreign_keys',
         );
         if (foreignKeyState?.foreign_keys !== 1) {
-          throw new Error('فعال‌سازی یکپارچگی رابطه‌های SQLite انجام نشد.');
+          throw new Error('فعال‌سازی ارتباط‌های آرشیو انجام نشد.');
         }
 
         await database.execAsync(schema);

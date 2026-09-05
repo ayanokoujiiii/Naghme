@@ -179,7 +179,7 @@ export default function TrackDetailScreen() {
 
   const saveRelationship = async (
     patch: Partial<PersonalRelationshipRecord>,
-    successMessage = 'رابطه‌ی شخصی ذخیره شد.',
+    successMessage = 'ارتباط شخصی ذخیره شد.',
   ) => {
     if (!track) return;
     const nextRelationship = {
@@ -197,7 +197,7 @@ export default function TrackDetailScreen() {
       setRelationshipMessage(successMessage);
     } catch (saveError: unknown) {
       setRelationshipMessage(
-        saveError instanceof Error ? saveError.message : 'ذخیره‌ی رابطه‌ی شخصی انجام نشد.',
+        saveError instanceof Error ? saveError.message : 'ذخیره‌ی ارتباط شخصی انجام نشد.',
       );
     } finally {
       setSavingRelationship(false);
@@ -302,7 +302,7 @@ export default function TrackDetailScreen() {
     if (!track) return;
     Alert.alert(
       'حذف قطعه',
-      `آیا از حذف «${track.title}» مطمئن هستید؟ رابطه‌ی شخصی آن هم حذف می‌شود.`,
+      `آیا از حذف «${track.title}» مطمئن هستید؟ ارتباط شخصی آن هم حذف می‌شود.`,
       [
         { text: 'لغو', style: 'cancel' },
         {
@@ -419,7 +419,7 @@ export default function TrackDetailScreen() {
           </Pressable>
         )) : <Text style={styles.mutedText}>این قطعه هنوز در مجموعه‌ای نیست.</Text>}
       </DetailCard>
-      <SectionHeading title="عکس‌نوشته‌های این قطعه" caption={`${postcardProjects.length} پروژه`} />
+      <SectionHeading title="عکس‌نوشته‌های این قطعه" caption={`${postcardProjects.length} عکس‌نوشته`} />
       <DetailCard>
         {postcardProjects.map((project) => (
           <Pressable key={project.id} onPress={() => { setPostcardProjectId(project.id); setPostcardVisible(true); }} style={({ pressed }) => [styles.collectionRow, pressed && styles.pressed]}>
@@ -539,7 +539,7 @@ export default function TrackDetailScreen() {
               <Image source={{ uri: track.sheetMusicUri }} style={styles.sheetPreview} resizeMode="cover" />
               <View style={styles.sheetPreviewOverlay}>
                 <Feather name="maximize-2" size={18} color="#FFFFFF" />
-                <Text style={styles.sheetPreviewText}>بازکردن در اندازه‌ی کامل</Text>
+                <Text style={styles.sheetPreviewText}>باز کردن در اندازه‌ی کامل</Text>
               </View>
             </Pressable>
           </DetailCard>
@@ -600,7 +600,7 @@ export default function TrackDetailScreen() {
         </Pressable>
       </View>
 
-      <SectionHeading title="رابطه من با این قطعه" caption="چیزی که فقط برای تو معنا دارد" />
+      <SectionHeading title="ارتباط من با این قطعه" caption="چیزی که فقط برای تو معنا دارد" />
       <DetailCard>
         <View style={styles.preferenceRow}>
           <Text style={styles.preferenceLabel}>مورد علاقه</Text>
@@ -872,7 +872,7 @@ function AudioPlayer({
     <Pressable
       testID="track-open-player"
       accessibilityRole="button"
-      accessibilityLabel="بازکردن پخش‌کننده"
+      accessibilityLabel="باز کردن پخش‌کننده"
       onPress={() => router.push('/player')}
       style={({ pressed }) => [styles.audioPlayerCard, pressed && styles.pressed]}
     >
