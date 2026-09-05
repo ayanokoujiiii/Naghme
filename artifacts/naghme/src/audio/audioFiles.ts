@@ -31,11 +31,24 @@ export async function audioFileExists(uri: string | null): Promise<boolean> {
 }
 
 export async function copyAudioToPermanent(uri: string, trackId: string): Promise<string> {
+  return copyUriToPermanent(uri, AUDIO_DIRECTORY_NAME, trackId, getExtension(uri));
+}
+
+export async function copyUriToPermanent(
+  uri: string,
+  directoryName: string,
+  fileKey: string,
+  extension = getExtension(uri),
+): Promise<string> {
   if (!isFileUri(uri)) return uri;
 
-  const directory = getAudioDirectory();
+  const documentDirectory = FileSystem.documentDirectory;
+  if (!documentDirectory) {
+    throw new Error('فضای ذخیره‌سازی دائمی فایل در دسترس نیست.');
+  }
+  const directory = `${documentDirectory}${directoryName}/`;
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-  const destination = `${directory}${trackId}.${getExtension(uri)}`;
+  const destination = `${directory}${fileKey}.${extension}`;
   if (uri === destination) return uri;
 
   const destinationInfo = await FileSystem.getInfoAsync(destination);

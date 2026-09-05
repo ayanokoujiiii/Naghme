@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 export interface AppliedMigration {
   version: number;
@@ -32,6 +32,8 @@ const BASELINE_TABLES: ReadonlyArray<{
       ['image', 'TEXT'],
       ['profileImage', 'TEXT'],
       ['galleryImages', 'TEXT'],
+      ['alternateTitles', 'TEXT'],
+      ['source', 'TEXT'],
     ],
   },
   {
@@ -124,6 +126,11 @@ const migrations: readonly Migration[] = [
     version: 9,
     description: 'افزودن آرشیو عکس‌نوشته‌ها و گفت‌وگوهای ماندگار',
     migrate: addPostcardProjectsAndConversations,
+  },
+  {
+    version: 10,
+    description: 'افزودن جزئیات شنیدن و دانشنامهٔ هنرمندان',
+    migrate: addListeningDetailsAndArtistEncyclopedia,
   },
 ];
 
@@ -517,5 +524,50 @@ async function addPostcardProjectsAndConversations(database: SQLiteDatabase): Pr
 
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_created
       ON ConversationMessages (conversationId, createdAt ASC);
+  `);
+}
+
+async function addListeningDetailsAndArtistEncyclopedia(database: SQLiteDatabase): Promise<void> {
+  const historyColumns = await database.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(ListeningHistory)',
+  );
+  const existingHistoryColumns = new Set(historyColumns.map((column) => column.name));
+  if (!existingHistoryColumns.has('durationSeconds')) {
+    await database.execAsync(
+      'ALTER TABLE ListeningHistory ADD COLUMN durationSeconds REAL;',
+    );
+  }
+  if (!existingHistoryColumns.has('completionPercent')) {
+    await database.execAsync(
+      'ALTER TABLE ListeningHistory ADD COLUMN completionPercent REAL;',
+    );
+  }
+
+  const artistColumns = await database.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(Artists)',
+  );
+  const existingArtistColumns = new Set(artistColumns.map((column) => column.name));
+  if (!existingArtistColumns.has('alternateTitles')) {
+    await database.execAsync('ALTER TABLE Artists ADD COLUMN alternateTitles TEXT;');
+  }
+  if (!existingArtistColumns.has('source')) {
+    await database.execAsync('ALTER TABLE Artists ADD COLUMN source TEXT;');
+  }
+
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS ArtistTimelineEvents (
+      id TEXT PRIMARY KEY NOT NULL,
+      artistId TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      eventDate TEXT,
+      source TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (artistId) REFERENCES Artists(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_artist_timeline_artist_date
+      ON ArtistTimelineEvents (artistId, eventDate, createdAt);
   `);
 }

@@ -16,7 +16,9 @@ const schema = `
     genres TEXT,
     image TEXT,
     profileImage TEXT,
-    galleryImages TEXT
+    galleryImages TEXT,
+    alternateTitles TEXT,
+    source TEXT
   );
 
   CREATE TABLE IF NOT EXISTS Albums (
@@ -64,6 +66,8 @@ const schema = `
     id TEXT PRIMARY KEY NOT NULL,
     trackId TEXT NOT NULL,
     listenedAt DATETIME NOT NULL,
+    durationSeconds REAL,
+    completionPercent REAL,
     FOREIGN KEY (trackId) REFERENCES Tracks(id) ON DELETE CASCADE
   );
 `;

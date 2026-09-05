@@ -11,6 +11,8 @@ export default function AddArtistScreen() {
   const [type, setType] = useState<string>('');
   const [genres, setGenres] = useState<string>('');
   const [biography, setBiography] = useState<string>('');
+  const [alternateTitles, setAlternateTitles] = useState<string>('');
+  const [source, setSource] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -29,6 +31,8 @@ export default function AddArtistScreen() {
           setType(artist.type ?? '');
           setGenres(artist.genres ?? '');
           setBiography(artist.biography ?? '');
+          setAlternateTitles(artist.alternateTitles ?? '');
+          setSource(artist.source ?? '');
         }
       })
       .catch((loadError: unknown) => {
@@ -58,6 +62,8 @@ export default function AddArtistScreen() {
           type: type.trim() || null,
           genres: genres.trim() || null,
           biography: biography.trim() || null,
+          alternateTitles: alternateTitles.trim() || null,
+          source: source.trim() || null,
         });
       } else {
         await addArtist({
@@ -67,6 +73,8 @@ export default function AddArtistScreen() {
           biography: biography.trim() || null,
           image: null,
           profileImage: null,
+          alternateTitles: alternateTitles.trim() || null,
+          source: source.trim() || null,
         });
       }
       setSuccess(editing ? 'تغییرات هنرمند ذخیره شد.' : 'هنرمند با موفقیت به آرشیو اضافه شد.');
@@ -110,6 +118,19 @@ export default function AddArtistScreen() {
         value={biography}
         onChangeText={setBiography}
         multiline
+      />
+      <FormField
+        label="نام‌های جایگزین"
+        placeholder="با ویرگول جدا کن؛ مثلاً محمدرضا شجریان، خسرو آواز ایران"
+        value={alternateTitles}
+        onChangeText={setAlternateTitles}
+        multiline
+      />
+      <FormField
+        label="منبع اطلاعات"
+        placeholder="مثلاً وب‌سایت رسمی یا کتاب"
+        value={source}
+        onChangeText={setSource}
       />
       <SaveButton
         label={editing ? 'ذخیره‌ی تغییرات' : 'ذخیره‌ی هنرمند'}

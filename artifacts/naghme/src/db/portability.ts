@@ -1,5 +1,7 @@
 import { getDatabase } from '@/src/db/database';
-import { audioFileExists } from '@/src/audio/audioFiles';
+import * as FileSystem from 'expo-file-system/legacy';
+import { unzipSync, zipSync } from 'fflate';
+import { audioFileExists, copyUriToPermanent } from '@/src/audio/audioFiles';
 import type {
   AlbumRecord,
   AlbumTrackRecord,
@@ -94,7 +96,27 @@ export interface ArchiveBackup {
   conversations?: ConversationBackupRecord[];
   /** Optional extension to Version 1; absent in older backups. */
   conversationMessages?: ConversationMessageBackupRecord[];
+  mediaManifest?: ArchiveMediaManifest[];
 }
+
+export interface ArchiveMediaManifest {
+  archivePath: string;
+  entityType: 'track' | 'artist' | 'album' | 'collection' | 'postcard';
+  entityId: string;
+  field: string;
+  sourceUri: string;
+  mediaType: 'audio' | 'image' | 'document';
+}
+
+export interface CompleteBackupResult {
+  uri: string;
+  fileName: string;
+  mediaCount: number;
+  failedMediaCount: number;
+}
+
+export type ArchiveRestoreMode = 'merge' | 'replace';
+export type ArchiveProgressCallback = (completed: number, total: number) => void;
 
 export interface RestoreSummary {
   artists: number;
@@ -116,10 +138,11 @@ export interface RestoreSummary {
   conversations: number;
   conversationMessages: number;
   missingAudioFiles?: number;
+  missingMediaFiles?: number;
 }
 
 const ARTIST_BACKUP_COLUMNS =
-  'id, name, type, biography, genres, image, profileImage, galleryImages';
+  'id, name, type, biography, genres, image, profileImage, galleryImages, alternateTitles, source';
 const ALBUM_BACKUP_COLUMNS = 'id, title, releaseYear, coverImage';
 const ROLE_BACKUP_COLUMNS = 'id, name, key, description';
 const CREDIT_BACKUP_COLUMNS =
@@ -149,7 +172,8 @@ const RELATIONSHIP_BACKUP_COLUMNS = `
     WHERE ListeningHistory.trackId = PersonalRelationships.trackId
   ) AS listeningCount`;
 const JOURNAL_BACKUP_COLUMNS = 'id, trackId, note, mood, createdAt';
-const HISTORY_BACKUP_COLUMNS = 'id, trackId, listenedAt';
+const HISTORY_BACKUP_COLUMNS =
+  'id, trackId, listenedAt, durationSeconds, completionPercent';
 const ALBUM_TRACK_BACKUP_COLUMNS =
   'Tracks.id, Tracks.title, Tracks.duration, Tracks.artistId, Tracks.albumId, ' +
   'Tracks.audioUri, Tracks.coverImage, Tracks.lyrics, Tracks.sheetMusicUri, Tracks.versionName, ' +
@@ -300,7 +324,147 @@ export async function createArchiveBackup(): Promise<string> {
   return JSON.stringify(backup, null, 2);
 }
 
-export async function restoreArchiveBackup(json: string): Promise<RestoreSummary> {
+export async function createCompleteArchiveBackup(
+  onProgress?: ArchiveProgressCallback,
+  isCancelled?: () => boolean,
+): Promise<CompleteBackupResult> {
+  const backup = JSON.parse(await createArchiveBackup()) as ArchiveBackup;
+  const references = collectMediaReferences(backup);
+  const files: Record<string, Uint8Array> = {
+    'archive.json': new TextEncoder().encode(JSON.stringify(backup)),
+  };
+  const manifests: ArchiveMediaManifest[] = [];
+  const pathByUri = new Map<string, string>();
+  let completed = 0;
+  let failedMediaCount = 0;
+
+  const uniqueSourceUris = [...new Set(references.map((reference) => reference.sourceUri))];
+  const sourceInfos = await Promise.all(
+    uniqueSourceUris.map((uri) => FileSystem.getInfoAsync(uri)),
+  );
+  const estimatedBytes = sourceInfos.reduce(
+    (total, info) => total + (info.exists && 'size' in info && typeof info.size === 'number' ? info.size : 0),
+    0,
+  );
+  const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+  if (freeBytes < estimatedBytes * 1.1 + 2 * 1024 * 1024) {
+    throw new Error('فضای خالی دستگاه برای ساخت پشتیبان کامل کافی نیست.');
+  }
+
+  for (const reference of references) {
+    if (isCancelled?.()) throw new Error('عملیات پشتیبان‌گیری لغو شد.');
+    let archivePath = pathByUri.get(reference.sourceUri);
+    if (!archivePath) {
+      archivePath = `media/${reference.entityType}-${reference.entityId}-${reference.field.replace(/[^a-z0-9_-]/gi, '_')}.${getMediaExtension(reference.sourceUri)}`;
+      pathByUri.set(reference.sourceUri, archivePath);
+      try {
+        const info = await FileSystem.getInfoAsync(reference.sourceUri);
+        if (!info.exists) throw new Error('file-not-found');
+        const encoded = await FileSystem.readAsStringAsync(reference.sourceUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        files[archivePath] = base64ToBytes(encoded);
+      } catch {
+        failedMediaCount += 1;
+      }
+    }
+    if (files[archivePath]) {
+      manifests.push({ ...reference, archivePath });
+    }
+    completed += 1;
+    onProgress?.(completed, references.length);
+  }
+
+  backup.mediaManifest = manifests;
+  files['archive.json'] = new TextEncoder().encode(JSON.stringify(backup));
+  const zipped = zipSync(files, { level: 6 });
+  const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!directory) throw new Error('مسیر ذخیره‌سازی موقت دستگاه پیدا نشد.');
+  const fileName = `naghme_complete_backup_${Date.now()}.naghme`;
+  const uri = `${directory}${fileName}`;
+  await FileSystem.writeAsStringAsync(uri, bytesToBase64(zipped), {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return {
+    uri,
+    fileName,
+    mediaCount: manifests.length,
+    failedMediaCount,
+  };
+}
+
+function collectMediaReferences(backup: ArchiveBackup): Omit<ArchiveMediaManifest, 'archivePath'>[] {
+  const references: Omit<ArchiveMediaManifest, 'archivePath'>[] = [];
+  const add = (
+    entityType: ArchiveMediaManifest['entityType'],
+    entityId: string,
+    field: string,
+    sourceUri: string | null | undefined,
+    mediaType: ArchiveMediaManifest['mediaType'],
+  ) => {
+    if (!sourceUri?.startsWith('file://')) return;
+    references.push({ entityType, entityId, field, sourceUri, mediaType });
+  };
+
+  backup.tracks.forEach((track) => {
+    add('track', track.id, 'audioUri', track.audioUri, 'audio');
+    add('track', track.id, 'coverImage', track.coverImage, 'image');
+    add('track', track.id, 'sheetMusicUri', track.sheetMusicUri, 'document');
+  });
+  backup.artists.forEach((artist) => {
+    add('artist', artist.id, 'image', artist.image, 'image');
+    add('artist', artist.id, 'profileImage', artist.profileImage, 'image');
+    parseGalleryImages(artist.galleryImages).forEach((uri, index) =>
+      add('artist', artist.id, `galleryImages:${index}`, uri, 'image'),
+    );
+  });
+  backup.albums.forEach((album) => add('album', album.id, 'coverImage', album.coverImage, 'image'));
+  (backup.collections ?? []).forEach((collection) =>
+    add('collection', collection.id, 'coverImage', collection.coverImage, 'image'),
+  );
+  (backup.postcardProjects ?? []).forEach((project) =>
+    add('postcard', project.id, 'outputUri', project.outputUri, 'image'),
+  );
+  return references;
+}
+
+function parseGalleryImages(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function getMediaExtension(uri: string): string {
+  const extension = uri.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase();
+  return extension && /^[a-z0-9]{2,5}$/.test(extension) ? extension : 'bin';
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = globalThis.atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let result = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    result += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return globalThis.btoa(result);
+}
+
+export async function restoreArchiveBackup(
+  json: string,
+  mode: ArchiveRestoreMode = 'merge',
+): Promise<RestoreSummary> {
   const database = await requireDatabase();
   const backup = parseBackup(json);
   const artistIds = new Set(backup.artists.map((artist) => artist.id));
@@ -426,13 +590,36 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
     }
   }
 
-  // Restore intentionally remains a merge/upsert: destination-only records
-  // are preserved, while backup records are inserted or updated by stable ID.
+  // Replace is deliberately executed inside the same transaction as the
+  // restore, so a failed import cannot leave a half-cleared archive.
   await database.withTransactionAsync(async () => {
+    if (mode === 'replace') {
+      await database.execAsync(`
+        DELETE FROM ListeningHistory;
+        DELETE FROM JournalEntries;
+        DELETE FROM PostcardProjects;
+        DELETE FROM ConversationMessages;
+        DELETE FROM Conversations;
+        DELETE FROM CollectionTracks;
+        DELETE FROM Collections;
+        DELETE FROM Credits;
+        DELETE FROM ArtistAlbums;
+        DELETE FROM ArtistRelationships;
+        DELETE FROM AlbumTracks;
+        DELETE FROM PersonalRelationships;
+        DELETE FROM Tracks;
+        DELETE FROM Versions;
+        DELETE FROM Works;
+        DELETE FROM Albums;
+        DELETE FROM Artists;
+        DELETE FROM Roles;
+      `);
+    }
     for (const artist of backup.artists) {
       await database.runAsync(
-        `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO Artists
+           (id, name, type, biography, genres, image, profileImage, galleryImages, alternateTitles, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            type = excluded.type,
@@ -440,7 +627,9 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
            genres = excluded.genres,
            image = excluded.image,
            profileImage = excluded.profileImage,
-           galleryImages = excluded.galleryImages`,
+           galleryImages = excluded.galleryImages,
+           alternateTitles = excluded.alternateTitles,
+           source = excluded.source`,
         [
           artist.id,
           artist.name,
@@ -450,6 +639,8 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
           artist.image,
           artist.profileImage ?? null,
           artist.galleryImages,
+          artist.alternateTitles ?? null,
+          artist.source ?? null,
         ],
       );
     }
@@ -747,12 +938,21 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
 
     for (const entry of backup.listeningHistory) {
       await database.runAsync(
-        `INSERT INTO ListeningHistory (id, trackId, listenedAt)
-         VALUES (?, ?, ?)
+        `INSERT INTO ListeningHistory
+           (id, trackId, listenedAt, durationSeconds, completionPercent)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            trackId = excluded.trackId,
-           listenedAt = excluded.listenedAt`,
-        [entry.id, entry.trackId, entry.listenedAt],
+           listenedAt = excluded.listenedAt,
+           durationSeconds = excluded.durationSeconds,
+           completionPercent = excluded.completionPercent`,
+        [
+          entry.id,
+          entry.trackId,
+          entry.listenedAt,
+          entry.durationSeconds,
+          entry.completionPercent,
+        ],
       );
     }
 
@@ -819,6 +1019,127 @@ export async function restoreArchiveBackup(json: string): Promise<RestoreSummary
   };
 }
 
+export async function restoreArchiveFile(
+  data: string,
+  fileName: string,
+  mode: ArchiveRestoreMode = 'merge',
+  onProgress?: ArchiveProgressCallback,
+  isCancelled?: () => boolean,
+): Promise<RestoreSummary> {
+  const isComplete =
+    fileName.toLowerCase().endsWith('.naghme') || looksLikeZipBase64(data);
+  if (!isComplete) {
+    let json = data;
+    try {
+      JSON.parse(data);
+    } catch {
+      try {
+        json = new TextDecoder().decode(base64ToBytes(data));
+      } catch {
+        throw new Error('فایل پشتیبان JSON معتبر نیست.');
+      }
+    }
+    return restoreArchiveBackup(json, mode);
+  }
+
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(base64ToBytes(data));
+  } catch {
+    throw new Error('فایل پشتیبان کامل قابل خواندن نیست.');
+  }
+  const archiveBytes = entries['archive.json'];
+  if (!archiveBytes) throw new Error('فهرست اطلاعات در فایل پشتیبان کامل پیدا نشد.');
+  const backup = parseBackup(new TextDecoder().decode(archiveBytes));
+  const manifest = backup.mediaManifest ?? [];
+  let completed = 0;
+  let failedAudioFiles = 0;
+  let failedMediaFiles = 0;
+
+  for (const item of manifest) {
+    if (isCancelled?.()) throw new Error('عملیات بازیابی لغو شد.');
+    const mediaBytes = entries[item.archivePath];
+    let destination: string | null = null;
+    if (mediaBytes) {
+      const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+      if (directory) {
+        const tempUri = `${directory}naghme_restore_${Date.now()}_${completed}.${getMediaExtension(item.archivePath)}`;
+        try {
+          await FileSystem.writeAsStringAsync(tempUri, bytesToBase64(mediaBytes), {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          destination = await copyUriToPermanent(
+            tempUri,
+            item.mediaType === 'audio' ? 'naghme-audio' : 'naghme-media',
+            `${item.entityType}-${item.entityId}-${item.field.replace(/[^a-z0-9_-]/gi, '_')}`,
+            getMediaExtension(item.archivePath),
+          );
+        } catch {
+          destination = null;
+        } finally {
+          await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => undefined);
+        }
+      }
+    }
+    if (!destination && item.mediaType === 'audio') failedAudioFiles += 1;
+    if (!destination) failedMediaFiles += 1;
+    setMediaReference(backup, item, destination);
+    completed += 1;
+    onProgress?.(completed, manifest.length);
+  }
+
+  const summary = await restoreArchiveBackup(JSON.stringify(backup), mode);
+  summary.missingAudioFiles = (summary.missingAudioFiles ?? 0) + failedAudioFiles;
+  summary.missingMediaFiles = failedMediaFiles;
+  return summary;
+}
+
+function looksLikeZipBase64(value: string): boolean {
+  try {
+    const bytes = base64ToBytes(value);
+    return bytes[0] === 0x50 && bytes[1] === 0x4b;
+  } catch {
+    return false;
+  }
+}
+
+function setMediaReference(
+  backup: ArchiveBackup,
+  item: ArchiveMediaManifest,
+  value: string | null,
+): void {
+  if (item.entityType === 'track') {
+    const record = backup.tracks.find((track) => track.id === item.entityId);
+    if (record) record[item.field as 'audioUri' | 'coverImage' | 'sheetMusicUri'] = value;
+    return;
+  }
+  if (item.entityType === 'artist') {
+    const record = backup.artists.find((artist) => artist.id === item.entityId);
+    if (!record) return;
+    if (item.field.startsWith('galleryImages:')) {
+      const index = Number(item.field.split(':')[1]);
+      const gallery = parseGalleryImages(record.galleryImages);
+      if (Number.isInteger(index)) gallery[index] = value ?? '';
+      record.galleryImages = JSON.stringify(gallery.filter(Boolean));
+    } else {
+      record[item.field as 'image' | 'profileImage'] = value;
+    }
+    return;
+  }
+  if (item.entityType === 'album') {
+    const record = backup.albums.find((album) => album.id === item.entityId);
+    if (record) record.coverImage = value;
+    return;
+  }
+  if (item.entityType === 'collection') {
+    const record = backup.collections?.find((collection) => collection.id === item.entityId);
+    if (record) record.coverImage = value;
+    return;
+  }
+  const record = backup.postcardProjects?.find((project) => project.id === item.entityId);
+  if (record) record.outputUri = value;
+}
+
 function parseBackup(json: string): ArchiveBackup {
   let parsed: unknown;
   try {
@@ -849,6 +1170,7 @@ function parseBackup(json: string): ArchiveBackup {
   const postcardProjects = parsePostcardProjects(parsed.postcardProjects);
   const conversations = parseConversations(parsed.conversations);
   const conversationMessages = parseConversationMessages(parsed.conversationMessages);
+  const mediaManifest = parseMediaManifest(parsed.mediaManifest);
 
   assertUniqueIds(artists, 'هنرمندان');
   assertUniqueIds(albums, 'آلبوم‌ها');
@@ -892,7 +1214,37 @@ function parseBackup(json: string): ArchiveBackup {
     postcardProjects,
     conversations,
     conversationMessages,
+    mediaManifest,
   };
+}
+
+function parseMediaManifest(value: unknown): ArchiveMediaManifest[] {
+  if (value === undefined) return [];
+  return arrayValue(value, 'فهرست فایل‌های رسانه‌ای').map((item, index) => {
+    const record = recordValue(item, `فایل رسانه‌ای شمارهٔ ${index + 1}`);
+    const mediaType = record.mediaType;
+    if (mediaType !== 'audio' && mediaType !== 'image' && mediaType !== 'document') {
+      throw new Error('نوع فایل رسانه‌ای در پشتیبان معتبر نیست.');
+    }
+    const entityType = record.entityType;
+    if (
+      entityType !== 'track' &&
+      entityType !== 'artist' &&
+      entityType !== 'album' &&
+      entityType !== 'collection' &&
+      entityType !== 'postcard'
+    ) {
+      throw new Error('نوع دادهٔ فایل رسانه‌ای در پشتیبان معتبر نیست.');
+    }
+    return {
+      archivePath: requiredString(record.archivePath, 'مسیر فایل رسانه‌ای'),
+      entityType,
+      entityId: requiredString(record.entityId, 'شناسهٔ فایل رسانه‌ای'),
+      field: requiredString(record.field, 'فیلد فایل رسانه‌ای'),
+      sourceUri: requiredString(record.sourceUri, 'مسیر اصلی فایل رسانه‌ای'),
+      mediaType,
+    };
+  });
 }
 
 function parseCollections(value: unknown): CollectionBackupRecord[] {
@@ -1222,6 +1574,8 @@ function parseListeningHistory(value: unknown): ListeningHistoryRecord[] {
       id: requiredString(record.id, 'شناسه‌ی مورد شنیدن'),
       trackId: requiredString(record.trackId, 'شناسه‌ی قطعه در تاریخچه'),
       listenedAt: requiredString(record.listenedAt, 'زمان شنیدن'),
+      durationSeconds: nullableNumber(record.durationSeconds, 'مدت شنیدن'),
+      completionPercent: nullableNumber(record.completionPercent, 'درصد تکمیل'),
     };
   });
 }
@@ -1238,6 +1592,8 @@ function parseArtists(value: unknown): ArtistRecord[] {
       image: nullableString(record.image, 'تصویر هنرمند'),
       profileImage: nullableString(record.profileImage, 'تصویر اصلی هنرمند'),
       galleryImages: nullableString(record.galleryImages, 'گالری تصاویر هنرمند'),
+      alternateTitles: nullableString(record.alternateTitles, 'نام‌های جایگزین'),
+      source: nullableString(record.source, 'منبع'),
     };
   });
 }

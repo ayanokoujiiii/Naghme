@@ -3,7 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,13 +27,51 @@ import {
   saveGeminiApiKey,
   saveGeminiModel,
 } from '@/src/ai/gemini';
-import { createArchiveBackup, restoreArchiveBackup } from '@/src/db/portability';
+import {
+  createArchiveBackup,
+  createCompleteArchiveBackup,
+  restoreArchiveFile,
+  ArchiveRestoreMode,
+} from '@/src/db/portability';
+
+function chooseRestoreMode(): Promise<ArchiveRestoreMode | null> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'نوع بازیابی',
+      'در حالت ادغام چیزی از آرشیو فعلی حذف نمی‌شود. جایگزینی کامل، آرشیو فعلی را با فایل انتخاب‌شده عوض می‌کند.',
+      [
+        { text: 'لغو', style: 'cancel', onPress: () => resolve(null) },
+        { text: 'ادغام', onPress: () => resolve('merge') },
+        {
+          text: 'جایگزینی کامل',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'تأیید نهایی جایگزینی',
+              'این کار همه‌ی اطلاعات آرشیو فعلی را حذف و محتوای فایل را جایگزین می‌کند. ادامه می‌دهی؟',
+              [
+                { text: 'لغو', style: 'cancel', onPress: () => resolve(null) },
+                {
+                  text: 'ادامه و جایگزینی',
+                  style: 'destructive',
+                  onPress: () => resolve('replace'),
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  });
+}
 
 export default function SettingsScreen() {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [exporting, setExporting] = useState<boolean>(false);
   const [restoring, setRestoring] = useState<boolean>(false);
+  const [backupProgress, setBackupProgress] = useState<string>('');
+  const cancelOperation = useRef(false);
   const [geminiApiKey, setGeminiApiKey] = useState<string>('');
   const [loadingGeminiKey, setLoadingGeminiKey] = useState<boolean>(true);
   const [savingGeminiKey, setSavingGeminiKey] = useState<boolean>(false);
@@ -117,34 +155,51 @@ export default function SettingsScreen() {
     }
   };
 
-  const exportArchive = async () => {
+  const exportArchive = async (complete = false) => {
     if (Platform.OS === 'web') {
       Alert.alert('خروجی در دسترس نیست', 'خروجی گرفتن از آرشیو را در برنامه‌ی Android انجام بده.');
       return;
     }
     setExporting(true);
+    cancelOperation.current = false;
+    setBackupProgress(complete ? 'آماده‌سازی فایل‌ها…' : 'ساخت پشتیبان سبک…');
     try {
-      const json = await createArchiveBackup();
       const directory = FileSystem.documentDirectory;
       if (!directory) throw new Error('مسیر ذخیره‌سازی دستگاه پیدا نشد.');
-      const fileUri = `${directory}naghme_backup.json`;
-      await FileSystem.writeAsStringAsync(fileUri, json, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      let fileUri: string;
+      let fileName: string;
+      if (complete) {
+        const result = await createCompleteArchiveBackup((completed, total) => {
+          setBackupProgress(`پردازش فایل‌ها: ${completed} از ${total}`);
+        }, () => cancelOperation.current);
+        fileUri = result.uri;
+        fileName = result.fileName;
+        if (result.failedMediaCount) {
+          setBackupProgress(`${result.failedMediaCount} فایل قابل خواندن نبود؛ پشتیبان ساخته شد.`);
+        }
+      } else {
+        const json = await createArchiveBackup();
+        fileName = 'naghme_backup.json';
+        fileUri = `${directory}${fileName}`;
+        await FileSystem.writeAsStringAsync(fileUri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      }
       if (!(await Sharing.isAvailableAsync())) {
         Alert.alert('فایل آماده شد', 'فایل پشتیبان در پوشه‌ی اسناد برنامه ذخیره شد.');
         return;
       }
       await Sharing.shareAsync(fileUri, {
-        mimeType: 'application/json',
+        mimeType: complete ? 'application/octet-stream' : 'application/json',
         dialogTitle: 'خروجی آرشیو نغمه',
-        UTI: 'public.json',
+        UTI: complete ? 'public.data' : 'public.json',
       });
     } catch (exportError: unknown) {
       const message = exportError instanceof Error ? exportError.message : 'خروجی گرفتن انجام نشد.';
       Alert.alert('خروجی گرفتن انجام نشد', message);
     } finally {
       setExporting(false);
+      setBackupProgress('');
     }
   };
 
@@ -154,9 +209,10 @@ export default function SettingsScreen() {
       return;
     }
     setRestoring(true);
+    cancelOperation.current = false;
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
+        type: '*/*',
         copyToCacheDirectory: true,
         multiple: false,
       });
@@ -164,17 +220,33 @@ export default function SettingsScreen() {
 
       const asset = result.assets[0];
       if (!asset) throw new Error('فایلی انتخاب نشد.');
-      const json = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.UTF8,
+      const isComplete =
+        (asset.name ?? '').toLowerCase().endsWith('.naghme') ||
+        asset.mimeType === 'application/octet-stream';
+      const data = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
-      const summary = await restoreArchiveBackup(json);
+      const mode = await chooseRestoreMode();
+      if (!mode) return;
+      setBackupProgress('بازیابی فایل‌ها…');
+      const summary = await restoreArchiveFile(
+        data,
+        asset.name ?? (isComplete ? 'archive.naghme' : 'archive.json'),
+        mode,
+        (completed, total) => setBackupProgress(`بازیابی فایل‌ها: ${completed} از ${total}`),
+        () => cancelOperation.current,
+      );
       const missingAudioMessage =
         summary.missingAudioFiles
           ? ` فایل صوتی ${summary.missingAudioFiles} قطعه روی این دستگاه پیدا نشد.`
           : '';
+      const missingMediaMessage =
+        summary.missingMediaFiles
+          ? ` ${summary.missingMediaFiles} فایل رسانه‌ای بازیابی نشد.`
+          : '';
       Alert.alert(
-        'بازیابی و ادغام انجام شد',
-         `اطلاعات فایل پشتیبان با آرشیو فعلی ادغام شد و چیزی از آرشیو تو حذف نشد. ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.collections} مجموعه، ${summary.collectionTracks} عضویت مجموعه، ${summary.postcardProjects} عکس‌نوشته، ${summary.conversations} گفتگو، ${summary.conversationMessages} پیام گفتگو، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}`,
+        mode === 'replace' ? 'جایگزینی کامل انجام شد' : 'بازیابی و ادغام انجام شد',
+         `${mode === 'replace' ? 'آرشیو قبلی با محتوای فایل جایگزین شد.' : 'چیزی از آرشیو فعلی حذف نشد.'} ${summary.artists} هنرمند، ${summary.albums} آلبوم، ${summary.roles} نقش، ${summary.credits} مشارکت، ${summary.works} اثر، ${summary.versions} نسخه، ${summary.tracks} قطعه، ${summary.collections} مجموعه، ${summary.collectionTracks} عضویت مجموعه، ${summary.postcardProjects} عکس‌نوشته، ${summary.conversations} گفتگو، ${summary.conversationMessages} پیام گفتگو، ${summary.artistAlbums} رابطه‌ی هنرمند و آلبوم، ${summary.albumTracks} رابطه‌ی آلبوم و قطعه، ${summary.personalRelationships} رابطه‌ی شخصی، ${summary.journalEntries} یادداشت دفترچه و ${summary.listeningHistory} مورد از تاریخچه بازیابی شد.${missingAudioMessage}${missingMediaMessage}`,
         [{ text: 'باشه', onPress: () => router.back() }],
       );
     } catch (restoreError: unknown) {
@@ -183,7 +255,13 @@ export default function SettingsScreen() {
       Alert.alert('بازیابی انجام نشد', message);
     } finally {
       setRestoring(false);
+      setBackupProgress('');
     }
+  };
+
+  const cancelBackupOperation = () => {
+    cancelOperation.current = true;
+    setBackupProgress('در حال لغو…');
   };
 
   return (
@@ -315,8 +393,7 @@ export default function SettingsScreen() {
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>خروجی گرفتن از آرشیو</Text>
           <Text style={styles.actionDescription}>
-            یک فایل پشتیبان از اطلاعات آرشیو بساز. فایل‌های صوتی و تصویری همراه آن نیستند؛
-            برای انتقال به دستگاه دیگر، این فایل‌ها را جداگانه هم منتقل کن.
+             پشتیبان سبک فقط اطلاعات آرشیو را نگه می‌دارد. پشتیبان کامل، فایل‌های صوتی و تصویری را هم همراه خود می‌برد.
           </Text>
         </View>
         <Pressable
@@ -324,7 +401,7 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel="خروجی گرفتن از آرشیو"
           disabled={exporting}
-          onPress={() => void exportArchive()}
+          onPress={() => void exportArchive(false)}
           style={({ pressed }) => [styles.exportButton, pressed && styles.pressed]}
         >
           {exporting ? (
@@ -332,9 +409,30 @@ export default function SettingsScreen() {
           ) : (
             <>
               <Feather name="share-2" size={16} color={colors.primaryForeground} />
-              <Text style={styles.exportButtonText}>ساخت فایل پشتیبان</Text>
+              <Text style={styles.exportButtonText}>پشتیبان سبک</Text>
             </>
           )}
+        </Pressable>
+      </View>
+
+      <View style={styles.actionCard}>
+        <View style={styles.actionIcon}>
+          <Feather name="archive" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.actionCopy}>
+          <Text style={styles.actionTitle}>پشتیبان کامل</Text>
+          <Text style={styles.actionDescription}>
+            اطلاعات و فایل‌های موجود روی دستگاه را یکی‌یکی آماده می‌کند؛ برای انتقال آرشیو به گوشی دیگر مناسب است.
+          </Text>
+        </View>
+        <Pressable
+          testID="export-complete-archive"
+          accessibilityRole="button"
+          disabled={exporting || restoring}
+          onPress={() => void exportArchive(true)}
+          style={({ pressed }) => [styles.exportButton, pressed && styles.pressed]}
+        >
+          {exporting ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Text style={styles.exportButtonText}>ساخت پشتیبان کامل</Text>}
         </Pressable>
       </View>
 
@@ -345,7 +443,7 @@ export default function SettingsScreen() {
         <View style={styles.actionCopy}>
           <Text style={styles.actionTitle}>بازیابی اطلاعات</Text>
           <Text style={styles.actionDescription}>
-            اطلاعات فایل پشتیبان با آرشیو فعلی ادغام می‌شود؛ چیزی از آرشیو تو حذف نمی‌شود.
+            نوع فایل خودکار تشخیص داده می‌شود. در حالت ادغام چیزی حذف نمی‌شود؛ جایگزینی کامل با هشدار دومرحله‌ای انجام می‌شود.
           </Text>
         </View>
         <Pressable
@@ -361,15 +459,26 @@ export default function SettingsScreen() {
           ) : (
             <>
               <Feather name="folder" size={16} color={colors.primary} />
-              <Text style={styles.restoreButtonText}>بازیابی اطلاعات از فایل</Text>
+              <Text style={styles.restoreButtonText}>انتخاب فایل پشتیبان</Text>
             </>
           )}
         </Pressable>
       </View>
 
+      {backupProgress ? (
+        <View style={styles.progressBox}>
+          <Text style={styles.progressText}>{backupProgress}</Text>
+          {(exporting || restoring) ? (
+            <Pressable onPress={cancelBackupOperation} style={styles.cancelButton}>
+              <Text style={styles.cancelText}>لغو</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.footerNote}>
         <Feather name="file-text" size={16} color={colors.mutedForeground} />
-        <Text style={styles.footerText}>نام فایل خروجی: naghme_backup.json</Text>
+         <Text style={styles.footerText}>نام فایل‌ها: naghme_backup.json یا naghme_complete_backup.naghme</Text>
       </View>
       </KeyboardAwareScrollViewCompat>
       <Modal
@@ -497,6 +606,10 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     restoreButtonText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
     footerNote: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 18 },
     footerText: { color: colors.mutedForeground, fontSize: 12 },
+    progressBox: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 12, marginTop: 14, borderRadius: 14, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.border },
+    progressText: { flex: 1, color: colors.foreground, fontSize: 11, lineHeight: 18, textAlign: 'right' },
+    cancelButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', backgroundColor: colors.secondary },
+    cancelText: { color: colors.destructive, fontSize: 11, fontWeight: '700' },
     pressed: { opacity: 0.74 },
   });
 }

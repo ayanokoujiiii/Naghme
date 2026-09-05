@@ -10,6 +10,19 @@ export interface ArtistRecord {
   image: string | null;
   profileImage: string | null;
   galleryImages: string | null;
+  alternateTitles: string | null;
+  source: string | null;
+}
+
+export interface ArtistTimelineEventRecord {
+  id: string;
+  artistId: string;
+  title: string;
+  description: string | null;
+  eventDate: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ArtistRelationshipRecord {
@@ -208,6 +221,8 @@ export interface ListeningHistoryRecord {
   id: string;
   trackId: string;
   listenedAt: string;
+  durationSeconds: number | null;
+  completionPercent: number | null;
 }
 
 export type ArchiveDateRange = 'all' | 'week' | 'month' | 'year';
@@ -349,7 +364,7 @@ export type SearchFilter =
   | 'journal'
   | 'credit'
   | 'work';
-export type SearchMatchSource = 'title' | 'lyrics' | 'journal' | 'credit' | 'work';
+export type SearchMatchSource = 'title' | 'lyrics' | 'journal' | 'credit' | 'work' | 'artist';
 
 export interface SearchResult {
   id: string;
@@ -392,6 +407,11 @@ export type NewTrack = Omit<
     Pick<TrackRecord, 'lyrics' | 'sheetMusicUri' | 'versionName' | 'workId' | 'versionId'>
   >;
 export type UpdateArtist = Partial<NewArtist>;
+export type NewArtistTimelineEvent = Pick<ArtistTimelineEventRecord, 'artistId' | 'title'> &
+  Partial<Pick<ArtistTimelineEventRecord, 'description' | 'eventDate' | 'source'>>;
+export type UpdateArtistTimelineEvent = Partial<
+  Pick<ArtistTimelineEventRecord, 'title' | 'description' | 'eventDate' | 'source'>
+>;
 export type UpdateAlbum = Partial<NewAlbum>;
 export type UpdateTrack = Partial<NewTrack>;
 export type NewArtistRelationship = Pick<
@@ -472,11 +492,19 @@ const CREDIT_VIEW_COLUMNS = `
   Works.title AS workTitle,
   Tracks.title AS trackTitle,
   Albums.title AS albumTitle`;
+const ARTIST_COLUMNS = 'id, name, type, biography, genres, image, profileImage, galleryImages, alternateTitles, source';
 // ListeningHistory is authoritative. The legacy relationship column remains
 // only for schema compatibility and is intentionally not used for runtime counts.
 const LISTENING_COUNT_JOIN = `
   LEFT JOIN (
-    SELECT trackId, COUNT(*) AS listeningCount
+    SELECT trackId,
+      SUM(
+        CASE
+          WHEN completionPercent IS NULL OR completionPercent >= 50 THEN 1.0
+          WHEN completionPercent >= 20 THEN 0.5
+          ELSE 0.0
+        END
+      ) AS listeningCount
     FROM ListeningHistory
     GROUP BY trackId
   ) AS ListeningCounts ON ListeningCounts.trackId = Tracks.id`;
@@ -493,11 +521,14 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
     name,
     profileImage: input.profileImage ?? null,
     galleryImages: input.galleryImages ?? null,
+    alternateTitles: input.alternateTitles ?? null,
+    source: input.source ?? null,
   };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO Artists
+       (id, name, type, biography, genres, image, profileImage, galleryImages, alternateTitles, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       artist.id,
       artist.name,
@@ -507,6 +538,8 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
       artist.image,
       artist.profileImage,
       artist.galleryImages,
+      artist.alternateTitles,
+      artist.source,
     ],
   );
   return artist;
@@ -515,7 +548,7 @@ export async function addArtist(input: NewArtist): Promise<ArtistRecord> {
 export async function getArtists(): Promise<ArtistRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image, profileImage, galleryImages FROM Artists ORDER BY name COLLATE NOCASE ASC',
+    `SELECT ${ARTIST_COLUMNS} FROM Artists ORDER BY name COLLATE NOCASE ASC`,
     [],
   );
 }
@@ -531,7 +564,7 @@ export async function getWorks(): Promise<WorkRecord[]> {
 export async function getArtistById(id: string): Promise<ArtistRecord | null> {
   const database = await requireDatabase();
   return database.getFirstAsync<ArtistRecord>(
-    'SELECT id, name, type, biography, genres, image, profileImage, galleryImages FROM Artists WHERE id = ?',
+    `SELECT ${ARTIST_COLUMNS} FROM Artists WHERE id = ?`,
     [id],
   );
 }
@@ -553,7 +586,8 @@ export async function updateArtist(
   const database = await requireDatabase();
   await database.runAsync(
     `UPDATE Artists
-     SET name = ?, type = ?, biography = ?, genres = ?, image = ?, profileImage = ?, galleryImages = ?
+     SET name = ?, type = ?, biography = ?, genres = ?, image = ?, profileImage = ?,
+         galleryImages = ?, alternateTitles = ?, source = ?
      WHERE id = ?`,
     [
       artist.name,
@@ -563,6 +597,8 @@ export async function updateArtist(
       artist.image,
       artist.profileImage,
       artist.galleryImages,
+      artist.alternateTitles,
+      artist.source,
       id,
     ],
   );
@@ -573,6 +609,99 @@ export async function deleteArtist(id: string): Promise<void> {
   const database = await requireDatabase();
   await database.runAsync('UPDATE Tracks SET artistId = NULL WHERE artistId = ?', [id]);
   await database.runAsync('DELETE FROM Artists WHERE id = ?', [id]);
+}
+
+export async function getArtistTimelineEvents(
+  artistId: string,
+): Promise<ArtistTimelineEventRecord[]> {
+  const database = await requireDatabase();
+  return database.getAllAsync<ArtistTimelineEventRecord>(
+    `SELECT id, artistId, title, description, eventDate, source, createdAt, updatedAt
+       FROM ArtistTimelineEvents
+      WHERE artistId = ?
+      ORDER BY
+        CASE WHEN eventDate IS NULL OR eventDate = '' THEN 1 ELSE 0 END,
+        eventDate ASC,
+        datetime(createdAt) ASC`,
+    [artistId],
+  );
+}
+
+export async function addArtistTimelineEvent(
+  input: NewArtistTimelineEvent,
+): Promise<ArtistTimelineEventRecord> {
+  const title = input.title.trim();
+  if (!title) throw new Error('عنوان رویداد الزامی است.');
+  const now = new Date().toISOString();
+  const event: ArtistTimelineEventRecord = {
+    id: createId('artist_event'),
+    artistId: input.artistId,
+    title,
+    description: trimNullable(input.description),
+    eventDate: trimNullable(input.eventDate),
+    source: trimNullable(input.source),
+    createdAt: now,
+    updatedAt: now,
+  };
+  const database = await requireDatabase();
+  await database.runAsync(
+    `INSERT INTO ArtistTimelineEvents
+       (id, artistId, title, description, eventDate, source, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      event.id,
+      event.artistId,
+      event.title,
+      event.description,
+      event.eventDate,
+      event.source,
+      event.createdAt,
+      event.updatedAt,
+    ],
+  );
+  return event;
+}
+
+export async function updateArtistTimelineEvent(
+  id: string,
+  input: UpdateArtistTimelineEvent,
+): Promise<ArtistTimelineEventRecord> {
+  const database = await requireDatabase();
+  const current = await database.getFirstAsync<ArtistTimelineEventRecord>(
+    `SELECT id, artistId, title, description, eventDate, source, createdAt, updatedAt
+       FROM ArtistTimelineEvents WHERE id = ?`,
+    [id],
+  );
+  if (!current) throw new Error('رویداد پیدا نشد.');
+  const title = input.title?.trim() || current.title;
+  if (!title) throw new Error('عنوان رویداد الزامی است.');
+  const updated = {
+    ...current,
+    title,
+    description: input.description === undefined ? current.description : trimNullable(input.description),
+    eventDate: input.eventDate === undefined ? current.eventDate : trimNullable(input.eventDate),
+    source: input.source === undefined ? current.source : trimNullable(input.source),
+    updatedAt: new Date().toISOString(),
+  };
+  await database.runAsync(
+    `UPDATE ArtistTimelineEvents
+        SET title = ?, description = ?, eventDate = ?, source = ?, updatedAt = ?
+      WHERE id = ?`,
+    [
+      updated.title,
+      updated.description,
+      updated.eventDate,
+      updated.source,
+      updated.updatedAt,
+      id,
+    ],
+  );
+  return updated;
+}
+
+export async function deleteArtistTimelineEvent(id: string): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync('DELETE FROM ArtistTimelineEvents WHERE id = ?', [id]);
 }
 
 export async function getArtistRelationships(
@@ -2339,12 +2468,16 @@ export async function searchLibraryByFilter(
 
   if (filter === 'artist') {
     return database.getAllAsync<SearchResult>(
-      `SELECT id, name AS title, type AS subtitle, 'artist' AS type, 'title' AS matchSource
+      `SELECT id, name AS title,
+          CASE WHEN name LIKE ? COLLATE NOCASE THEN type
+               ELSE 'نام جایگزین: ' || alternateTitles END AS subtitle,
+          'artist' AS type,
+          CASE WHEN name LIKE ? COLLATE NOCASE THEN 'title' ELSE 'artist' END AS matchSource
        FROM Artists
-       WHERE name LIKE ? COLLATE NOCASE
+       WHERE name LIKE ? COLLATE NOCASE OR COALESCE(alternateTitles, '') LIKE ? COLLATE NOCASE
        ORDER BY name COLLATE NOCASE ASC
        LIMIT ?`,
-      [pattern, safeLimit],
+      [pattern, pattern, pattern, pattern, safeLimit],
     );
   }
 
@@ -2492,12 +2625,13 @@ export async function searchLibraryByFilter(
     ),
     database.getAllAsync<SearchResult>(
       `SELECT id, name AS title, type AS subtitle,
-         'artist' AS type, 'title' AS matchSource
+          'artist' AS type,
+          CASE WHEN name LIKE ? COLLATE NOCASE THEN 'title' ELSE 'artist' END AS matchSource
        FROM Artists
-       WHERE name LIKE ? COLLATE NOCASE
+        WHERE name LIKE ? COLLATE NOCASE OR COALESCE(alternateTitles, '') LIKE ? COLLATE NOCASE
        ORDER BY name COLLATE NOCASE ASC
        LIMIT ?`,
-      [pattern, safeLimit],
+       [pattern, pattern, pattern, safeLimit],
     ),
     database.getAllAsync<SearchResult>(
       `SELECT
@@ -2754,7 +2888,13 @@ export async function getPersonalRelationship(
        PersonalRelationships.emotionalTags,
        PersonalRelationships.personalNote,
        (
-         SELECT COUNT(*)
+          SELECT COALESCE(SUM(
+            CASE
+              WHEN completionPercent IS NULL OR completionPercent >= 50 THEN 1.0
+              WHEN completionPercent >= 20 THEN 0.5
+              ELSE 0.0
+            END
+          ), 0)
          FROM ListeningHistory
          WHERE ListeningHistory.trackId = PersonalRelationships.trackId
        ) AS listeningCount
@@ -2990,20 +3130,51 @@ export async function logListen(trackId: string): Promise<ListeningHistoryRecord
     id: createId('listen'),
     trackId,
     listenedAt: new Date().toISOString(),
+    durationSeconds: null,
+    completionPercent: null,
   };
   const database = await requireDatabase();
   await database.runAsync(
-    `INSERT INTO ListeningHistory (id, trackId, listenedAt)
-     VALUES (?, ?, ?)`,
-    [historyEntry.id, historyEntry.trackId, historyEntry.listenedAt],
+    `INSERT INTO ListeningHistory
+       (id, trackId, listenedAt, durationSeconds, completionPercent)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      historyEntry.id,
+      historyEntry.trackId,
+      historyEntry.listenedAt,
+      historyEntry.durationSeconds,
+      historyEntry.completionPercent,
+    ],
   );
   return historyEntry;
+}
+
+export async function updateListeningHistoryProgress(
+  id: string,
+  durationSeconds: number | null,
+  completionPercent: number | null,
+): Promise<void> {
+  const database = await requireDatabase();
+  await database.runAsync(
+    `UPDATE ListeningHistory
+        SET durationSeconds = ?, completionPercent = ?
+      WHERE id = ?`,
+    [
+      durationSeconds !== null && Number.isFinite(durationSeconds)
+        ? Math.max(0, durationSeconds)
+        : null,
+      completionPercent !== null && Number.isFinite(completionPercent)
+        ? Math.min(100, Math.max(0, completionPercent))
+        : null,
+      id,
+    ],
+  );
 }
 
 export async function getListeningHistory(trackId: string): Promise<ListeningHistoryRecord[]> {
   const database = await requireDatabase();
   return database.getAllAsync<ListeningHistoryRecord>(
-    `SELECT id, trackId, listenedAt
+    `SELECT id, trackId, listenedAt, durationSeconds, completionPercent
      FROM ListeningHistory
      WHERE trackId = ?
      ORDER BY datetime(listenedAt) DESC`,
@@ -3036,6 +3207,8 @@ export async function getListeningHistoryPage(
        ListeningHistory.id,
        ListeningHistory.trackId,
        ListeningHistory.listenedAt,
+       ListeningHistory.durationSeconds,
+       ListeningHistory.completionPercent,
        Tracks.title AS trackTitle,
        Tracks.artistId,
        Tracks.coverImage,
@@ -3086,7 +3259,13 @@ export async function getListeningHistoryOverview(
          Tracks.id AS trackId,
          Tracks.title,
          Artists.name AS artistName,
-         COUNT(ListeningHistory.id) AS listeningCount
+          COALESCE(SUM(
+            CASE
+              WHEN ListeningHistory.completionPercent IS NULL OR ListeningHistory.completionPercent >= 50 THEN 1.0
+              WHEN ListeningHistory.completionPercent >= 20 THEN 0.5
+              ELSE 0.0
+            END
+          ), 0) AS listeningCount
        FROM ListeningHistory
        INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
        LEFT JOIN Artists ON Artists.id = Tracks.artistId
@@ -3100,7 +3279,13 @@ export async function getListeningHistoryOverview(
       `SELECT
          Artists.id AS artistId,
          Artists.name,
-         COUNT(ListeningHistory.id) AS listeningCount
+          COALESCE(SUM(
+            CASE
+              WHEN ListeningHistory.completionPercent IS NULL OR ListeningHistory.completionPercent >= 50 THEN 1.0
+              WHEN ListeningHistory.completionPercent >= 20 THEN 0.5
+              ELSE 0.0
+            END
+          ), 0) AS listeningCount
        FROM ListeningHistory
        INNER JOIN Tracks ON Tracks.id = ListeningHistory.trackId
        INNER JOIN Artists ON Artists.id = Tracks.artistId
@@ -3173,7 +3358,13 @@ export async function getChatArchiveContext(): Promise<ChatArchiveContext> {
       `SELECT
          Tracks.title,
          Artists.name AS artistName,
-         COUNT(ListeningHistory.id) AS listeningCount
+          COALESCE(SUM(
+            CASE
+              WHEN ListeningHistory.completionPercent IS NULL OR ListeningHistory.completionPercent >= 50 THEN 1.0
+              WHEN ListeningHistory.completionPercent >= 20 THEN 0.5
+              ELSE 0.0
+            END
+          ), 0) AS listeningCount
        FROM Tracks
        LEFT JOIN Artists ON Artists.id = Tracks.artistId
        LEFT JOIN ListeningHistory ON ListeningHistory.trackId = Tracks.id
@@ -3185,7 +3376,13 @@ export async function getChatArchiveContext(): Promise<ChatArchiveContext> {
     database.getAllAsync<ChatArchiveContext['topArtists'][number]>(
       `SELECT
          Artists.name,
-         COUNT(ListeningHistory.id) AS listeningCount
+          COALESCE(SUM(
+            CASE
+              WHEN ListeningHistory.completionPercent IS NULL OR ListeningHistory.completionPercent >= 50 THEN 1.0
+              WHEN ListeningHistory.completionPercent >= 20 THEN 0.5
+              ELSE 0.0
+            END
+          ), 0) AS listeningCount
        FROM Artists
        INNER JOIN Tracks ON Tracks.artistId = Artists.id
        LEFT JOIN ListeningHistory ON ListeningHistory.trackId = Tracks.id

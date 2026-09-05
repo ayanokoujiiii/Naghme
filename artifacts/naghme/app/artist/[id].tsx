@@ -40,6 +40,11 @@ import {
   CreditViewRecord,
   TrackRecord,
   updateArtist,
+  addArtistTimelineEvent,
+  deleteArtistTimelineEvent,
+  getArtistTimelineEvents,
+  updateArtistTimelineEvent,
+  ArtistTimelineEventRecord,
 } from '@/src/db/queries';
 import { playTracksInQueue } from '@/src/audio/audioManager';
 
@@ -56,6 +61,14 @@ export default function ArtistDetailScreen() {
   const [allArtists, setAllArtists] = useState<ArtistRecord[]>([]);
   const [artistAlbums, setArtistAlbums] = useState<AlbumRecord[]>([]);
   const [artistAlbumTracks, setArtistAlbumTracks] = useState<AlbumTrackRecord[]>([]);
+  const [timelineEvents, setTimelineEvents] = useState<ArtistTimelineEventRecord[]>([]);
+  const [timelineModalVisible, setTimelineModalVisible] = useState<boolean>(false);
+  const [editingTimelineId, setEditingTimelineId] = useState<string | null>(null);
+  const [timelineTitle, setTimelineTitle] = useState<string>('');
+  const [timelineDescription, setTimelineDescription] = useState<string>('');
+  const [timelineDate, setTimelineDate] = useState<string>('');
+  const [timelineSource, setTimelineSource] = useState<string>('');
+  const [savingTimeline, setSavingTimeline] = useState<boolean>(false);
   const [relationshipModalVisible, setRelationshipModalVisible] = useState<boolean>(false);
   const [relationshipSearch, setRelationshipSearch] = useState<string>('');
   const [relationshipDescription, setRelationshipDescription] = useState<string>('');
@@ -90,13 +103,14 @@ export default function ArtistDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      const [foundArtist, artistTracks, artistCredits, artistRelationships, artistItems, albumsForArtist] = await Promise.all([
+      const [foundArtist, artistTracks, artistCredits, artistRelationships, artistItems, albumsForArtist, artistTimeline] = await Promise.all([
         getArtistById(artistId),
         getTracksByArtistId(artistId),
         getCreditsForArtist(artistId),
         getArtistRelationships(artistId),
         getArtists(),
         getAlbumsForArtist(artistId),
+        getArtistTimelineEvents(artistId),
       ]);
       if (!foundArtist) setError('هنرمند پیدا نشد.');
       else {
@@ -106,6 +120,7 @@ export default function ArtistDetailScreen() {
         setRelationships(artistRelationships);
         setAllArtists(artistItems);
         setArtistAlbums(albumsForArtist);
+        setTimelineEvents(artistTimeline);
         const albumTrackLists = await Promise.all(albumsForArtist.map((album) => getAlbumTracks(album.id)));
         setArtistAlbumTracks(albumTrackLists.flat());
       }
@@ -414,6 +429,63 @@ export default function ArtistDetailScreen() {
     );
   };
 
+  const openTimelineModal = (event?: ArtistTimelineEventRecord) => {
+    setEditingTimelineId(event?.id ?? null);
+    setTimelineTitle(event?.title ?? '');
+    setTimelineDescription(event?.description ?? '');
+    setTimelineDate(event?.eventDate ?? '');
+    setTimelineSource(event?.source ?? '');
+    setTimelineModalVisible(true);
+  };
+
+  const saveTimelineEvent = async () => {
+    if (!artist || !timelineTitle.trim() || savingTimeline) return;
+    setSavingTimeline(true);
+    try {
+      const input = {
+        title: timelineTitle,
+        description: timelineDescription,
+        eventDate: timelineDate,
+        source: timelineSource,
+      };
+      const saved = editingTimelineId
+        ? await updateArtistTimelineEvent(editingTimelineId, input)
+        : await addArtistTimelineEvent({ artistId: artist.id, ...input });
+      setTimelineEvents((current) => {
+        const next = editingTimelineId
+          ? current.map((item) => (item.id === saved.id ? saved : item))
+          : [...current, saved];
+        return next.sort(compareTimelineEvents);
+      });
+      setTimelineModalVisible(false);
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : 'ذخیره‌ی رویداد انجام نشد.');
+    } finally {
+      setSavingTimeline(false);
+    }
+  };
+
+  const removeTimelineEvent = (event: ArtistTimelineEventRecord) => {
+    Alert.alert(
+      'حذف رویداد',
+      `رویداد «${event.title}» حذف شود؟`,
+      [
+        { text: 'لغو', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: () => {
+            void deleteArtistTimelineEvent(event.id)
+              .then(() => setTimelineEvents((current) => current.filter((item) => item.id !== event.id)))
+              .catch((deleteError: unknown) =>
+                setError(deleteError instanceof Error ? deleteError.message : 'حذف رویداد انجام نشد.'),
+              );
+          },
+        },
+      ],
+    );
+  };
+
   if (loading) {
     return (
       <DetailShell eyebrow="در حال خواندن" title="هنرمند" icon="mic">
@@ -516,8 +588,10 @@ export default function ArtistDetailScreen() {
       <SectionHeading title="اطلاعات هنرمند" caption="جزئیات ثبت‌شده" />
       <DetailCard>
         <DetailRow label="نام" value={artist.name} />
+        <DetailRow label="نام‌های جایگزین" value={artist.alternateTitles ?? 'ثبت نشده'} />
         <DetailRow label="نوع" value={artist.type ?? 'ثبت نشده'} />
         <DetailRow label="سبک‌ها" value={artist.genres ?? 'ثبت نشده'} />
+        <DetailRow label="منبع" value={artist.source ?? 'ثبت نشده'} />
       </DetailCard>
       <Pressable
         testID="artist-open-graph"
@@ -554,6 +628,41 @@ export default function ArtistDetailScreen() {
         <Text style={styles.biography}>
           {artist.biography ?? 'هنوز یادداشتی برای این هنرمند ثبت نشده است.'}
         </Text>
+      </DetailCard>
+
+      <View style={styles.timelineHeading}>
+        <SectionHeading
+          title="گاه‌شمار هنرمند"
+          caption={timelineEvents.length ? `${timelineEvents.length} رویداد` : 'تاریخ‌ها و نقطه‌های مهم'}
+        />
+        <Pressable
+          testID="artist-add-timeline-event"
+          accessibilityRole="button"
+          onPress={() => openTimelineModal()}
+          style={({ pressed }) => [styles.timelineAddButton, pressed && styles.pressed]}
+        >
+          <Feather name="plus" size={15} color={colors.primaryForeground} />
+          <Text style={styles.timelineAddText}>افزودن</Text>
+        </Pressable>
+      </View>
+      <DetailCard>
+        {timelineEvents.length ? timelineEvents.map((event) => (
+          <View key={event.id} style={styles.timelineRow}>
+            <View style={styles.timelineCopy}>
+              <Text style={styles.timelineTitle}>{event.title}</Text>
+              <Text style={styles.timelineMeta}>{event.eventDate || 'تاریخ ثبت نشده'}{event.source ? `  •  ${event.source}` : ''}</Text>
+              {event.description ? <Text style={styles.timelineDescription}>{event.description}</Text> : null}
+            </View>
+            <View style={styles.timelineActions}>
+              <Pressable testID={`artist-edit-timeline-${event.id}`} onPress={() => openTimelineModal(event)}>
+                <Feather name="edit-2" size={15} color={colors.primary} />
+              </Pressable>
+              <Pressable testID={`artist-delete-timeline-${event.id}`} onPress={() => removeTimelineEvent(event)}>
+                <Feather name="trash-2" size={15} color={colors.destructive} />
+              </Pressable>
+            </View>
+          </View>
+        )) : <Text style={styles.mutedText}>هنوز رویدادی برای این هنرمند ثبت نشده است.</Text>}
       </DetailCard>
 
       <View style={styles.relationshipHeading}>
@@ -735,6 +844,31 @@ export default function ArtistDetailScreen() {
         visible={pickerTrackId !== null}
         onClose={() => setPickerTrackId(null)}
       />
+
+      <Modal
+        visible={timelineModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTimelineModalVisible(false)}
+      >
+        <View style={[styles.timelineModalBackdrop, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.timelineModalCard}>
+            <View style={styles.timelineModalHeader}>
+              <Pressable onPress={() => setTimelineModalVisible(false)} style={styles.modalClose}>
+                <Feather name="x" size={20} color={colors.foreground} />
+              </Pressable>
+              <Text style={styles.timelineModalTitle}>{editingTimelineId ? 'ویرایش رویداد' : 'رویداد تازه'}</Text>
+            </View>
+            <TextInput value={timelineTitle} onChangeText={setTimelineTitle} placeholder="عنوان رویداد" placeholderTextColor={colors.mutedForeground} style={styles.timelineInput} textAlign="right" />
+            <TextInput value={timelineDate} onChangeText={setTimelineDate} placeholder="تاریخ اختیاری؛ مثلاً ۱۳۵۰/۰۷/۲۱" placeholderTextColor={colors.mutedForeground} style={styles.timelineInput} textAlign="right" />
+            <TextInput value={timelineDescription} onChangeText={setTimelineDescription} placeholder="شرح کوتاه" placeholderTextColor={colors.mutedForeground} style={[styles.timelineInput, styles.timelineDescriptionInput]} textAlign="right" multiline />
+            <TextInput value={timelineSource} onChangeText={setTimelineSource} placeholder="منبع این اطلاعات" placeholderTextColor={colors.mutedForeground} style={styles.timelineInput} textAlign="right" />
+            <Pressable disabled={!timelineTitle.trim() || savingTimeline} onPress={() => void saveTimelineEvent()} style={({ pressed }) => [styles.timelineSave, (pressed || savingTimeline) && styles.pressed]}>
+              {savingTimeline ? <ActivityIndicator color={colors.primaryForeground} /> : <Text style={styles.timelineSaveText}>ذخیره‌ی رویداد</Text>}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={relationshipModalVisible}
@@ -1120,6 +1254,18 @@ function Discography({
   );
 }
 
+function compareTimelineEvents(
+  left: ArtistTimelineEventRecord,
+  right: ArtistTimelineEventRecord,
+): number {
+  if (!left.eventDate && !right.eventDate) {
+    return left.createdAt.localeCompare(right.createdAt);
+  }
+  if (!left.eventDate) return 1;
+  if (!right.eventDate) return -1;
+  return left.eventDate.localeCompare(right.eventDate) || left.createdAt.localeCompare(right.createdAt);
+}
+
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     loading: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
@@ -1145,6 +1291,71 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       lineHeight: 24,
       textAlign: 'right',
     },
+    timelineHeading: {
+      flexDirection: 'row-reverse',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    timelineAddButton: {
+      minHeight: 36,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      marginBottom: 12,
+      backgroundColor: colors.primary,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 5,
+    },
+    timelineAddText: { color: colors.primaryForeground, fontSize: 11, fontWeight: '700' },
+    timelineRow: {
+      minHeight: 64,
+      flexDirection: 'row-reverse',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    timelineCopy: { flex: 1, alignItems: 'flex-end' },
+    timelineTitle: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+    timelineMeta: { color: colors.primary, fontSize: 10, marginTop: 3, textAlign: 'right' },
+    timelineDescription: { color: colors.mutedForeground, fontSize: 11, lineHeight: 18, marginTop: 3, textAlign: 'right' },
+    timelineActions: { flexDirection: 'row-reverse', gap: 12, paddingHorizontal: 3 },
+    timelineModalBackdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.62)',
+    },
+    timelineModalCard: {
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      padding: 18,
+      backgroundColor: colors.background,
+    },
+    timelineModalHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 14 },
+    timelineModalTitle: { flex: 1, color: colors.foreground, fontSize: 17, fontWeight: '700', textAlign: 'right' },
+    timelineInput: {
+      minHeight: 44,
+      borderRadius: 13,
+      paddingHorizontal: 13,
+      color: colors.foreground,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      fontSize: 12,
+      marginBottom: 9,
+    },
+    timelineDescriptionInput: { minHeight: 76, paddingVertical: 11 },
+    timelineSave: {
+      minHeight: 46,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      marginTop: 4,
+    },
+    timelineSaveText: { color: colors.primaryForeground, fontSize: 13, fontWeight: '700' },
     profileCard: {
       flexDirection: 'row-reverse',
       alignItems: 'center',

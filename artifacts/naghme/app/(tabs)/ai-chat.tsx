@@ -31,6 +31,7 @@ import {
 } from '@/src/db/queries';
 
 type ChatMessage = GeminiChatMessage & { id: string };
+const GEMINI_CONTEXT_MESSAGE_LIMIT = 20;
 const welcome: ChatMessage = { id: 'naghme-welcome', role: 'model', text: 'من نغمه‌ام. درباره‌ی قطعه‌ها، خاطره‌هایی که با موسیقی ساخته‌ای و حال‌وهوای آرشیوت با من حرف بزن.' };
 
 export default function AiChatScreen() {
@@ -95,7 +96,10 @@ export default function AiChatScreen() {
     if (!cleanMessage || sending) return;
     const userMessage: ChatMessage = { id: createMessageId('user'), role: 'user', text: cleanMessage };
     // Capture saved history before adding the new user turn.
-    const prior = messages.filter((message) => message.id !== welcome.id).map(({ role, text }) => ({ role, text }));
+    const prior = messages
+      .filter((message) => message.id !== welcome.id)
+      .slice(-GEMINI_CONTEXT_MESSAGE_LIMIT)
+      .map(({ role, text }) => ({ role, text }));
     setMessages((current) => [...current.filter((message) => message.id !== welcome.id), userMessage]);
     setInput('');
     setError('');

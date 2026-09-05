@@ -319,6 +319,9 @@ function HistoryRow({
         <View style={styles.historyCopy}>
           <Text style={styles.trackText} numberOfLines={1}>{row.trackTitle}</Text>
           <Text style={styles.artistText} numberOfLines={1}>{row.artistName ?? 'هنرمند نامشخص'}</Text>
+          <Text style={styles.listenMeta}>
+            {formatDuration(row.durationSeconds)}  •  {formatCompletion(row.completionPercent)}
+          </Text>
         </View>
         <Text style={styles.timeText}>{formatTime(row.listenedAt)}</Text>
       </Pressable>
@@ -417,6 +420,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     dayHeading: { color: colors.primary, fontSize: 12, fontWeight: '700', textAlign: 'right', marginTop: 7, marginBottom: 7 },
     trackText: { color: colors.foreground, fontSize: 13, fontWeight: '700', textAlign: 'right', marginTop: 5 },
     artistText: { color: colors.mutedForeground, fontSize: 11, textAlign: 'right', marginTop: 3 },
+    listenMeta: { color: colors.primary, fontSize: 10, textAlign: 'right', marginTop: 4 },
     timeText: { color: colors.mutedForeground, fontSize: 11, alignSelf: 'flex-start', marginTop: 2 },
     rowActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 7 },
     playButton: { width: 31, height: 31, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
@@ -430,4 +434,16 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     errorText: { flex: 1, color: colors.destructive, fontSize: 12, lineHeight: 19, textAlign: 'right' },
     pressed: { opacity: 0.76 },
   });
+}
+
+function formatDuration(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'مدت قدیمی';
+  const seconds = Math.max(0, Math.round(value));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')} دقیقه`;
+}
+
+function formatCompletion(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'کامل';
+  return `${Math.round(Math.max(0, Math.min(100, value)))}٪ تکمیل`;
 }

@@ -1,6 +1,6 @@
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { logListen } from '@/src/db/queries';
+import { logListen, updateListeningHistoryProgress } from '@/src/db/queries';
 
 export interface AudioPlaybackSnapshot {
   trackId: string | null;
@@ -85,6 +85,13 @@ let shuffleOrder: number[] = [];
 let playbackWasPlaying = false;
 let completionHandled = false;
 let sleepTimerTracksCurrent = false;
+interface ActiveListenSession {
+  trackId: string;
+  historyId: string | null;
+  listenedSeconds: number;
+  lastPlayingAt: number | null;
+}
+let activeListenSession: ActiveListenSession | null = null;
 const listeners = new Set<AudioListener>();
 const PLAYBACK_STATE_KEY = 'naghme.playback-state.v1';
 
@@ -124,10 +131,66 @@ function updateSnapshot(next: Partial<AudioPlaybackSnapshot>): void {
   }
 }
 
+function finalizeListenSession(durationMillis: number | null): void {
+  const session = activeListenSession;
+  if (!session) return;
+  if (session.lastPlayingAt !== null) {
+    session.listenedSeconds += Math.max(0, (Date.now() - session.lastPlayingAt) / 1000);
+    session.lastPlayingAt = null;
+  }
+  if (session.historyId) {
+    const durationSeconds =
+      durationMillis && durationMillis > 0 ? durationMillis / 1000 : null;
+    const completionPercent =
+      durationSeconds && durationSeconds > 0
+        ? Math.min(100, (session.listenedSeconds / durationSeconds) * 100)
+        : null;
+    void updateListeningHistoryProgress(
+      session.historyId,
+      session.listenedSeconds,
+      completionPercent,
+    ).catch(() => undefined);
+  }
+  activeListenSession = null;
+}
+
+function ensureListenSession(trackId: string): void {
+  if (activeListenSession?.trackId === trackId) {
+    return;
+  }
+  finalizeListenSession(snapshot.durationMillis);
+  const session: ActiveListenSession = {
+    trackId,
+    historyId: null,
+    listenedSeconds: 0,
+    lastPlayingAt: Date.now(),
+  };
+  activeListenSession = session;
+  void logListen(trackId)
+    .then((entry) => {
+      if (activeListenSession === session) {
+        session.historyId = entry.id;
+      }
+    })
+    .catch(() => undefined);
+}
+
 function handlePlaybackStatus(status: AVPlaybackStatus): void {
   if (status.isLoaded) {
-    if (status.isPlaying && !playbackWasPlaying && loadedTrackId) {
-      void logListen(loadedTrackId).catch(() => undefined);
+    if (status.isPlaying && loadedTrackId) {
+      ensureListenSession(loadedTrackId);
+      if (activeListenSession?.lastPlayingAt === null) {
+        activeListenSession.lastPlayingAt = Date.now();
+      }
+    } else if (activeListenSession && !status.isPlaying && activeListenSession.lastPlayingAt !== null) {
+      const session = activeListenSession;
+      const startedAt = session.lastPlayingAt;
+      if (startedAt === null) return;
+      session.listenedSeconds += Math.max(
+        0,
+        (Date.now() - startedAt) / 1000,
+      );
+      session.lastPlayingAt = null;
     }
     playbackWasPlaying = status.isPlaying;
     updateSnapshot({
@@ -145,6 +208,7 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
     });
     if (status.didJustFinish && !completionHandled) {
       completionHandled = true;
+      finalizeListenSession(status.durationMillis ?? null);
       if (sleepTimerTracksCurrent) {
         void finishSleepTimer();
       } else if (snapshot.repeatMode !== 'track') {
@@ -163,6 +227,7 @@ function handlePlaybackStatus(status: AVPlaybackStatus): void {
     positionMillis: 0,
   });
   playbackWasPlaying = false;
+  finalizeListenSession(snapshot.durationMillis);
 }
 
 export function getAudioSnapshot(): AudioPlaybackSnapshot {
@@ -278,6 +343,7 @@ export async function loadAudio(
     await configureBackgroundAudio();
 
     if (sound) {
+      finalizeListenSession(snapshot.durationMillis);
       const previousSound = sound;
       sound = null;
       loadedUri = null;
@@ -364,7 +430,7 @@ export async function toggleAudioPlayback(): Promise<boolean> {
   await sound.playAsync();
   if (!playbackWasPlaying && loadedTrackId) {
     playbackWasPlaying = true;
-    void logListen(loadedTrackId).catch(() => undefined);
+    ensureListenSession(loadedTrackId);
   }
   return true;
 }
@@ -381,7 +447,7 @@ export async function playAudio(): Promise<boolean> {
     await sound.playAsync();
     if (!playbackWasPlaying && loadedTrackId) {
       playbackWasPlaying = true;
-      void logListen(loadedTrackId).catch(() => undefined);
+    ensureListenSession(loadedTrackId);
     }
   }
   return true;
@@ -585,6 +651,7 @@ export async function stopAndUnloadAudio(): Promise<void> {
   if (loadRequest) {
     await loadRequest.catch(() => undefined);
   }
+  finalizeListenSession(snapshot.durationMillis);
 
   const activeSound = sound;
   sound = null;

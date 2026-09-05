@@ -51,8 +51,9 @@ const filterOptions: Array<{ value: SearchFilter; label: string }> = [
   { value: 'work', label: 'اثر' },
 ];
 
-const matchLabels = {
+const matchLabels: Record<SearchResult['matchSource'], string> = {
   title: 'نام',
+  artist: 'نام جایگزین',
   lyrics: 'متن ترانه',
   journal: 'دفترچه خاطرات',
   credit: 'مشارکت',

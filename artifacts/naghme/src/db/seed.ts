@@ -67,6 +67,25 @@ export const SAMPLE_ARTIST_ALBUM_LINKS: readonly SeedArtistAlbumLink[] = [
   },
 ];
 
+const SAMPLE_ARTIST_TIMELINE_EVENTS = [
+  {
+    id: 'sample_event_shajarian_birth',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    title: 'زادروز',
+    description: 'زادروز محمدرضا شجریان.',
+    eventDate: '1940-09-23',
+    source: 'Wikipedia، مقالهٔ محمدرضا شجریان',
+  },
+  {
+    id: 'sample_event_shajarian_death',
+    artistId: SAMPLE_ARTIST_IDS.shajarian,
+    title: 'درگذشت',
+    description: 'درگذشت محمدرضا شجریان.',
+    eventDate: '2020-10-08',
+    source: 'Wikipedia، مقالهٔ محمدرضا شجریان',
+  },
+] as const;
+
 const SAMPLE_ARTISTS: Array<ArtistRecord> = [
   {
     id: SAMPLE_ARTIST_IDS.shajarian,
@@ -79,6 +98,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
       'https://upload.wikimedia.org/wikipedia/commons/8/88/Mohamdreza_Shajarian_1.jpg',
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'خسرو آواز ایران',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.kalhor,
@@ -90,6 +111,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/Kayhan_Kalhor.jpg',
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'کیهان کلهر',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.alizadeh,
@@ -101,6 +124,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: 'https://upload.wikimedia.org/wikipedia/commons/5/57/Hosein_alizadeh2.jpg',
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'حسین علیزاده',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.meshkatian,
@@ -112,6 +137,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: null,
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'پرویز مشکاتیان',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.lotfi,
@@ -123,6 +150,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: null,
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'محمدرضا لطفی',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.homayoun,
@@ -134,6 +163,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: null,
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'همایون شجریان',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.khaleghi,
@@ -145,6 +176,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: null,
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'روح‌الله خالقی',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
   {
     id: SAMPLE_ARTIST_IDS.taraghi,
@@ -156,6 +189,8 @@ const SAMPLE_ARTISTS: Array<ArtistRecord> = [
     image: null,
     profileImage: null,
     galleryImages: null,
+    alternateTitles: 'ترانه‌سرایان معاصر',
+    source: 'مستندات و داده‌های نمونهٔ پروژه',
   },
 ];
 
@@ -489,11 +524,13 @@ export interface SeedResult {
 
 export async function injectSampleData(): Promise<SeedResult> {
   const database = await requireDatabase();
+  const now = new Date().toISOString();
 
   for (const artist of SAMPLE_ARTISTS) {
     await database.runAsync(
-      `INSERT OR IGNORE INTO Artists (id, name, type, biography, genres, image, profileImage, galleryImages)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO Artists
+         (id, name, type, biography, genres, image, profileImage, galleryImages, alternateTitles, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         artist.id,
         artist.name,
@@ -503,7 +540,18 @@ export async function injectSampleData(): Promise<SeedResult> {
         artist.image,
       artist.profileImage,
         artist.galleryImages,
+        artist.alternateTitles,
+        artist.source,
       ],
+    );
+  }
+
+  for (const event of SAMPLE_ARTIST_TIMELINE_EVENTS) {
+    await database.runAsync(
+      `INSERT OR IGNORE INTO ArtistTimelineEvents
+         (id, artistId, title, description, eventDate, source, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [event.id, event.artistId, event.title, event.description, event.eventDate, event.source, now, now],
     );
   }
 
@@ -523,7 +571,6 @@ export async function injectSampleData(): Promise<SeedResult> {
     );
   }
 
-  const now = new Date().toISOString();
   for (const work of SAMPLE_WORKS) {
     await database.runAsync(
       `INSERT OR IGNORE INTO Works
